@@ -2,7 +2,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
 // Relative asset paths, so dist/ works from any folder: GitHub Pages
-// (https://<user>.github.io/board_3d/), Netlify, Vercel or a local file server.
+// (https://<user>.github.io/Embedly/), Netlify, Vercel or a local file server.
 export default defineConfig({
   base: './',
   plugins: [react()],

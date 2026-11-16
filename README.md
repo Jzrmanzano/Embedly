@@ -17,7 +17,7 @@ npm run build    # type-check, then build the static site into dist/
 
 ## CI and deploy
 
-`.github/workflows/ci.yml` type-checks, tests and builds every pull request and every push to `main` or `dev`. A push to `main` that passes is published to GitHub Pages at `https://jzrmanzano.github.io/board_3d/`. Pages must be switched on once: **Settings → Pages → Build and deployment → Source: GitHub Actions**. The Node version lives in `.nvmrc`.
+`.github/workflows/ci.yml` type-checks, tests and builds every pull request and every push to `main` or `dev`. A push to `main` that passes is published to GitHub Pages at `https://jzrmanzano.github.io/Embedly/`. Pages must be switched on once: **Settings → Pages → Build and deployment → Source: GitHub Actions**. The Node version lives in `.nvmrc`.
 
 ## Where things are
 
