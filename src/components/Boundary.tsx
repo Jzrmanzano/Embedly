@@ -14,7 +14,7 @@ export class Boundary extends Component<Props, State> {
   state: State = { error: null, key: this.props.resetKey };
   static getDerivedStateFromError(error: unknown): Partial<State> { return { error: error instanceof Error ? error : new Error(String(error)) }; }
   static getDerivedStateFromProps(props: Props, state: State): Partial<State> | null { return props.resetKey !== state.key ? { error: null, key: props.resetKey } : null; }
-  componentDidCatch(error: Error, info: ErrorInfo) { console.error('Board Lab caught a crash:', error, info.componentStack); }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error('Embedly caught a crash:', error, info.componentStack); }
   retry = () => this.setState({ error: null });
   render() { return this.state.error ? this.props.fallback(this.state.error, this.retry) : this.props.children; }
 }
@@ -27,7 +27,7 @@ export function CrashPage({ error, retry }: { error: Error; retry: () => void })
   return (
     <main className="crash page" role="alert">
       <h1>Something went wrong</h1>
-      <p>Board Lab ran into a problem it did not expect. Your missions, benches and sketches are saved, so nothing is lost.</p>
+      <p>Embedly ran into a problem it did not expect. Your missions, benches and sketches are saved, so nothing is lost.</p>
       <div className="crash-actions">
         <button type="button" className="primary" onClick={retry}>Try again</button>
         <button type="button" onClick={() => location.reload()}>Reload the page</button>

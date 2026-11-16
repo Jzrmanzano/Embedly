@@ -41,7 +41,7 @@ export function Home() {
   return (
     <div className="home">
       <header className="home-bar">
-        <a className="brand" href="#" aria-label="Board Lab 3D home"><Icon name="chip" className="mark" /><h1>Board Lab <span>3D</span></h1></a>
+        <a className="brand" href="#" aria-label="Embedly home"><Icon name="chip" className="mark" /><h1>Embed<span>ly</span></h1></a>
         <nav aria-label="Sections">
           <a href="#boards-section" onClick={e => { e.preventDefault(); document.getElementById('boards-section')?.scrollIntoView({ behavior: 'smooth' }); }}>Boards</a>
           <a className="cta small" href="#uno-tour">Open the lab</a>
@@ -92,7 +92,7 @@ export function Home() {
       </main>
 
       <footer className="home-foot">
-        <span>Board Lab 3D</span>
+        <span>Embedly</span>
         <span>The simulator runs a subset of Arduino C++. Progress is saved in this browser.</span>
       </footer>
     </div>

@@ -1,4 +1,4 @@
-# Board Lab 3D
+# Embedly
 
 An interactive 3D workbench that teaches the Arduino Uno and ESP32: wire a circuit, edit the sketch, press Run, and watch the board respond.
 

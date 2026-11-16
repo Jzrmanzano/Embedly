@@ -40,7 +40,7 @@ function TopBar() {
   const done = !!passed[missionKey(board.id, mission.id)];
   return (
     <header className="bar">
-      <a className="brand" href="#" aria-label="Board Lab 3D. Back to the home page"><Icon name="chip" className="mark" /><h1>Board Lab <span>3D</span></h1></a>
+      <a className="brand" href="#" aria-label="Embedly. Back to the home page"><Icon name="chip" className="mark" /><h1>Embed<span>ly</span></h1></a>
       <div className="crumb"><span>{mission.place}</span><Icon name="chevron" /><b>{mission.title}</b>{done && <><Icon name="check" className="tick" /><span className="sr-only">passed</span></>}</div>
       <div className="seg" role="tablist" aria-label="Choose a board">
         {ALL_BOARDS.map(b => (
@@ -113,7 +113,7 @@ function Drawer({ name, title, icon, className = '', children }: { name: Panel; 
 export function App() {
   const board = useLab(boardOf), mission = useLab(missionOf), home = useLab(s => s.home), panels = useLab(s => s.panels), widths = useLab(s => s.widths);
   const chosen = { '--wl': widths.left ? `${widths.left}px` : undefined, '--wr': widths.right ? `${widths.right}px` : undefined } as CSSProperties;
-  useEffect(() => { document.title = home ? 'Board Lab 3D · Campus missions for Arduino and ESP32' : `${mission.title} · ${mission.place} · Board Lab`; }, [home, board, mission]);
+  useEffect(() => { document.title = home ? 'Embedly · Learn to build IoT devices, machines and robots' : `${mission.title} · ${mission.place} · Embedly`; }, [home, board, mission]);
   if (home) return <Home />;
   return (
     <div className="app">
