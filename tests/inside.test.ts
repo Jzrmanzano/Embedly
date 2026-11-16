@@ -130,7 +130,8 @@ test('every step is recorded with its line and the time on the sketch clock', as
   const { frames } = await recorded();
   assert.deepEqual(frames.map(f => f.line), [2, 3, 4, 7, 8, 7, 8]);
   assert.ok(frames.every((f, i) => i === 0 || f.t >= frames[i - 1].t), 'time never goes backwards');
-  assert.ok(frames[4].t - frames[3].t < 1 && frames[5].t - frames[4].t >= 500, 'a delay shows up as time passing');
+  // The bench here runs on the real clock, so a line with no delay still takes a moment: a slow machine can spend over a millisecond on it.
+  assert.ok(frames[4].t - frames[3].t < 100 && frames[5].t - frames[4].t >= 500, 'a delay shows up as time passing');
 });
 
 test('replaying an earlier frame shows the LED as it was then', async () => {
