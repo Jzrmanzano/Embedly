@@ -5,8 +5,9 @@ import type { CheckResult } from '../sim/check';
 import type { BoardId, Item } from '../types';
 import { NONE as NO_PANELS, USUAL_WIDTHS, type Panel, type Panels, type Widths } from './panels';
 import type { Tool } from './bench';
+import type { Page } from './route';
 
-export type Tab = 'mission' | 'notes' | 'board';
+export type Tab = 'mission' | 'schematic' | 'notes' | 'board';
 
 /** A mission that has been passed. */
 export interface PassRecord { at: number; hints: number; predicted: 'right' | 'wrong' | 'skipped' }
@@ -18,8 +19,10 @@ export interface Snap { items: Item[]; burnt: string[] }
 export interface Notice { id: number; tone: 'error' | 'warn' | 'info'; text: string }
 
 export interface LabState {
-  /** True while the landing page shows instead of the lab (empty address bar hash). */
-  home: boolean;
+  /** The page showing: the home page (empty address bar hash), the lab, or the guide (#guide). */
+  page: Page;
+  /** True once a mission has been open in this visit, so the guide offers the way back to it. */
+  labSeen: boolean;
   board: BoardId;
   /** Index into the board's missions. */
   mission: number;
@@ -49,7 +52,7 @@ export interface LabState {
   widths: Widths;
   /** The keyboard help is open. */
   help: boolean;
-  /** The chapter of the guide that is open, or null for its contents page. */
+  /** The chapter of the guide that is open (or was last, while another page shows), or null for its contents page. */
   guide: string | null;
   /** Step mode: the sketch is held before the line shown, waiting for Step. */
   paused: boolean;
@@ -115,7 +118,7 @@ export function saveWidths(widths: Widths) {
 
 const saved = loadBenches();
 export const useLab = create<LabState>(() => ({
-  home: true, board: 'uno', mission: 0, tab: 'mission', panels: NO_PANELS, focusPanel: null, widths: loadWidths(), help: false, guide: null, hot: null, edits: {}, ...saved, undo: {}, redo: {},
+  page: 'home', labSeen: false, board: 'uno', mission: 0, tab: 'mission', panels: NO_PANELS, focusPanel: null, widths: loadWidths(), help: false, guide: null, hot: null, edits: {}, ...saved, undo: {}, redo: {},
   tool: null, pending: null, point: null, notice: null, drag: null, sparks: 0, paused: false, line: null, cursor: null, frameTick: 0, probe: null,
   inputs: {}, ...loadProgress(), results: null, checking: false, asking: null,
   sound: false, nav: 'pan', labels: true, running: false, errLine: null, serial: '',

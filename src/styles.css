@@ -93,6 +93,8 @@ button:disabled { opacity: .5; }
 .toggle[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .toggle kbd { font: 700 .66rem var(--f-mono); border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; opacity: .7; }
 .toggles.nav { display: none; }
+.theme-toggle { flex: none; }
+@media (max-width: 760px) { .theme-toggle span:not(.sr-only) { display: none; } }
 
 .bench { position: relative; min-height: 0; overflow: hidden; outline: none;
   background-color: var(--bench);
@@ -434,20 +436,94 @@ kbd { font: 700 .78rem var(--f-mono); border: 1px solid var(--edge); border-bott
 .tabbody .actions { margin: 14px 0 0; }
 .tray .part .icon { width: 1em; height: 1em; opacity: .7; }
 
-/* --- the guide: chapters about the code and the parts --- */
-.guide .tabbody { outline: none; }
-.guide .tabbody > section + section { margin-top: 6px; }
-.guide .tabbody p + ul, .guide .tabbody ul + p, .guide .tabbody ul + ul { margin-top: 8px; }
-.guide .tabbody ul { margin-bottom: 10px; }
-.g-lede { font-size: 1.06rem; color: var(--muted); margin-bottom: 14px !important; }
-.g-toc { list-style: none; margin: 8px 0 0; padding: 0; counter-reset: topic; display: flex; flex-direction: column; gap: 4px; }
-.g-toc li + li { margin-top: 0; }
-.g-toc button { counter-increment: topic; width: 100%; display: grid; grid-template-columns: 2.2em 1fr; gap: 0 8px; text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; }
-.g-toc button::before { content: counter(topic, decimal-leading-zero); grid-row: span 2; font: 700 .8rem var(--f-mono); color: var(--accent); padding-top: 3px; }
-.g-toc button:hover { border-color: var(--ink); background: var(--panel-2); }
-.g-toc b { font-family: var(--f-display); font-size: 1.05rem; }
-.g-toc small { color: var(--muted); font-size: .86rem; line-height: 1.35; }
-.g-back { margin: 0 0 12px !important; }
+/* --- the guide: a page of its own, with the chapters down the side and one chapter to read --- */
+a.btn, a.toggle { color: var(--ink); text-decoration: none; }
+.guide-page { position: fixed; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--bg); }
+.guide-bar .crumb { display: flex; }
+.guide-bar .crumb a { color: var(--muted); text-decoration: none; }
+.guide-bar .crumb a:hover { color: var(--ink); text-decoration: underline; }
+.guide-bar-end { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: none; }
+.guide-bar .cta.small { white-space: nowrap; }
+.guide-bar .narrow { display: none; }
+.guide-body { min-height: 0; display: grid; grid-template-columns: 276px minmax(0, 1fr); }
+.guide-body.solo { grid-template-columns: minmax(0, 1fr); }
+.guide-main { min-height: 0; overflow-y: auto; outline: none; }
+.guide-doc { max-width: 46rem; margin: 0 auto; padding: 40px 32px 72px; font-size: 1.05rem; line-height: 1.6; }
+.guide-doc.wide { max-width: 76rem; }
+.guide-doc h2 { font-size: clamp(1.9rem, 3.4vw, 2.5rem); letter-spacing: -.01em; margin-bottom: 8px; }
+.guide-doc.wide > h2 { font-size: clamp(2.2rem, 4.4vw, 3.2rem); letter-spacing: -.02em; }
+.guide-doc h3 { font-size: 1.5rem; margin: 0 0 6px; }
+.guide-doc p { margin: 0 0 12px; }
+.guide-doc article ul { margin: 0 0 14px; padding-left: 1.3em; }
+.guide-doc article li + li { margin-top: 4px; }
+.guide-doc .g-lede { max-width: 40rem; font-size: 1.2rem; line-height: 1.5; color: var(--muted); margin-bottom: 28px; }
+.guide-doc .g-back { margin-bottom: 18px; }
+.g-back a { display: inline-flex; align-items: center; gap: 2px; color: var(--blue); font-weight: 700; text-decoration: none; }
+.g-back a:hover { text-decoration: underline; }
+.icon.flip { transform: scaleX(-1); }
+
+/* the contents: the coding walkthrough and the parts side by side */
+.g-groups { display: grid; gap: 48px; align-items: start; }
+@media (min-width: 900px) { .g-groups { grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); gap: 0 64px; } }
+.g-about { max-width: 34rem; color: var(--muted); }
+
+/* the walkthrough: one wire with a numbered pad for each step */
+.g-path { list-style: none; margin: 22px 0 0; padding: 0; }
+.g-path li { position: relative; }
+.g-path li:not(:last-child)::before { content: ""; position: absolute; left: 15px; top: 16px; bottom: -16px; width: 2px; background: var(--edge); }
+.g-path a { display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: 16px; padding-bottom: 22px; color: var(--ink); text-decoration: none; }
+.g-path .pad { position: relative; z-index: 1; grid-row: span 2; width: 32px; height: 32px; display: grid; place-items: center; border: 2px solid var(--edge); border-radius: 50%; background: var(--bg); font: 700 .86rem var(--f-body); font-variant-numeric: tabular-nums; }
+.g-path b { font: 700 1.16rem/1.3 var(--f-display); padding-top: 4px; }
+.g-path small { color: var(--muted); font-size: .93rem; line-height: 1.45; }
+.g-path a:hover .pad { border-color: var(--accent); color: var(--accent); }
+.g-path a:hover b { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+
+/* the parts: a drawer of bins, each marked with its circuit symbol */
+.sym { flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.sym .dot { fill: currentColor; stroke: none; }
+.g-drawer { list-style: none; margin: 22px 0 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.g-drawer a { height: 100%; display: flex; flex-direction: column; gap: 3px; padding: 14px 14px 16px; background: var(--panel); border: 1px solid var(--edge); border-bottom-width: 4px; border-radius: 6px 6px 4px 4px; color: var(--ink); text-decoration: none; }
+.g-drawer .sym { width: 60px; height: 40px; margin-bottom: 8px; color: var(--blue); }
+.g-drawer b { font: 700 1.1rem/1.25 var(--f-display); }
+.g-drawer small { color: var(--muted); font-size: .88rem; line-height: 1.4; }
+.g-drawer a:hover { border-color: var(--ink); }
+
+/* the same two, small, down the side of a chapter */
+.guide-nav { min-height: 0; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); padding: 14px 12px 32px; }
+.gn-home { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; color: var(--ink); font-weight: 700; text-decoration: none; }
+.gn-home:hover { background: var(--panel-2); }
+.gn-group { margin: 22px 8px 6px; font-size: 1.05rem; }
+.g-path.compact, .g-drawer.compact { margin: 0; }
+.g-path.compact a, .g-drawer.compact a { display: flex; flex-direction: row; align-items: center; gap: 10px; height: auto; padding: 3px 8px; border: 0; border-radius: 8px; background: none; font-size: .93rem; line-height: 1.3; }
+.g-path.compact li:not(:last-child)::before { left: 18px; top: 14px; bottom: -14px; }
+.g-path.compact .pad { width: 22px; height: 22px; flex: none; border-width: 1.5px; background: var(--panel); font-size: .72rem; }
+.g-drawer.compact { display: block; }
+.g-drawer.compact .sym { width: 26px; height: 18px; margin: 0; stroke-width: 3; }
+.g-path.compact a:hover, .g-drawer.compact a:hover { background: var(--panel-2); }
+.g-path.compact a:hover b { text-decoration: none; }
+.g-path a[aria-current="page"], .g-drawer a[aria-current="page"] { font-weight: 700; }
+.g-path.compact a[aria-current="page"], .g-drawer.compact a[aria-current="page"] { background: var(--panel-2); }
+.g-path a[aria-current="page"] .pad { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.g-drawer.compact a[aria-current="page"] .sym { color: var(--accent); }
+
+/* the top of a chapter: where the step sits on the wire, or the part's symbol */
+.g-head { margin-bottom: 28px; }
+.g-head .g-lede { margin-bottom: 0; }
+.guide-doc .g-step { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-bottom: 14px; color: var(--muted); font-size: .95rem; }
+.g-wire { display: inline-flex; align-items: center; gap: 7px; background: linear-gradient(var(--edge), var(--edge)) center / 100% 2px no-repeat; }
+.g-wire i { width: 9px; height: 9px; border: 2px solid var(--edge); border-radius: 50%; background: var(--bg); }
+.g-wire i.done { background: var(--edge); }
+.g-wire i.now { width: 14px; height: 14px; background: var(--accent); border-color: var(--accent); }
+.g-head.part { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 22px; }
+.g-plate { width: 112px; height: 84px; display: grid; place-items: center; background: var(--panel); border: 1px solid var(--edge); border-bottom-width: 4px; border-radius: 6px 6px 4px 4px; color: var(--blue); }
+.g-plate .sym { width: 78px; height: 52px; }
+
+.guide-doc .g-code { margin: 14px 0 18px; }
+.guide-doc .g-code pre { padding: 14px 16px; font-size: .86rem; }
+.guide-doc .g-table { font-size: .97rem; margin: 12px 0 18px; }
+.guide-doc .g-table th { font: 700 .9rem var(--f-body); letter-spacing: 0; text-transform: none; }
+.guide-doc .g-fig { margin: 18px 0 20px; }
+.guide-doc .g-fig svg { max-width: 540px; }
 .g-code { margin: 10px 0 12px; border-radius: 8px; overflow: hidden; background: var(--code-bg); color: var(--code-ink); }
 .g-code pre { margin: 0; padding: 10px 12px; overflow-x: auto; font: .8rem/1.6 var(--f-mono); tab-size: 2; }
 .g-code pre:focus-visible { outline-offset: -3px; }
@@ -470,11 +546,79 @@ kbd { font: 700 .78rem var(--f-mono); border: 1px solid var(--edge); border-bott
 .f-fill { fill: var(--ink); }
 .f-t { font: 500 10.5px var(--f-mono); fill: var(--ink); }
 .f-t.f-mut { fill: var(--muted); } .f-t.f-on { fill: var(--bg); }
-.g-next { justify-content: space-between; margin-top: 22px !important; padding-top: 12px; border-top: 1px solid var(--line); }
-.g-next .fwd { margin-left: auto; font-weight: 700; }
+.g-next { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--line); }
+.g-next a { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; align-items: center; padding: 12px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); text-decoration: none; }
+.g-next .icon { grid-row: span 2; color: var(--muted); }
+.g-next .fwd { grid-column: 2; grid-template-columns: minmax(0, 1fr) auto; text-align: right; }
+.g-next .fwd .icon { grid-column: 2; grid-row: 1 / span 2; }
+.g-next small { color: var(--muted); font-size: .88rem; }
+.g-next b { font: 700 1.08rem/1.25 var(--f-display); }
+.g-next a:hover { border-color: var(--ink); }
+.g-next a:hover .icon { color: var(--accent); }
+/* the chapter list moves off the side on a narrower screen, where the contents page and the All topics link stand in for it */
+@media (min-width: 901px) { .guide-doc .g-back { display: none; } }
+@media (max-width: 1100px) { .guide-bar .wide { display: none; } .guide-bar .narrow { display: inline; } }
+@media (max-width: 900px) { .guide-body { grid-template-columns: minmax(0, 1fr); } .guide-nav { display: none; } }
+@media (max-width: 760px) {
+  .guide-bar .crumb { display: none; }
+  .guide-doc { padding: 24px 16px 48px; font-size: 1rem; }
+  .g-head.part { gap: 16px; }
+  .g-plate { width: 84px; height: 64px; }
+  .g-plate .sym { width: 60px; height: 40px; }
+  .g-next { grid-template-columns: minmax(0, 1fr); }
+  .g-next .fwd { grid-column: auto; }
+}
 .g-links { list-style: none; margin: 0 0 4px !important; padding: 0 !important; display: flex; flex-direction: column; gap: 2px; }
 .g-links li + li { margin-top: 0; }
 .g-links .link { padding: 2px 0 !important; text-align: left; font-weight: 700; }
 .g-tip .link { padding: 0 !important; font-weight: 700; }
 .hero-note { margin: 16px 0 0; color: var(--muted); }
 .hero-note a { color: var(--blue); font-weight: 700; }
+
+/* --- the Schematic tab: the bench as an electronics drawing --- */
+.sch-wrap { overflow-x: auto; margin: 10px -6px 12px; padding: 4px 6px; }
+.sch { display: block; width: 100%; height: auto; }
+.sch-w, .sch-sym polyline, .sch-sym circle, .sch-tag line { fill: none; stroke: var(--ink); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.sch-sym polyline, .sch-sym circle { vector-effect: non-scaling-stroke; }
+.sch-sym .fill { fill: var(--ink); }
+.sch-pwr .sch-sym polyline { stroke: var(--pwr); }
+.sch-pwr text { font: 700 11px var(--f-mono); fill: var(--pwr); }
+.sch-dot { fill: var(--ink); }
+.sch-open { fill: var(--panel); stroke: var(--muted); stroke-width: 1.6; }
+.sch-tag line { stroke: var(--blue); }
+.sch-tag circle { fill: var(--blue); }
+.sch-tag rect { fill: var(--panel); stroke: var(--blue); stroke-width: 1.4; }
+.sch-tag text { font: 700 10.5px var(--f-mono); fill: var(--blue); }
+.sch-box rect { fill: var(--panel-2); stroke: var(--edge); stroke-width: 1.4; }
+.sch-title { font: 700 12px var(--f-body); fill: var(--ink); }
+.sch-pin { font: 700 11px var(--f-mono); fill: var(--ink); }
+.sch-t { font: 500 11px var(--f-mono); fill: var(--muted); }
+.sch-pad rect { fill: var(--panel-2); stroke: var(--ink); stroke-width: 1.6; }
+.sch-pad path { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-linecap: round; }
+.sch-warn { padding: 8px 12px; border-left: 5px solid var(--pwr); background: var(--panel-2); border-radius: 8px; font-weight: 700; }
+.tabbody .sch-key { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: .9rem; color: var(--muted); }
+.tabbody .sch-key li { display: flex; align-items: center; gap: 8px; margin: 0; }
+.sch-key svg { width: 28px; height: 24px; flex: none; overflow: visible; }
+/* an LED lights up in its own colour while the sketch runs; --glow (0 to 1) is how bright, set every frame */
+.sch-led { --glow: 0; }
+.sch-led .halo { opacity: var(--glow); }
+.sch-led .body { fill: var(--led); fill-opacity: var(--glow); stroke: none; }
+.sch-led.on .ray { stroke: var(--led); }
+.sch-led.on .ray.fill { fill: var(--led); }
+/* a buzzer fills in and sends out sound waves while it sounds, with its pitch underneath; orange, like Run, means the sketch is doing it */
+.sch-buzz .body { fill: var(--accent); fill-opacity: 0; stroke: none; }
+.sch-buzz.on .body { fill-opacity: .85; }
+.sch-buzz .sch-sym .wave { stroke: var(--accent); opacity: 0; }
+.sch-buzz.on .sch-sym .wave { opacity: 1; animation: sch-sound .5s ease-in-out infinite alternate; }
+.sch-buzz.on .sch-sym .wave.w1 { animation-delay: .25s; }
+.sch-buzz .freq { font: 700 11px var(--f-mono); fill: var(--accent); }
+@keyframes sch-sound { from { opacity: .25; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .sch-buzz.on .sch-sym .wave { animation: none; } }
+/* a servo's angle, on a protractor in its box: orange while the sketch is telling it where to go, grey where it was left */
+.sch-servo .dial { fill: var(--panel); stroke: var(--edge); stroke-width: 1.4; }
+.sch-servo .tick { stroke: var(--edge); stroke-width: 1.4; }
+.sch-servo .needle line { stroke: var(--muted); stroke-width: 2.6; stroke-linecap: round; }
+.sch-servo .hub { fill: var(--muted); }
+.sch-servo .deg { font: 700 11px var(--f-mono); fill: var(--muted); }
+.sch-servo.on .needle line { stroke: var(--accent); }
+.sch-servo.on .hub, .sch-servo.on .deg { fill: var(--accent); }

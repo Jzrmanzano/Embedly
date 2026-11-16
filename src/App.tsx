@@ -3,26 +3,30 @@ import { Boundary, PanelCrash } from './components/Boundary';
 import { CampusMap } from './components/CampusMap';
 import { CodePanel } from './components/CodePanel';
 import { DocPanel } from './components/DocPanel';
-import { GuidePanel } from './components/GuidePanel';
+import { GuidePage } from './components/GuidePage';
 import { HelpDialog } from './components/HelpDialog';
 import { Home } from './components/Home';
 import { Icon, type IconName } from './components/Icons';
 import { PredictDialog } from './components/PredictDialog';
 import { Stage } from './components/Stage';
+import { ThemeToggle } from './components/ThemeToggle';
 import { BOARDS } from './data/boards';
+import { chapterOf } from './data/guide';
 import { MISSIONS, missionKey } from './data/missions';
 import { closePanel, goTo, panelRoom, resizePanel, togglePanel } from './state/actions';
 import { isOpen, MIN_WIDTH, type Panel, type Side } from './state/panels';
+import { guideHash } from './state/route';
 import { boardOf, keyOf, missionOf, useLab } from './state/store';
 
 const ALL_BOARDS = Object.values(BOARDS);
 const GRADED = Object.entries(MISSIONS).flatMap(([board, list]) => list.filter(m => !m.sandbox).map(m => `${board}-${m.id}`));
 
-const PANELS: [Panel, string, IconName, string][] = [['map', 'Map', 'map', 'M'], ['brief', 'Brief', 'brief', 'B'], ['guide', 'Guide', 'book', 'G'], ['code', 'Code', 'code', 'C']];
+const PANELS: [Panel, string, IconName, string][] = [['map', 'Map', 'map', 'M'], ['brief', 'Brief', 'brief', 'B'], ['code', 'Code', 'code', 'C']];
+const HOME_TITLE = 'Embedly · Learn to build IoT devices, machines and robots';
 
-/** The buttons that open the panels: in the top bar on a wide screen, along the bottom on a phone. */
+/** The buttons that open the panels, and the link to the guide (a page of its own): in the top bar on a wide screen, along the bottom on a phone. */
 function PanelToggles({ nav = false }: { nav?: boolean }) {
-  const panels = useLab(s => s.panels);
+  const panels = useLab(s => s.panels), guide = useLab(s => s.guide);
   return (
     <div className={nav ? 'toggles nav' : 'toggles'} role="group" aria-label="Panels">
       {PANELS.map(([name, label, icon, key]) => (
@@ -30,6 +34,9 @@ function PanelToggles({ nav = false }: { nav?: boolean }) {
           <Icon name={icon} /><span>{label}</span>{!nav && <kbd aria-hidden="true">{key}</kbd>}
         </button>
       ))}
+      <a className="toggle" data-toggle="guide" href={guideHash(guide)} aria-keyshortcuts="G" title="Guide, on its own page (G)">
+        <Icon name="book" /><span>Guide</span>{!nav && <kbd aria-hidden="true">G</kbd>}
+      </a>
     </div>
   );
 }
@@ -52,6 +59,7 @@ function TopBar() {
         <div className="meter" role="progressbar" aria-label="Missions passed" aria-valuemin={0} aria-valuemax={GRADED.length} aria-valuenow={count}><i style={{ width: `${(100 * count) / GRADED.length}%` }} /></div>
       </div>
       <PanelToggles />
+      <ThemeToggle />
     </header>
   );
 }
@@ -111,10 +119,14 @@ function Drawer({ name, title, icon, className = '', children }: { name: Panel; 
 }
 
 export function App() {
-  const board = useLab(boardOf), mission = useLab(missionOf), home = useLab(s => s.home), panels = useLab(s => s.panels), widths = useLab(s => s.widths);
+  const board = useLab(boardOf), mission = useLab(missionOf), page = useLab(s => s.page), chapter = useLab(s => s.guide), panels = useLab(s => s.panels), widths = useLab(s => s.widths);
   const chosen = { '--wl': widths.left ? `${widths.left}px` : undefined, '--wr': widths.right ? `${widths.right}px` : undefined } as CSSProperties;
-  useEffect(() => { document.title = home ? 'Embedly · Learn to build IoT devices, machines and robots' : `${mission.title} · ${mission.place} · Embedly`; }, [home, board, mission]);
-  if (home) return <Home />;
+  useEffect(() => {
+    const c = chapterOf(chapter);
+    document.title = page === 'home' ? HOME_TITLE : page === 'guide' ? `${c ? `${c.title} · ` : ''}Guide · Embedly` : `${mission.title} · ${mission.place} · Embedly`;
+  }, [page, chapter, board, mission]);
+  if (page === 'home') return <Home />;
+  if (page === 'guide') return <GuidePage />;
   return (
     <div className="app">
       <a className="skip" href="#bench" onClick={e => { e.preventDefault(); document.getElementById('bench')?.focus(); }}>Skip to the bench</a>
@@ -123,7 +135,6 @@ export function App() {
         <Stage />
         <Drawer name="map" title="Campus map" icon="map" className="mapbody"><CampusMap /></Drawer>
         <Drawer name="brief" title="Mission brief" icon="brief"><DocPanel /></Drawer>
-        <Drawer name="guide" title="Guide" icon="book"><GuidePanel /></Drawer>
         <Drawer name="code" title="Code" icon="code"><CodePanel /></Drawer>
       </main>
       <PanelToggles nav />

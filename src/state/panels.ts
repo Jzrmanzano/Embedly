@@ -1,8 +1,8 @@
-/* Which panels are open over the bench. The map, the mission brief and the guide take turns on the left, the code editor has the right side,
-   and on a narrow screen only one of them is open at a time so the bench is never completely covered. */
-export type Panel = 'map' | 'brief' | 'guide' | 'code';
+/* Which panels are open over the bench. The map and the mission brief take turns on the left, the code editor has the right side,
+   and on a narrow screen only one of them is open at a time so the bench is never completely covered. (The guide is a page of its own.) */
+export type Panel = 'map' | 'brief' | 'code';
 export interface Panels {
-  left: 'map' | 'brief' | 'guide' | null;
+  left: 'map' | 'brief' | null;
   right: 'code' | null;
   /** The panel opened most recently, which Escape closes first. */
   last: Panel | null;

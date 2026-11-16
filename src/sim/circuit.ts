@@ -54,6 +54,21 @@ export interface Analysis {
   joined(a: string, b: string): boolean;
   /** The pin a servo's signal leg is wired to, or null. */
   servoPin(id: string): number | null;
+  /** The net a connection point is on. */
+  netOf(point: string): Net;
+}
+
+/** Everything joined by wires, rails and breadboard columns: an id shared by all of it, the board pins on it, and its voltage when it is GND (0) or a supply. */
+export interface Net { id: string; pins: number[]; volts: number | null }
+
+/** A pin a sketch can use: its number in code, its name on the board, and its connection point. */
+export interface BoardPin { num: number; name: string; point: string }
+export function boardPins(board: BoardId): BoardPin[] {
+  if (board === 'uno') return Array.from({ length: 20 }, (_, n) => (n <= 13 ? { num: n, name: String(n), point: `U:${n}` } : { num: n, name: `A${n - 14}`, point: `U:A${n - 14}` }));
+  return Object.keys(ESP_HOLES).flatMap(name => {
+    const num = /^D(\d+)$/.test(name) ? +name.slice(1) : ESP_PIN_NUM[name];
+    return num == null ? [] : [{ num, name, point: `E:${name}` }];
+  });
 }
 
 /** The connection points of a servo's three legs. */
@@ -375,6 +390,7 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
     pinAt: point => { const r = root(point); return pinRoots.find(([, pr]) => pr === r)?.[0] ?? null; },
     joined: (a, b) => root(a) === root(b),
     servoPin: id => { const s = servos.find(x => x.id === id); if (!s) return null; const r = root(s.sig); return pinRoots.find(([, pr]) => pr === r)?.[0] ?? null; },
+    netOf: point => { const r = root(point); return { id: r, pins: pinRoots.filter(([, pr]) => pr === r).map(([p]) => p), volts: fixed.get(r) ?? null }; },
   };
 }
 

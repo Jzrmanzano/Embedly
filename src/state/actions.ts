@@ -9,6 +9,7 @@ import { pushFrame, type Frame } from '../sim/timeline';
 import { itemId, type BoardId, type Item } from '../types';
 import { clampWidth, closePanel as closePanelIn, closeTop, isOpen, openPanel as openPanelIn, widestPanel, type Panel, type Side } from './panels';
 import { defaultInput, flipped, holesOf, makeItem, movedWire, parseTerminal, placementError, TWO_POINT, type Tool } from './bench';
+import { guideHash, parseHash } from './route';
 import { benchOf, burntOf, codeOf, keyOf, missionOf, saveBenches, saveProgress, saveWidths, useLab, type Tab } from './store';
 
 const set = useLab.setState, get = useLab.getState;
@@ -145,29 +146,37 @@ export function startRun(stepFirst = false) {
     })
     .then(() => { hwDone = true; if (active === mine) { active = null; stepping = false; set({ running: false, paused: false, line: null }); } });
 }
-/* --- missions: the address bar hash (#uno-beacon) says which one is open --- */
+/* --- pages: the address bar hash says which page shows (see route.ts), and in the lab which mission is open (#uno-beacon) --- */
 const passedKeys = () => new Set(Object.keys(get().passed));
 const saveMissionProgress = () => { const { passed, hintsUsed, predictions } = get(); saveProgress({ passed, hintsUsed, predictions }); };
 
-/** Set by the home page's link to the guide: the mission that opens next shows the guide instead of its brief. */
-let guideNext = false;
-export function startWithGuide() { guideNext = true; set({ guide: null }); goTo('uno', MISSIONS.uno[0].id); }
-
 export function openFromHash() {
-  stopRun(); forgetRun();
-  const wantGuide = guideNext;
-  guideNext = false;
-  const home = /^#?$/.test(location.hash);
-  const m = /^#?([a-z0-9]+)-([a-z0-9]+)$/.exec(location.hash);
-  const board: BoardId = m && Object.hasOwn(BOARDS, m[1]) ? (m[1] as BoardId) : 'uno';
-  const list = MISSIONS[board];
-  let mission = Math.max(0, list.findIndex(x => x.id === m?.[2]));
-  if (!isAvailable(board, list[mission], passedKeys())) {   // a mission that is still closed: start at the workshop tour instead
-    mission = 0;
-    if (!home) history.replaceState(null, '', `#${board}-${list[0].id}`);
+  const route = parseHash(location.hash), was = get();
+  stopRun();
+  if (route.page === 'guide') {   // the guide is a page of its own. The bench is left as it was, as if Stop had been pressed.
+    if (location.hash !== guideHash(route.chapter)) history.replaceState(null, '', guideHash(route.chapter));
+    set({ page: 'guide', guide: route.chapter, help: false, asking: null, tool: null, pending: null, point: null, drag: null });
+    return;
   }
+  let board = was.board, mission = was.mission;   // the home page keeps the last mission, so the guide can still lead back to it
+  if (route.page === 'lab') {
+    board = route.board && Object.hasOwn(BOARDS, route.board) ? (route.board as BoardId) : 'uno';
+    const list = MISSIONS[board];
+    mission = Math.max(0, list.findIndex(x => x.id === route.mission));
+    if (!isAvailable(board, list[mission], passedKeys())) {   // a mission that is still closed: start at the workshop tour instead
+      mission = 0;
+      history.replaceState(null, '', `#${board}-${list[0].id}`);
+    }
+    if (was.page === 'guide' && was.labSeen && board === was.board && mission === was.mission) {   // back from the guide to the same mission: everything is as it was left
+      set({ page: 'lab' });
+      focusToggle('guide');
+      return;
+    }
+  }
+  forgetRun();
   serialBuf = '';
-  set(s => ({ home, board, mission, hot: null, serial: '', errLine: null, tool: null, pending: null, point: null, notice: null, results: null, asking: null, checking: false, drag: null, panels: home || (isPhone() && !wantGuide) ? s.panels : openPanelIn(s.panels, wantGuide ? 'guide' : 'brief', isNarrow()) }));   // a new mission opens its brief, except on a phone where it would cover the bench
+  const home = route.page === 'home';
+  set(s => ({ page: home ? 'home' : 'lab', labSeen: s.labSeen || !home, board, mission, hot: null, serial: '', errLine: null, tool: null, pending: null, point: null, notice: null, results: null, asking: null, checking: false, drag: null, panels: home || isPhone() ? s.panels : openPanelIn(s.panels, 'brief', isNarrow()) }));   // a new mission opens its brief, except on a phone where it would cover the bench
   syncInputs();
 }
 
@@ -437,8 +446,8 @@ export function fillAnswerCode() {
 const isNarrow = () => typeof matchMedia === 'function' && matchMedia('(max-width: 1100px)').matches;
 const isPhone = () => typeof matchMedia === 'function' && matchMedia('(max-width: 760px)').matches;
 
-/** Puts the keyboard focus back on the button that opens a panel, once it has closed. */
-function focusToggle(name: Panel) {
+/** Puts the keyboard focus back on the button that opens a panel once it has closed, or on the Guide link on the way back from the guide. */
+function focusToggle(name: Panel | 'guide') {
   requestAnimationFrame(() => {
     const buttons = [...document.querySelectorAll<HTMLElement>(`[data-toggle="${name}"]`)];
     (buttons.find(b => b.offsetParent !== null) ?? buttons[0])?.focus();
@@ -475,9 +484,9 @@ export function resizePanel(side: Side, width: number | null) {
   saveWidths(widths);
 }
 export const setHelp = (help: boolean) => set({ help });
-/** Turns the guide to a chapter, or to its contents page with null. */
-export const openGuide = (guide: string | null) => set({ guide });
-/** Opens the guide panel at its contents page. */
-export function showGuide() { set({ guide: null }); openPanel('guide'); }
-/** Opens the guide panel at one chapter. */
-export function readGuide(id: string) { set({ guide: id }); openPanel('guide'); }
+
+/* --- the guide, a page of its own at #guide --- */
+/** Goes to the guide, at the chapter last read there (or its contents page). */
+export function showGuide() { location.hash = guideHash(get().guide); }
+/** Leaves the guide for the bench, at the mission that was open. */
+export function backToBench() { const s = get(); goTo(s.board, missionOf(s).id); }

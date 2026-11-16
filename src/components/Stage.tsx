@@ -3,7 +3,7 @@ import { ITEM_INFO } from '../data/boards';
 import { lockedBy, PARTS, unlockedParts, type PartId } from '../data/missions';
 import { view } from '../scene/view';
 import { analyze } from '../sim/circuit';
-import { cancelTool, currentReadout, dismissNotice, escapePanel, flipItem, moveWireTyped, pickTool, placeTyped, redo, removeItem, requestRun, resetBench, resumeRun, selectHot, setHelp, setInput, setNav, stepOnce, stopRun, toggleLabels, togglePanel, toggleSound, undo } from '../state/actions';
+import { cancelTool, currentReadout, dismissNotice, escapePanel, flipItem, moveWireTyped, pickTool, placeTyped, redo, removeItem, requestRun, resetBench, resumeRun, selectHot, setHelp, setInput, setNav, showGuide, stepOnce, stopRun, toggleLabels, togglePanel, toggleSound, undo } from '../state/actions';
 import { TWO_POINT, type Tool, type ToolKind } from '../state/bench';
 import { benchOf, boardOf, keyOf, missionOf, useLab } from '../state/store';
 import { itemId, type Item } from '../types';
@@ -271,7 +271,7 @@ function useHotkeys() {
         const letter = k.toLowerCase();
         if (letter === 'm') togglePanel('map');
         else if (letter === 'b') togglePanel('brief');
-        else if (letter === 'g') togglePanel('guide');
+        else if (letter === 'g') showGuide();
         else if (letter === 'c') togglePanel('code');
         else if (letter === 't') view.top();
         else if (k === '0') view.fit();

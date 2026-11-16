@@ -1,8 +1,8 @@
 import { BOARDS } from '../data/boards';
 import { GUIDE } from '../data/guide';
 import { MISSIONS } from '../data/missions';
-import { startWithGuide } from '../state/actions';
 import { Icon } from './Icons';
+import { ThemeToggle } from './ThemeToggle';
 
 const ALL_BOARDS = Object.values(BOARDS);
 const TAGLINES: Record<string, string> = {
@@ -43,7 +43,9 @@ export function Home() {
       <header className="home-bar">
         <a className="brand" href="#" aria-label="Embedly home"><Icon name="chip" className="mark" /><h1>Embed<span>ly</span></h1></a>
         <nav aria-label="Sections">
+          <a href="#guide">Guide</a>
           <a href="#boards-section" onClick={e => { e.preventDefault(); document.getElementById('boards-section')?.scrollIntoView({ behavior: 'smooth' }); }}>Boards</a>
+          <ThemeToggle />
           <a className="cta small" href="#uno-tour">Open the lab</a>
         </nav>
       </header>
@@ -58,7 +60,7 @@ export function Home() {
               <a className="cta" href="#uno-tour">Start with the Arduino Uno →</a>
               <a className="ghost" href="#esp32-tour">Try the ESP32</a>
             </div>
-            <p className="hero-note">New to this? <a href="#uno-tour" onClick={e => { e.preventDefault(); startWithGuide(); }}>Read the guide first</a>: {GUIDE.length} short chapters on the code, the breadboard and the parts.</p>
+            <p className="hero-note">New to this? <a href="#guide">Read the guide first</a>: {GUIDE.length} short chapters on the code, the breadboard and the parts.</p>
           </div>
           <BoardArt />
         </section>

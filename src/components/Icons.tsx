@@ -27,7 +27,9 @@ const PATHS = {
   check: <path d="m5 12.5 4.5 4.5L19 7" />,
   copy: <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h8" /></>,
   chip: <><rect x="7" y="7" width="10" height="10" rx="1.5" /><path d="M9.5 3v4M14.5 3v4M9.5 17v4M14.5 17v4M3 9.5h4M3 14.5h4M17 9.5h4M17 14.5h4" /><circle cx="12" cy="12" r="1.6" fill="currentColor" /></>,
-  chevron: <path d="m9 6 6 6-6 6" />,
+  sun: <><circle cx="12" cy="12" r="4" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4" /></>,
+  moon: <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />,
+  chevron:<path d="m9 6 6 6-6 6" />,
   lock: <><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></>,
 } satisfies Record<string, ReactNode>;
 

@@ -5,7 +5,7 @@ import { useLab } from '../state/store';
 const KEYS: [string[], string][] = [
   [['M'], 'Open or close the campus map'],
   [['B'], 'Open or close the mission brief'],
-  [['G'], 'Open or close the guide to the code and the parts'],
+  [['G'], 'Go to the guide to the code and the parts, which has a page of its own. G there comes back to the bench'],
   [['C'], 'Open or close the code'],
   [['Ctrl', 'Enter'], 'Run the sketch, or stop it (works inside the editor too)'],
   [['←', '↑', '→', '↓'], 'Slide the view. Hold Shift to go faster'],
