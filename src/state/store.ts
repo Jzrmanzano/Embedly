@@ -6,6 +6,7 @@ import type { BoardId, Item } from '../types';
 import { NONE as NO_PANELS, USUAL_WIDTHS, type Panel, type Panels, type Widths } from './panels';
 import type { Tool } from './bench';
 import type { Page } from './route';
+import type { CardId } from '../data/boardchoice';
 
 export type Tab = 'mission' | 'schematic' | 'notes' | 'board';
 
@@ -72,6 +73,8 @@ export interface LabState {
   /** How many of the three hints the student has opened, by mission key. */
   hintsUsed: Record<string, number>;
   predictions: Record<string, PredictionRecord>;
+  /** The board last chosen on the supply shelf, by mission key, for the missions that ask for a choice. */
+  picks: Record<string, CardId>;
   /** The latest run of the mission's checks, cleared when the bench or sketch changes. */
   results: CheckResult[] | null;
   checking: boolean;
@@ -88,14 +91,14 @@ export interface LabState {
 
 const MISSION_KEY = 'boardlab-missions', BENCH_KEY = 'boardlab-benches';
 const record = (v: unknown) => (v && typeof v === 'object' ? v : {}) as Record<string, never>;
-function loadProgress(): Pick<LabState, 'passed' | 'hintsUsed' | 'predictions'> {
+function loadProgress(): Pick<LabState, 'passed' | 'hintsUsed' | 'predictions' | 'picks'> {
   try {
     const v = JSON.parse(localStorage.getItem(MISSION_KEY) || '{}');
-    return { passed: record(v.passed), hintsUsed: record(v.hintsUsed), predictions: record(v.predictions) };
-  } catch { return { passed: {}, hintsUsed: {}, predictions: {} }; }   // progress just starts empty
+    return { passed: record(v.passed), hintsUsed: record(v.hintsUsed), predictions: record(v.predictions), picks: record(v.picks) };
+  } catch { return { passed: {}, hintsUsed: {}, predictions: {}, picks: {} }; }   // progress just starts empty
 }
-export function saveProgress(s: Pick<LabState, 'passed' | 'hintsUsed' | 'predictions'>) {
-  try { localStorage.setItem(MISSION_KEY, JSON.stringify({ passed: s.passed, hintsUsed: s.hintsUsed, predictions: s.predictions })); } catch { /* not saved, still counted for this visit */ }
+export function saveProgress(s: Pick<LabState, 'passed' | 'hintsUsed' | 'predictions' | 'picks'>) {
+  try { localStorage.setItem(MISSION_KEY, JSON.stringify({ passed: s.passed, hintsUsed: s.hintsUsed, predictions: s.predictions, picks: s.picks })); } catch { /* not saved, still counted for this visit */ }
 }
 function loadBenches(): { benches: Record<string, Item[]>; burnt: Record<string, string[]> } {
   try {

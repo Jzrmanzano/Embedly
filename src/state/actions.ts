@@ -10,6 +10,7 @@ import { itemId, type BoardId, type Item } from '../types';
 import { clampWidth, closePanel as closePanelIn, closeTop, isOpen, openPanel as openPanelIn, widestPanel, type Panel, type Side } from './panels';
 import { defaultInput, flipped, holesOf, makeItem, movedWire, parseTerminal, placementError, TWO_POINT, type Tool } from './bench';
 import { guideHash, parseHash } from './route';
+import { cardOf, fitsAll, type CardId } from '../data/boardchoice';
 import { benchOf, burntOf, codeOf, keyOf, missionOf, saveBenches, saveProgress, saveWidths, useLab, type Tab } from './store';
 
 const set = useLab.setState, get = useLab.getState;
@@ -148,7 +149,7 @@ export function startRun(stepFirst = false) {
 }
 /* --- pages: the address bar hash says which page shows (see route.ts), and in the lab which mission is open (#uno-beacon) --- */
 const passedKeys = () => new Set(Object.keys(get().passed));
-const saveMissionProgress = () => { const { passed, hintsUsed, predictions } = get(); saveProgress({ passed, hintsUsed, predictions }); };
+const saveMissionProgress = () => { const { passed, hintsUsed, predictions, picks } = get(); saveProgress({ passed, hintsUsed, predictions, picks }); };
 
 export function openFromHash() {
   const route = parseHash(location.hash), was = get();
@@ -156,6 +157,10 @@ export function openFromHash() {
   if (route.page === 'guide') {   // the guide is a page of its own. The bench is left as it was, as if Stop had been pressed.
     if (location.hash !== guideHash(route.chapter)) history.replaceState(null, '', guideHash(route.chapter));
     set({ page: 'guide', guide: route.chapter, help: false, asking: null, tool: null, pending: null, point: null, drag: null });
+    return;
+  }
+  if (route.page === 'boards') {   // so is the board comparison, and it leaves the bench the same way
+    set({ page: 'boards', help: false, asking: null, tool: null, pending: null, point: null, drag: null });
     return;
   }
   let board = was.board, mission = was.mission;   // the home page keeps the last mission, so the guide can still lead back to it
@@ -167,16 +172,20 @@ export function openFromHash() {
       mission = 0;
       history.replaceState(null, '', `#${board}-${list[0].id}`);
     }
-    if (was.page === 'guide' && was.labSeen && board === was.board && mission === was.mission) {   // back from the guide to the same mission: everything is as it was left
+    if ((was.page === 'guide' || was.page === 'boards') && was.labSeen && board === was.board && mission === was.mission) {   // back from the guide or the boards to the same mission: everything is as it was left
       set({ page: 'lab' });
-      focusToggle('guide');
+      if (was.page === 'guide') focusToggle('guide');
       return;
     }
   }
   forgetRun();
   serialBuf = '';
   const home = route.page === 'home';
-  set(s => ({ page: home ? 'home' : 'lab', labSeen: s.labSeen || !home, board, mission, hot: null, serial: '', errLine: null, tool: null, pending: null, point: null, notice: null, results: null, asking: null, checking: false, drag: null, panels: home || isPhone() ? s.panels : openPanelIn(s.panels, 'brief', isNarrow()) }));   // a new mission opens its brief, except on a phone where it would cover the bench
+  const choosing = !home && !!MISSIONS[board][mission].choice;
+  set(s => {
+    const open = home || isPhone() ? s.panels : openPanelIn(s.panels, 'brief', isNarrow());   // a new mission opens its brief, except on a phone where it would cover the bench
+    return { page: home ? 'home' : 'lab', labSeen: s.labSeen || !home, board, mission, hot: null, serial: '', errLine: null, tool: null, pending: null, point: null, notice: null, results: null, asking: null, checking: false, drag: null, panels: choosing ? closePanelIn(open, 'code') : open };   // choosing a board needs no code
+  });
   syncInputs();
 }
 
@@ -406,6 +415,15 @@ export async function submitPrediction(picked: string) {
 }
 
 /** Runs the mission's checks on the student's own build and sketch. The mission is passed only when every one of them passes. */
+/** Chooses a board on the supply shelf. The choice is remembered, and the mission is passed when the board meets every need. */
+export function pickBoard(card: CardId) {
+  const s = get(), m = missionOf(s), key = keyOf(s);
+  if (!m.choice) return;
+  set(st => ({ picks: { ...st.picks, [key]: card } }));
+  saveMissionProgress();
+  if (fitsAll(cardOf(card), m.choice)) passMission();
+}
+
 export async function checkMission() {
   const s = get(), m = missionOf(s), key = keyOf(s), bench = benchOf(s), code = codeOf(s);
   if (m.sandbox || s.checking) return;

@@ -4,6 +4,7 @@ import { WIRE_CSS, wiringRows } from '../data/wiring';
 import { checkMission, fillAnswerCode, goTo, revealHint, showAnswer } from '../state/actions';
 import { guideHash } from '../state/route';
 import { missionOf, useLab } from '../state/store';
+import { NeedList, verdict } from './SupplyShelf';
 
 /** Mission text is trusted HTML from src/data, so inline <code> tags can be used in it. */
 export const html = (s: string) => ({ dangerouslySetInnerHTML: { __html: s } });
@@ -13,7 +14,7 @@ const HINT_NAMES = ['Nudge', 'Idea', 'Answer'], HINT_BUTTONS = ['Give me a nudge
 /** The goal, the checklist, the prediction and the three hints for the open mission. */
 export function MissionPanel() {
   const board = useLab(s => s.board), m = useLab(missionOf), key = missionKey(board, m.id);
-  const pass = useLab(s => s.passed[key]), hints = useLab(s => s.hintsUsed[key] ?? 0), guess = useLab(s => s.predictions[key]);
+  const pass = useLab(s => s.passed[key]), hints = useLab(s => s.hintsUsed[key] ?? 0), guess = useLab(s => s.predictions[key]), pick = useLab(s => s.picks[key]);
   const results = useLab(s => s.results), checking = useLab(s => s.checking), passed = useLab(s => s.passed);
   const rows = useMemo(
     () => results ?? ['The wiring has no mistakes', ...m.checks.map(c => c.label)].map(label => ({ label, pass: null as boolean | null, detail: '' })),
@@ -33,6 +34,13 @@ export function MissionPanel() {
         <p className="free">This is free build, so there is nothing to check. Every part you have unlocked is in the tray.</p>
       ) : (
         <>
+          {m.choice ? (
+            <>
+              <h3>What it needs</h3>
+              <NeedList choice={m.choice} pick={pick} className="checklist" />
+              <p className="actions"><small>{pick ? verdict(m.choice, pick).text : 'Compare the boards on the supply shelf, then choose one.'}</small></p>
+            </>
+          ) : <>
           <h3>Checks</h3>
           <ul className="checklist">
             {rows.map(r => (
@@ -54,6 +62,7 @@ export function MissionPanel() {
               {' '}{m.predict.explain[guess.actual]}
             </p>
           ) : <p className="muted">The first time you press Run, you will be asked what you expect to happen. Then you can compare.</p>}
+          </>}
 
           <h3>Hints <small>{hints} of 3 used</small></h3>
           <ol className="hints">
@@ -61,7 +70,7 @@ export function MissionPanel() {
               <li key={i}>
                 <b>{HINT_NAMES[i]}</b>
                 <span {...html(h)} />
-                {i === 2 && (
+                {i === 2 && !m.choice && (
                   <div className="answer">
                     <table className="wiring"><tbody>
                       {wiringRows(m.circuit).map((r, n) => (

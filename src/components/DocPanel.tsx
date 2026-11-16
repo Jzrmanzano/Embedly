@@ -1,6 +1,6 @@
 import { chapterOf } from '../data/guide';
 import { setTab } from '../state/actions';
-import { guideHash } from '../state/route';
+import { BOARDS_HASH, guideHash } from '../state/route';
 import { boardOf, missionOf, useLab, type Tab } from '../state/store';
 import type { Board } from '../types';
 import { html, MissionPanel } from './MissionPanel';
@@ -36,6 +36,7 @@ function Reference({ board }: { board: Board }) {
           </div>
         </div>
       ))}
+      <p className="actions"><a className="btn" href={BOARDS_HASH}>Compare boards</a><small>The {board.name} beside four other boards, drawn to scale.</small></p>
     </>
   );
 }

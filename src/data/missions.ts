@@ -2,6 +2,7 @@
    The reference build in each mission (`circuit` and `answer`) is what the tests run to prove the checks can be passed, and what the last hint offers. */
 import { blinks, colorOn, ledOn, phases, reaction, servoAt, soundOn, sweeps, type InputStep, type Sample, type Scenario, type Trace } from '../sim/check';
 import type { Tool } from '../state/bench';
+import type { Choice } from './boardchoice';
 import type { BoardId, Item } from '../types';
 
 /* --- the parts tray --- */
@@ -80,6 +81,8 @@ export interface Mission {
   checks: Scenario[];
   /** Parts added to the tray when this mission is passed. */
   unlocks: PartId[];
+  /** A mission answered by choosing a board on the supply shelf, not by building on the bench. */
+  choice?: Choice;
 }
 
 /* --- circuits shared by several missions --- */
@@ -136,6 +139,17 @@ const TAP_TIMES = [1000, 2250, 3600];
 const TAPS: InputStep[] = [{ from: 0, set: { button: 0 } }, ...TAP_TIMES.flatMap(t => [{ from: t, set: { button: 1 } }, { from: t + 150, set: { button: 0 } }])];
 
 /* --- the Uno missions --- */
+/* --- choosing a board: missions answered on the supply shelf instead of the bench --- */
+type ChoiceMission = Pick<Mission, 'id' | 'title' | 'place' | 'hook' | 'map' | 'after' | 'story' | 'guide' | 'hints'> & Choice;
+function choose({ needs, ...m }: ChoiceMission): Mission {
+  return {
+    ...m, choice: { needs },
+    goal: 'Choose a board that meets every need on the list.',
+    how: ['Each card on the shelf lists what that board has, and all five are drawn to the same scale.', 'Only the Uno and the ESP32 are on this workshop\'s bench. The other three are here to compare, as they would be in a catalogue.'],
+    starter: '', circuit: [], answer: '', checks: [], unlocks: [],
+  };
+}
+
 const UNO: Mission[] = [
   {
     id: 'tour', title: 'Workshop tour', place: 'Maker Workshop', hook: 'Meet the board and make its own light blink.', map: [25, 93], after: [], showParts: true, guide: ['sketch', 'pinmode', 'digitalwrite', 'delay', 'serial'],
@@ -353,7 +367,7 @@ void loop() {
     unlocks: ['buzzer'],
   },
   {
-    id: 'chime', title: 'Door chime', place: 'Front Office', hook: 'Play a two-note chime when a visitor presses the bell.', map: [70, 53], after: ['lamp'], guide: ['button', 'digitalread', 'buzzer'],
+    id: 'chime', title: 'Door chime', place: 'Front Office', hook: 'Play a two-note chime when a visitor presses the bell.', map: [75, 53], after: ['lamp'], guide: ['button', 'digitalread', 'buzzer'],
     story: 'Visitors to the front office stand at the door and wait because nobody hears them. Build a <b>door chime</b>: when the bell button is pressed it plays two notes, and the rest of the time it stays silent.',
     goal: 'A button press plays a chime of two different notes. No press, no sound.',
     controls: { button: 'Hold to press the bell' },
@@ -428,8 +442,22 @@ void loop() {
     ],
     unlocks: ['sonar'],
   },
+  choose({
+    id: 'democart', title: 'Demo cart', place: 'Science Lab', hook: 'The lab owns a box of motor shields. Choose the board they plug onto.', map: [25, 53], after: ['chime'], guide: ['boards', 'analog'],
+    story: 'For open day, the science teachers want a cart that drives itself across the lab. They already own ten <b>motor shields</b>: boards that plug on top of an Arduino and drive two motors. The cart\'s motors and its two light sensors are 5 V parts.',
+    needs: [
+      { need: { k: 'shield' }, text: 'The lab\'s motor shields plug straight onto it.' },
+      { need: { k: 'volts5' }, text: 'Its motors and light sensors are 5 V parts, wired straight to the pins.' },
+      { need: { k: 'analog', n: 2 }, text: 'It reads the two light sensors as analog values.' },
+    ],
+    hints: [
+      'Start with the need that rules out the most boards: the shields.',
+      'A shield only plugs onto a board with the Uno\'s header layout. Look at the "Uno shields" line on each card.',
+      'The <b>Arduino Uno</b>. It is the only board here with the Uno\'s header layout, it runs at 5 V, and it has 6 analog inputs.',
+    ],
+  }),
   {
-    id: 'parking', title: 'Parking bay sensor', place: 'Parking Lot', hook: 'Warn the driver when the car is too close to the wall.', map: [30, 43], after: ['chime'], guide: ['sonar', 'ifelse', 'serial'],
+    id: 'parking', title: 'Parking bay sensor', place: 'Parking Lot', hook: 'Warn the driver when the car is too close to the wall.', map: [25, 43], after: ['chime'], guide: ['sonar', 'ifelse', 'serial'],
     story: 'Cars keep bumping the wall at the end of the staff parking bay. Build a <b>proximity warning</b>: a distance sensor measures how far away the wall is, and an LED comes on when the car is closer than <b>20 cm</b>. The slider under the 3D view moves the wall.',
     goal: 'The LED turns on only when the wall is closer than 20 cm.',
     controls: { sonar: 'Distance from the sensor to the wall' },
@@ -530,6 +558,20 @@ void loop() {
     ],
     unlocks: ['led-green', 'res-1k'],
   },
+  choose({
+    id: 'linebot', title: 'Line-follower robot', place: 'Robotics Club', hook: 'Choose a board small enough for the club\'s robot.', map: [75, 43], after: ['parking'], guide: ['boards', 'analog'],
+    story: 'The robotics club is building a robot that follows a black line on the floor. Five line sensors look down at the floor, each giving a voltage: high over white, low over black. The robot is small, and the sensors are 5 V parts.',
+    needs: [
+      { need: { k: 'fits', l: 50, w: 30 }, text: 'It fits on the robot\'s deck, which has room for a board 50 × 30 mm.' },
+      { need: { k: 'volts5' }, text: 'Its five line sensors are 5 V parts, wired straight to the pins.' },
+      { need: { k: 'analog', n: 5 }, text: 'It reads all five sensors as analog values.' },
+    ],
+    hints: [
+      'There are three needs: size, voltage and analog inputs. Rule boards out one need at a time.',
+      'The Uno has everything except the size. Is there a board with the Uno\'s chip in a smaller shape?',
+      'The <b>Arduino Nano</b>: 45 × 18 mm, 5 V like the Uno, and 8 analog inputs.',
+    ],
+  }),
   {
     id: 'greenhouse', title: 'Plant alert', place: 'Greenhouse', hook: 'Warn the gardeners when the soil gets too dry.', map: [70, 33], after: ['parking'], guide: ['analog', 'ifelse', 'buzzer'],
     story: 'The school greenhouse dries out over the weekend and the tomato plants suffer. Build a <b>plant-watering alert</b>: when the soil moisture falls below <b>30%</b>, light the alert LED <em>and</em> sound the buzzer. When the soil is moist again, go quiet. The knob stands in for the moisture probe.',
@@ -921,7 +963,7 @@ void loop() {
     unlocks: ['pad', 'knob', 'res-10k'],
   },
   {
-    id: 'touchlamp', title: 'Study-desk lamp', place: 'Library Desk', hook: 'Switch a lamp on with a touch, no button needed.', map: [70, 67], after: ['beacon'], guide: ['touch', 'serial', 'ifelse'],
+    id: 'touchlamp', title: 'Study-desk lamp', place: 'Library Desk', hook: 'Switch a lamp on with a touch, no button needed.', map: [75, 67], after: ['beacon'], guide: ['touch', 'serial', 'ifelse'],
     story: 'The library desks have lamps with fiddly switches that students keep breaking. Build a <b>touch lamp</b>: the LED is on while a finger touches the pad and off when it lets go. Ten ESP32 pins can sense touch with nothing more than a wire.',
     goal: 'The LED is on while the pad is touched and off otherwise.',
     controls: { pad: 'Hold to touch the pad' },
@@ -983,8 +1025,21 @@ void loop() {
     ],
     unlocks: ['button', 'buzzer'],
   },
+  choose({
+    id: 'mural', title: 'Touch mural', place: 'Art Room', hook: 'Choose a board that can feel six touches on a painted wall.', map: [25, 67], after: ['touchlamp'], guide: ['boards', 'touch'],
+    story: 'The art club has painted a mural of the school with six bright spots on it. Behind each spot is a small piece of copper tape. Touch a spot and a sound plays, and the art teacher wants to change the sounds from a laptop over the school Wi-Fi.',
+    needs: [
+      { need: { k: 'touch', n: 6 }, text: 'It senses a finger on six copper pads, with nothing in between.' },
+      { need: { k: 'wifi' }, text: 'It connects to the school Wi-Fi.' },
+    ],
+    hints: [
+      'You have already used a pad like these, at the Library Desk.',
+      'Sensing a touch is built into some chips and not others. Look at the "Touch pins" line on each card.',
+      'The <b>ESP32 DevKit</b>, the board on your bench: 9 touch pins, and Wi-Fi.',
+    ],
+  }),
   {
-    id: 'toggle', title: 'Cafeteria lights', place: 'Cafeteria', hook: 'One press switches the lights on, the next press switches them off.', map: [30, 54], after: ['touchlamp'], guide: ['button', 'digitalread', 'variables'],
+    id: 'toggle', title: 'Cafeteria lights', place: 'Cafeteria', hook: 'One press switches the lights on, the next press switches them off.', map: [25, 54], after: ['touchlamp'], guide: ['button', 'digitalread', 'variables'],
     story: 'The cafeteria has one switch that is wired badly: you have to hold it down to keep the lights on. Build a <b>push-on, push-off</b> switch: one press turns the LED on and it stays on, the next press turns it off. The sketch has to remember what the light is doing.',
     goal: 'Each press of the button flips the LED, and the LED keeps its state after the button is let go.',
     controls: { button: 'Hold to press the button' },
@@ -1073,8 +1128,21 @@ void loop() {
     ],
     unlocks: ['led-green'],
   },
+  choose({
+    id: 'bagtag', title: 'Bag finder tag', place: 'Lost & Found', hook: 'Choose a board small enough to hide in a bag, that a phone can find.', map: [75, 54], after: ['toggle'], guide: ['boards'],
+    story: 'Students keep losing their bags. The office wants a small tag that sits in a bag\'s pocket and lets a phone find it nearby over Bluetooth, the way wireless earbuds are found. The pocket has room for a board 30 × 25 mm.',
+    needs: [
+      { need: { k: 'bluetooth' }, text: 'A phone can find it over Bluetooth.' },
+      { need: { k: 'fits', l: 30, w: 25 }, text: 'It fits the pocket, which has room for a board 30 × 25 mm.' },
+    ],
+    hints: [
+      'Only some boards have Bluetooth at all. Start there.',
+      'Two boards here have Bluetooth. Only one of them fits the pocket.',
+      'The <b>ESP32-C3 SuperMini</b>: 23 × 18 mm, with Bluetooth LE.',
+    ],
+  }),
   {
-    id: 'siren', title: 'Sports-hall siren', place: 'Sports Hall', hook: 'Slide a buzzer up and down like an alarm.', map: [70, 41], after: ['toggle'], guide: ['buzzer', 'loops'],
+    id: 'siren', title: 'Sports-hall siren', place: 'Sports Hall', hook: 'Slide a buzzer up and down like an alarm.', map: [75, 41], after: ['toggle'], guide: ['buzzer', 'loops'],
     story: 'The sports hall needs an alarm that cuts through the noise of a basketball game. A steady beep is easy to ignore, but a <b>siren</b> that slides up and down in pitch is not. Build one with a buzzer and two loops that change the note a little at a time.',
     goal: 'The buzzer slides up from a low note to a high note and back down, again and again.',
     how: ['The first <code>for</code> loop raises the frequency from 400 Hz to 1000 Hz in steps of 20.', 'The second loop counts back down. <code>f -= 20</code> means "subtract 20 from f".', 'The short <code>delay()</code> sets how fast the pitch moves.'],
@@ -1128,6 +1196,19 @@ void loop() {
     ],
     unlocks: ['res-1k', 'sonar'],
   },
+  choose({
+    id: 'visitorlight', title: 'Visitor light', place: 'Guard House', hook: 'Choose a small Wi-Fi board for the guard\'s sign-in light.', map: [25, 41], after: ['siren'], guide: ['boards'],
+    story: 'At the front gate, visitors wait until a light turns green. The guard will switch it from a phone over the school Wi-Fi. The light box is small: it has room for a board 40 × 30 mm.',
+    needs: [
+      { need: { k: 'wifi' }, text: 'It connects to the school Wi-Fi.' },
+      { need: { k: 'fits', l: 40, w: 30 }, text: 'It fits the light box, which has room for a board 40 × 30 mm.' },
+    ],
+    hints: [
+      'Which boards have Wi-Fi? Then, which of those fit the box?',
+      'The ESP32 DevKit has Wi-Fi but is 52 mm long. Two smaller Wi-Fi boards fit.',
+      'The <b>Wemos D1 mini</b> or the <b>ESP32-C3 SuperMini</b>. Both have Wi-Fi and fit the 40 × 30 mm box.',
+    ],
+  }),
   {
     id: 'nightlight', title: 'Night light', place: 'Main Hallway', hook: 'Turn a light on when the hallway gets dark, with the ESP32\'s finer readings.', map: [30, 28], after: ['siren'], guide: ['knob', 'analog', 'ifelse'],
     story: 'The main hallway is dark after the last bell. Build a <b>night light</b> that comes on by itself when it is dark. The ESP32 measures voltage in 4096 steps instead of 1024, so the numbers are four times bigger. The knob stands in for the light sensor and runs from <b>3.3 V</b>, never 5 V, because the pins cannot take more.',

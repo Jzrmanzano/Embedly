@@ -3,10 +3,10 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { chapterOf, GUIDE, GUIDE_GROUPS, type Block, type Chapter, type Figure, type GuideGroup } from '../data/guide';
 import { backToBench } from '../state/actions';
 import { guideHash } from '../state/route';
-import { missionOf, useLab } from '../state/store';
+import { useLab } from '../state/store';
 import { Icon } from './Icons';
 import { html } from './MissionPanel';
-import { ThemeToggle } from './ThemeToggle';
+import { PageBar } from './PageBar';
 
 /* --- the drawings --- */
 const COLS = Array.from({ length: 14 }, (_, i) => 30 + i * 20);
@@ -106,6 +106,7 @@ const SYMBOLS: Record<string, ReactNode> = {
   buzzer: <><path d="M10 20a14 14 0 0 1 28 0z" /><path d="M18 20v10M30 20v10" /><path d="M40 6a9 9 0 0 1 3 6M37 9a5 5 0 0 1 2 4" /></>,
   sonar: <><rect x="3" y="9" width="42" height="18" rx="2" /><circle cx="14" cy="18" r="6" /><circle cx="34" cy="18" r="6" /><path d="M17 5a11 11 0 0 1 14 0" /></>,
   servo: <><rect x="3" y="11" width="30" height="16" rx="2" /><circle cx="25" cy="19" r="3" /><path d="m25 19 17-13" /><circle cx="42" cy="6" r="2" /></>,
+  boards: <><rect x="7" y="6" width="36" height="20" rx="2" /><rect x="20" y="11" width="10" height="10" rx="1" /><path d="M3 13h4M3 19h4" /><path d="M12 9.5h26M12 22.5h26" strokeDasharray="1.4 3.2" /></>,
   touch: <><rect x="18" y="9" width="12" height="12" rx="2" /><path d="M13 7a12 12 0 0 0 0 16M35 7a12 12 0 0 1 0 16M8 3a18 18 0 0 0 0 24M40 3a18 18 0 0 1 0 24M24 21v9" /></>,
 };
 function PartSymbol({ id }: { id: string }) {
@@ -237,24 +238,6 @@ function ChapterView({ chapter }: { chapter: Chapter }) {
 }
 
 /* --- the page --- */
-function GuideBar({ chapter }: { chapter: Chapter | null }) {
-  const board = useLab(s => s.board), mission = useLab(missionOf), seen = useLab(s => s.labSeen);
-  return (
-    <header className="bar guide-bar">
-      <a className="brand" href="#" aria-label="Embedly. Back to the home page"><Icon name="chip" className="mark" /><h1>Embed<span>ly</span></h1></a>
-      <div className="crumb">
-        {chapter ? <><a href={guideHash(null)}>Guide</a><Icon name="chevron" /><b>{chapter.title}</b></> : <b>Guide</b>}
-      </div>
-      <div className="guide-bar-end">
-        <ThemeToggle />
-        <a className="cta small" href={`#${board}-${mission.id}`} aria-keyshortcuts="G" title={seen ? `Back to ${mission.title} (G)` : 'Open the lab (G)'}>
-          {seen ? <><span className="wide">Back to {mission.title}</span><span className="narrow">Back to the bench</span></> : 'Open the lab'}
-        </a>
-      </div>
-    </header>
-  );
-}
-
 /** The guide: its contents page, or one chapter. G goes back to the bench, as it came. */
 export function GuidePage() {
   const id = useLab(s => s.guide), chapter = chapterOf(id), main = useRef<HTMLElement>(null);
@@ -276,7 +259,7 @@ export function GuidePage() {
   return (
     <div className="guide-page">
       <a className="skip" href="#guide-main" onClick={e => { e.preventDefault(); main.current?.focus(); }}>Skip to the text</a>
-      <GuideBar chapter={chapter} />
+      <PageBar here="guide" backKey="G" crumb={chapter ? <><a href={guideHash(null)}>Guide</a><Icon name="chevron" /><b>{chapter.title}</b></> : <b>Guide</b>} />
       {/* the contents page is the list of chapters itself, so only a chapter has the list down the side */}
       <div className={chapter ? 'guide-body' : 'guide-body solo'}>
         {chapter && <ChapterList current={chapter.id} />}

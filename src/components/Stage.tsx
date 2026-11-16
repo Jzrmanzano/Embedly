@@ -109,7 +109,8 @@ function Help() {
 }
 
 /* --- notices, the part card and the circuit check --- */
-function Notice() {
+/** The latest message about what happened, such as a mission passed. The supply shelf shows it too. */
+export function Notice() {
   const n = useLab(s => s.notice);
   if (!n) return null;
   return (

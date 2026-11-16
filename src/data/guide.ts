@@ -658,6 +658,22 @@ void loop() {
       { tip: 'The reading wobbles a little even when nothing changes. Print it with <code>Serial.println(value)</code> to see the real numbers before choosing a threshold. The Uno has no touch pins.' },
     ],
   },
+  {
+    id: 'boards', group: 'parts', title: 'Choosing a board', lede: 'Boards differ most in what they can connect to, not in how fast they are.',
+    blocks: [
+      { p: 'Every board in this workshop runs a sketch the same way: <code>setup()</code> once, then <code>loop()</code> for ever. What changes from one board to the next is what it can be connected to. Before choosing a board for a project, write down what the project needs, then check each board against the list.' },
+      { table: [
+        ['Voltage', 'The Uno and the Nano run at <b>5&nbsp;V</b>. The ESP boards run at <b>3.3&nbsp;V</b>, and 5&nbsp;V straight into one of their pins can damage it. A 5 V part needs a 5 V board, or a level converter in between.'],
+        ['Wi-Fi and Bluetooth', 'Only the ESP boards have a radio. The ESP32 has Wi-Fi and Bluetooth, the ESP32-C3 has Wi-Fi and Bluetooth LE, and the ESP8266 has Wi-Fi only.'],
+        ['Analog inputs', 'Each sensor read with <code>analogRead()</code> needs its own analog pin, so count the sensors. On the ESP32 only 6 analog pins work while Wi-Fi is on.'],
+        ['Touch pins', 'The ESP32 can feel a finger on a bare pad with <code>touchRead()</code>. The other boards here cannot.'],
+        ['Size', 'Measure the space first. An Uno is 69 × 53 mm, and the smallest board here is 23 × 18 mm.'],
+        ['Shields', 'A shield is an add-on board made to plug onto the Uno\'s header layout. Other boards need wires instead.'],
+      ], head: ['What to check', 'Why it matters'] },
+      { tip: 'There is often more than one right answer. Any board that meets every need will work, and then you can choose by price, or by what you already have.' },
+      { p: 'To see five boards side by side, drawn to scale, and to try a list of needs against them, open <a href="#boards">Compare boards</a>.' },
+    ],
+  },
 ];
 
 export const chapterOf = (id: string | null) => GUIDE.find(c => c.id === id) ?? null;

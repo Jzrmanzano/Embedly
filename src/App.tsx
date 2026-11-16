@@ -3,12 +3,14 @@ import { Boundary, PanelCrash } from './components/Boundary';
 import { CampusMap } from './components/CampusMap';
 import { CodePanel } from './components/CodePanel';
 import { DocPanel } from './components/DocPanel';
+import { BoardsPage } from './components/BoardsPage';
 import { GuidePage } from './components/GuidePage';
 import { HelpDialog } from './components/HelpDialog';
 import { Home } from './components/Home';
 import { Icon, type IconName } from './components/Icons';
 import { PredictDialog } from './components/PredictDialog';
 import { Stage } from './components/Stage';
+import { SupplyShelf } from './components/SupplyShelf';
 import { ThemeToggle } from './components/ThemeToggle';
 import { BOARDS } from './data/boards';
 import { chapterOf } from './data/guide';
@@ -26,10 +28,10 @@ const HOME_TITLE = 'Embedly · Learn to build IoT devices, machines and robots';
 
 /** The buttons that open the panels, and the link to the guide (a page of its own): in the top bar on a wide screen, along the bottom on a phone. */
 function PanelToggles({ nav = false }: { nav?: boolean }) {
-  const panels = useLab(s => s.panels), guide = useLab(s => s.guide);
+  const panels = useLab(s => s.panels), guide = useLab(s => s.guide), choosing = useLab(s => !!missionOf(s).choice);
   return (
     <div className={nav ? 'toggles nav' : 'toggles'} role="group" aria-label="Panels">
-      {PANELS.map(([name, label, icon, key]) => (
+      {PANELS.filter(([name]) => !(choosing && name === 'code')).map(([name, label, icon, key]) => (
         <button key={name} type="button" className="toggle" data-toggle={name} aria-pressed={isOpen(panels, name)} aria-keyshortcuts={key} title={`${label} (${key})`} onClick={() => togglePanel(name)}>
           <Icon name={icon} /><span>{label}</span>{!nav && <kbd aria-hidden="true">{key}</kbd>}
         </button>
@@ -123,19 +125,20 @@ export function App() {
   const chosen = { '--wl': widths.left ? `${widths.left}px` : undefined, '--wr': widths.right ? `${widths.right}px` : undefined } as CSSProperties;
   useEffect(() => {
     const c = chapterOf(chapter);
-    document.title = page === 'home' ? HOME_TITLE : page === 'guide' ? `${c ? `${c.title} · ` : ''}Guide · Embedly` : `${mission.title} · ${mission.place} · Embedly`;
+    document.title = page === 'home' ? HOME_TITLE : page === 'boards' ? 'Compare boards · Embedly' : page === 'guide' ? `${c ? `${c.title} · ` : ''}Guide · Embedly` : `${mission.title} · ${mission.place} · Embedly`;
   }, [page, chapter, board, mission]);
   if (page === 'home') return <Home />;
   if (page === 'guide') return <GuidePage />;
+  if (page === 'boards') return <BoardsPage />;
   return (
     <div className="app">
       <a className="skip" href="#bench" onClick={e => { e.preventDefault(); document.getElementById('bench')?.focus(); }}>Skip to the bench</a>
       <TopBar />
       <main id="bench" className="bench" tabIndex={-1} aria-label="The bench" data-left={panels.left ?? undefined} data-right={panels.right ?? undefined} style={chosen}>
-        <Stage />
+        {mission.choice ? <SupplyShelf /> : <Stage />}
         <Drawer name="map" title="Campus map" icon="map" className="mapbody"><CampusMap /></Drawer>
         <Drawer name="brief" title="Mission brief" icon="brief"><DocPanel /></Drawer>
-        <Drawer name="code" title="Code" icon="code"><CodePanel /></Drawer>
+        {!mission.choice && <Drawer name="code" title="Code" icon="code"><CodePanel /></Drawer>}
       </main>
       <PanelToggles nav />
       <PredictDialog />

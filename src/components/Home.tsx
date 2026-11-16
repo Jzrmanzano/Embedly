@@ -43,8 +43,9 @@ export function Home() {
       <header className="home-bar">
         <a className="brand" href="#" aria-label="Embedly home"><Icon name="chip" className="mark" /><h1>Embed<span>ly</span></h1></a>
         <nav aria-label="Sections">
+          <a href="#boards-section">Missions</a>
+          <a href="#boards">Compare boards</a>
           <a href="#guide">Guide</a>
-          <a href="#boards-section" onClick={e => { e.preventDefault(); document.getElementById('boards-section')?.scrollIntoView({ behavior: 'smooth' }); }}>Boards</a>
           <ThemeToggle />
           <a className="cta small" href="#uno-tour">Open the lab</a>
         </nav>
@@ -53,29 +54,20 @@ export function Home() {
       <main>
         <section className="hero">
           <div className="hero-text">
-            <p className="eyebrow">Free · No install · No hardware needed</p>
+            <ul className="plate" aria-label="What you need"><li>Free</li><li>Runs in the browser</li><li>No hardware needed</li></ul>
             <h2>Fix real problems around a school campus with Arduino and ESP32.</h2>
             <p className="lede">Build the device yourself, guess what it will do, then prove it with checks that run your own sketch. {total} missions around a school campus, all in your browser.</p>
             <div className="hero-actions">
-              <a className="cta" href="#uno-tour">Start with the Arduino Uno →</a>
+              <a className="cta" href="#uno-tour">Start with the Arduino Uno</a>
               <a className="ghost" href="#esp32-tour">Try the ESP32</a>
             </div>
-            <p className="hero-note">New to this? <a href="#guide">Read the guide first</a>: {GUIDE.length} short chapters on the code, the breadboard and the parts.</p>
           </div>
           <BoardArt />
         </section>
 
-        <section className="steps" aria-labelledby="how">
-          <h2 id="how" className="sec-title">How it works</h2>
-          <ol>
-            {STEPS.map(([t, d], i) => (
-              <li key={t}><span className="n">{String(i + 1).padStart(2, '0')}</span><h3>{t}</h3><p>{d}</p></li>
-            ))}
-          </ol>
-        </section>
-
         <section id="boards-section" className="boards" aria-labelledby="pick">
           <h2 id="pick" className="sec-title">Pick a board</h2>
+          <p className="sec-note">Two boards are on the bench here. <a href="#boards">Compare them with three others</a>, side by side and drawn to scale.</p>
           <div className="board-grid">
             {ALL_BOARDS.map(b => (
               <article key={b.id} className="board-card">
@@ -86,10 +78,23 @@ export function Home() {
                     <li key={m.id}><a href={`#${b.id}-${m.id}`}><span className="n">{String(i + 1).padStart(2, '0')}</span><span><b>{m.place}: {m.title}</b><small>{m.hook}</small></span></a></li>
                   ))}
                 </ol>
-                <a className="cta" href={`#${b.id}-${MISSIONS[b.id][0].id}`}>Start {b.name} →</a>
+                <a className="cta" href={`#${b.id}-${MISSIONS[b.id][0].id}`}>Start {b.name}</a>
               </article>
             ))}
           </div>
+        </section>
+        <section className="steps" aria-labelledby="how">
+          <h2 id="how" className="sec-title">How it works</h2>
+          <ol>
+            {STEPS.map(([t, d], i) => (
+              <li key={t}><span className="n">{String(i + 1).padStart(2, '0')}</span><h3>{t}</h3><p>{d}</p></li>
+            ))}
+          </ol>
+        </section>
+
+        <section className="next" aria-label="More to explore">
+          <a href="#guide"><Icon name="book" /><span><b>Read the guide</b><small>{GUIDE.length} short chapters on the code, the breadboard and the parts.</small></span></a>
+          <a href="#boards"><Icon name="chip" /><span><b>Compare five boards</b><small>Side by side, drawn to scale, with a picker for your project.</small></span></a>
         </section>
       </main>
 

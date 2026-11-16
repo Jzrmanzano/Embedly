@@ -23,6 +23,11 @@ test('a chapter that does not exist opens the contents page', () => {
   assert.deepEqual(parseHash('#guide/no-such-chapter'), { page: 'guide', chapter: null });
 });
 
+test('#boards is the board comparison', () => {
+  assert.deepEqual(parseHash('#boards'), { page: 'boards' });
+  assert.deepEqual(parseHash('#boards/uno'), { page: 'lab', board: null, mission: null }, 'it has no sub-pages');
+});
+
 test('a mission hash opens the lab with that board and mission', () => {
   assert.deepEqual(parseHash('#uno-tour'), { page: 'lab', board: 'uno', mission: 'tour' });
   assert.deepEqual(parseHash('esp32-beacon'), { page: 'lab', board: 'esp32', mission: 'beacon' });

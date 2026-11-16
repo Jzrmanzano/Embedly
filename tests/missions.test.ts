@@ -26,7 +26,11 @@ test('every mission is complete and refers only to missions that come before it'
       assert.ok(m.map[0] >= 0 && m.map[0] <= 100 && m.map[1] >= 0 && m.map[1] <= 100, `${where} is on the map`);
       for (const a of m.after) assert.ok(seen.has(a), `${where} comes after ${a}, which exists earlier in the list`);
       if (m.sandbox) assert.equal(m.checks.length, 0, `${where} is free build, so it has no checks`);
-      else {
+      else if (m.choice) {
+        assert.equal(m.checks.length, 0, `${where} is answered on the supply shelf, so it has no checks to run`);
+        assert.ok(m.choice.needs.length >= 2, `${where} has needs to weigh`);
+        assert.deepEqual(m.unlocks, [], `${where} unlocks no parts, so it never stands in the way of a build`);
+      } else {
         assert.ok(m.checks.length >= 2, `${where} has checks`);
         assert.ok(m.predict, `${where} asks for a prediction`);
         assert.ok(m.predict!.options.some(o => o.id === m.predict!.works), `${where} names the option that means it works`);
@@ -73,7 +77,7 @@ test('a mission opens when the ones before it are passed, and the workshop opens
   assert.equal(isAvailable('esp32', get('esp32', 'touchlamp'), new Set([missionKey('uno', 'beacon')])), false, 'progress on one board does not open the other');
 });
 
-for (const { board, m } of all.filter(x => !x.m.sandbox)) {
+for (const { board, m } of all.filter(x => !x.m.sandbox && !x.m.choice)) {
   test(`${board}/${m.id}: the intended build and sketch pass every check`, async () => {
     const r = await runChecks(board, m.circuit, m.answer, m.checks);
     assert.deepEqual(failures(r), [], `${r.length} results`);
