@@ -7,9 +7,9 @@ import { makeHW, makeReadout, type Readout, type VirtualHW } from '../sim/hardwa
 import { run as runSketch, SimError, type RunControl } from '../sim/interpreter';
 import { pushFrame, type Frame } from '../sim/timeline';
 import { itemId, type BoardId, type Item } from '../types';
-import { closePanel as closePanelIn, closeTop, isOpen, openPanel as openPanelIn, type Panel } from './panels';
+import { clampWidth, closePanel as closePanelIn, closeTop, isOpen, openPanel as openPanelIn, widestPanel, type Panel, type Side } from './panels';
 import { defaultInput, flipped, holesOf, makeItem, movedWire, parseTerminal, placementError, TWO_POINT, type Tool } from './bench';
-import { benchOf, burntOf, codeOf, keyOf, missionOf, saveBenches, saveProgress, useLab, type Tab } from './store';
+import { benchOf, burntOf, codeOf, keyOf, missionOf, saveBenches, saveProgress, saveWidths, useLab, type Tab } from './store';
 
 const set = useLab.setState, get = useLab.getState;
 
@@ -149,8 +149,14 @@ export function startRun(stepFirst = false) {
 const passedKeys = () => new Set(Object.keys(get().passed));
 const saveMissionProgress = () => { const { passed, hintsUsed, predictions } = get(); saveProgress({ passed, hintsUsed, predictions }); };
 
+/** Set by the home page's link to the guide: the mission that opens next shows the guide instead of its brief. */
+let guideNext = false;
+export function startWithGuide() { guideNext = true; set({ guide: null }); goTo('uno', MISSIONS.uno[0].id); }
+
 export function openFromHash() {
   stopRun(); forgetRun();
+  const wantGuide = guideNext;
+  guideNext = false;
   const home = /^#?$/.test(location.hash);
   const m = /^#?([a-z0-9]+)-([a-z0-9]+)$/.exec(location.hash);
   const board: BoardId = m && Object.hasOwn(BOARDS, m[1]) ? (m[1] as BoardId) : 'uno';
@@ -161,7 +167,7 @@ export function openFromHash() {
     if (!home) history.replaceState(null, '', `#${board}-${list[0].id}`);
   }
   serialBuf = '';
-  set(s => ({ home, board, mission, hot: null, serial: '', errLine: null, tool: null, pending: null, point: null, notice: null, results: null, asking: null, checking: false, drag: null, panels: home || isPhone() ? s.panels : openPanelIn(s.panels, 'brief', isNarrow()) }));   // a new mission opens its brief, except on a phone where it would cover the bench
+  set(s => ({ home, board, mission, hot: null, serial: '', errLine: null, tool: null, pending: null, point: null, notice: null, results: null, asking: null, checking: false, drag: null, panels: home || (isPhone() && !wantGuide) ? s.panels : openPanelIn(s.panels, wantGuide ? 'guide' : 'brief', isNarrow()) }));   // a new mission opens its brief, except on a phone where it would cover the bench
   syncInputs();
 }
 
@@ -455,4 +461,23 @@ export function escapePanel(): boolean {
   focusToggle(name);
   return true;
 }
+/** The room there is for the panel on one side: the widest it may be right now. */
+export function panelRoom(side: Side): number {
+  const across = document.getElementById('bench')?.clientWidth ?? innerWidth;
+  return widestPanel(across, document.querySelector<HTMLElement>(`.drawer.${side === 'left' ? 'right' : 'left'}`)?.offsetWidth ?? 0);
+}
+/** Makes the panel on one side this wide (kept within what fits), or gives it its usual width back with null. */
+export function resizePanel(side: Side, width: number | null) {
+  const across = document.getElementById('bench')?.clientWidth ?? innerWidth;
+  const other = document.querySelector<HTMLElement>(`.drawer.${side === 'left' ? 'right' : 'left'}`)?.offsetWidth ?? 0;
+  const widths = { ...get().widths, [side]: width == null ? null : clampWidth(width, across, other) };
+  set({ widths });
+  saveWidths(widths);
+}
 export const setHelp = (help: boolean) => set({ help });
+/** Turns the guide to a chapter, or to its contents page with null. */
+export const openGuide = (guide: string | null) => set({ guide });
+/** Opens the guide panel at its contents page. */
+export function showGuide() { set({ guide: null }); openPanel('guide'); }
+/** Opens the guide panel at one chapter. */
+export function readGuide(id: string) { set({ guide: id }); openPanel('guide'); }

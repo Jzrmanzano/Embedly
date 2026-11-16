@@ -118,7 +118,19 @@ const wrong: [BoardId, string, string, string, string][] = [
   ['esp32', 'toggle', 'ledOn = !ledOn;', 'ledOn = true;', 'never turns off again'],
   ['esp32', 'siren', 'tone(BUZZER_PIN, f);', 'tone(BUZZER_PIN, 600);', 'one steady note'],
   ['esp32', 'nightlight', 'light < 1200', 'light > 1200', 'works backwards'],
+  ['uno', 'crossing', 'now - lastChange >= 500', 'now - lastChange >= 40', 'flickers the warning light too fast'],
+  ['uno', 'crossing', 'digitalRead(BUTTON_PIN) == LOW', 'digitalRead(BUTTON_PIN) == HIGH', 'lights the walk light when nobody presses'],
+  ['uno', 'barrier', 'delay(3000);', 'delay(300);', 'drops the arm before the bus is through'],
+  ['uno', 'barrier', 'barrier.write(0);    // and down again', '', 'never lowers the arm'],
+  ['uno', 'barrier', 'barrier.write(90);', 'barrier.write(180);', 'lifts the arm too far'],
+  ['esp32', 'weather', 'map(wind, 0, 4095, 0, 180)', 'map(wind, 0, 4095, 180, 0)', 'points backwards'],
+  ['esp32', 'weather', 'map(wind, 0, 4095, 0, 180)', 'map(wind, 0, 1023, 0, 180)', 'uses the Uno\'s 0 to 1023 range'],
 ];
+
+test('uno/crossing: a sketch that still blinks with delay() misses taps', async () => {
+  const m = get('uno', 'crossing'), r = await runChecks('uno', m.circuit, m.starter, m.checks);
+  assert.deepEqual(failures(r).map(f => f.split(':')[0]), ['The walk light answers every tap at once'], 'only the tap check fails: the blink itself is fine');
+});
 for (const [board, id, from, to, why] of wrong) {
   test(`${board}/${id}: a sketch that ${why} does not pass`, async () => {
     const m = get(board, id), r = await runChecks(board, m.circuit, mutate(m.answer, from, to), m.checks);
@@ -134,6 +146,11 @@ const wrongWiring: [BoardId, string, string, (it: Item) => Item | null][] = [
   ['uno', 'parking', 'has the sensor unpowered', it => (it.t === 'wire' && it.a === 'f18' ? null : it)],
   ['uno', 'chime', 'has the buzzer on the wrong pin', it => (it.t === 'wire' && it.a === 'U:8' ? { ...it, a: 'U:7' } : it)],
   ['esp32', 'touchlamp', 'has the pad unwired', it => (it.t === 'wire' && it.b === 'PAD' ? null : it)],
+  ['uno', 'barrier', 'powers the servo from 3.3 V', it => (it.t === 'wire' && it.a === 'U:5V' ? { ...it, a: 'U:3V3' } : it)],
+  ['uno', 'barrier', 'powers the servo from a pin', it => (it.t === 'wire' && it.a === 'j25' ? { ...it, b: 'U:8' } : it)],
+  ['uno', 'barrier', 'has the servo signal on the wrong pin', it => (it.t === 'wire' && it.b === 'U:9' ? { ...it, b: 'U:10' } : it)],
+  ['uno', 'crossing', 'has the red and green LEDs swapped', it => (it.t === 'led' ? { ...it, color: it.color === 0xff3b30 ? 0x2ecc40 : 0xff3b30 } : it)],
+  ['esp32', 'weather', 'powers the servo from 3V3', it => (it.t === 'wire' && it.a === 'E:VIN' ? { ...it, a: 'E:3V3' } : it)],
 ];
 for (const [board, id, why, f] of wrongWiring) {
   test(`${board}/${id}: a bench that ${why} does not pass`, async () => {

@@ -8,10 +8,8 @@ import { beginMove, currentReadout, finishMove, isWireEnd, moveTo, pressPoint, r
 import { allTerminals, movedWire } from '../state/bench';
 import { benchOf, burntOf, keyOf, missionOf, useLab } from '../state/store';
 import { itemId } from '../types';
+import { view } from './view';
 import { buildWorld } from './world';
-
-/** Camera commands for the toolbar buttons, which live outside the canvas. */
-export const view = { fit() {}, top() {}, zoom(_factor: number) {} };
 
 const VIEW_DIR = new T.Vector3(-0.42, 0.78, 1).normalize(), TOP_DIR = new T.Vector3(0, 1, 0.001).normalize(), projected = new T.Vector3();
 
@@ -26,7 +24,7 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
   const camera = useThree(s => s.camera) as T.OrthographicCamera;
   const board = useLab(s => s.board), hot = useLab(s => s.hot), showParts = useLab(s => !!missionOf(s).showParts);
   const probed = useLab(s => s.probe?.name ?? null), nav = useLab(s => s.nav), bench = useLab(benchOf), burnt = useLab(burntOf), point = useLab(s => s.point), pending = useLab(s => s.pending), sparks = useLab(s => s.sparks);
-  const drag = useLab(s => s.drag), panels = useLab(s => s.panels);
+  const drag = useLab(s => s.drag), panels = useLab(s => s.panels), widths = useLab(s => s.widths);
   const insets = useRef({ l: 0, r: 0 });   // how much of the left and right of the screen a panel covers
   const controls = useRef<ComponentRef<typeof OrbitControls>>(null);
   // while a wire end is being dragged, the wire is drawn plugged into the point under the pointer
@@ -153,7 +151,7 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
   };
   useLayoutEffect(fit, [world]);        // a new board reframes the view; placing parts does not
   useLayoutEffect(frustum, [size]);     // a resize keeps the same framing
-  useLayoutEffect(() => { measure(); frustum(); }, [panels]);   // opening a panel slides the view, it does not zoom
+  useLayoutEffect(() => { measure(); frustum(); }, [panels, widths]);   // opening or resizing a panel slides the view, it does not zoom
   useEffect(() => {
     view.fit = fit;
     view.top = () => {   // look straight down: a flat 2D plan of the bench
@@ -185,6 +183,7 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
       if (it.t === 'led') world.set(id, now ? now.ledGlow(id) : 0);
       if (it.t === 'wire') world.set(id, now ? now.circuit.wireAmps(id) : 0);
       if (it.t === 'buzzer') { const f = now ? now.buzzFreq(id) : 0; world.set(id, f); freq ||= f; }
+      if (it.t === 'servo' && now) world.set(id, now.servoAngle(id));   // an unpowered or stopped servo stays where it was
     });
     for (const id in s.inputs) world.set(id, s.inputs[id]);
     setTone(s.sound && !s.paused && s.cursor == null ? freq : 0);

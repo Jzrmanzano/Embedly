@@ -33,13 +33,18 @@ export interface Sample {
   builtin: number;
   /** The highest note sounding, in hertz, 0 when silent. */
   sound: number;
+  /** The angle each servo on the bench is told to hold, -1 when it gets no signal or no power. */
+  servos: number[];
   /** Everything the sketch has printed so far. */
   serial: string;
 }
 export interface Trace {
   ms: number;
   ledCount: number;
+  /** The colour of each LED, in the same order as `Sample.leds`. */
+  ledColors: number[];
   buzzerCount: number;
+  servoCount: number;
   /** Why the sketch stopped early, in words for the student. */
   error: string | null;
   /** The sketch kept running without ever waiting. */
@@ -54,6 +59,13 @@ export interface Trace {
 
 export const ledOn = (s: Sample) => Math.max(0, ...s.leds) > 0.5;
 export const soundOn = (s: Sample) => s.sound > 0;
+/** The LED colours in the tray, so a check can ask about "the red LED" whatever id the student's LED has. */
+export const LED_COLOR = { red: 0xff3b30, green: 0x2ecc40 } as const;
+export type LedColor = keyof typeof LED_COLOR;
+/** Some LED of this colour is on. */
+export const colorOn = (tr: Trace, color: LedColor) => (s: Sample) => s.leds.some((v, i) => tr.ledColors[i] === LED_COLOR[color] && v > 0.5);
+/** The first servo's angle, -1 when it is not being driven. */
+export const servoAt = (s: Sample) => s.servos[0] ?? -1;
 
 const MAX_STEPS = 60_000, MAX_FRAMES = 20_000;
 
@@ -61,19 +73,20 @@ export async function observe(board: BoardId, items: Item[], code: string, plan:
   const b = BOARDS[board], analysis = analyze(board, items), shorted = analysis.issues.some(i => i.kind === 'short');
   const frames: Frame[] = [], sigs: string[] = [], serial: { t: number; text: string }[] = [], burnt: string[] = [];
   const ledIds = items.flatMap((it, k) => (it.t === 'led' ? [itemId(it, k)] : [])), buzzIds = items.flatMap((it, k) => (it.t === 'buzzer' ? [itemId(it, k)] : []));
+  const ledColors = items.flatMap(it => (it.t === 'led' ? [it.color] : [])), servoIds = items.flatMap((it, k) => (it.t === 'servo' ? [itemId(it, k)] : []));
   let hw!: VirtualHW, steps = 0, passes = 0, timedOut = false, error: string | null = null;
   hw = makeHW(b, items, () => inputsAt(items, plan, hw.elapsed()), text => serial.push({ t: hw.elapsed(), text }), {
     virtualClock: true,
     onBurn: id => burnt.push(id),
     onChange: () => {   // a frame only when the pins or notes are different from the last one
-      const f = hw.snapshot(), sig = JSON.stringify([f.drive, f.tones]);
+      const f = hw.snapshot(), sig = JSON.stringify([f.drive, f.tones, f.servos]);
       if (sig !== sigs[sigs.length - 1] && frames.length < MAX_FRAMES) { frames.push(f); sigs.push(sig); }
     },
   });
   hw.skipDelays = true;
   let yields = 0;
   hw.pause = () => (++yields % 25 === 0 ? new Promise<void>(r => setTimeout(r, 0)) : Promise.resolve());   // let the page breathe now and then
-  frames.push(hw.snapshot()); sigs.push(JSON.stringify([frames[0].drive, frames[0].tones]));
+  frames.push(hw.snapshot()); sigs.push(JSON.stringify([frames[0].drive, frames[0].tones, frames[0].servos]));
   const ctl: RunControl = {
     stop: false,
     onLoop() { hw.advance(5); passes++; if (hw.elapsed() >= ms) ctl.stop = true; },   // a pass of loop() takes a moment, so a sketch that only polls still lets time move on
@@ -99,7 +112,7 @@ export async function observe(board: BoardId, items: Item[], code: string, plan:
       const r = makeReadout(b, analysis, { ...frames[i], inputs }, []), sol = r.circuit;
       s = {
         t, leds: ledIds.map(id => r.ledGlow(id)), duties: ledIds.map(id => sol.ledDuty(id)), builtin: r.builtinGlow,
-        sound: Math.max(0, ...buzzIds.map(id => r.buzzFreq(id))), serial: serial.filter(e => e.t <= t).map(e => e.text).join(''),
+        sound: Math.max(0, ...buzzIds.map(id => r.buzzFreq(id))), servos: servoIds.map(id => r.servoAngle(id)), serial: serial.filter(e => e.t <= t).map(e => e.text).join(''),
       };
       cache.set(key, s);
     }
@@ -107,7 +120,7 @@ export async function observe(board: BoardId, items: Item[], code: string, plan:
   };
   const samples = frames.map(f => at(f.t));
   return {
-    ms, ledCount: ledIds.length, buzzerCount: buzzIds.length, error, timedOut, burnt, shorted, samples, at,
+    ms, ledCount: ledIds.length, ledColors, buzzerCount: buzzIds.length, servoCount: servoIds.length, error, timedOut, burnt, shorted, samples, at,
     window: (from, to) => [at(from), ...frames.filter(f => f.t > from && f.t <= to).map(f => at(f.t))],
   };
 }
@@ -133,6 +146,11 @@ export interface Expect {
   serial?: RegExp;
   /** The brightest LED is being driven this share of the time. */
   duty?: [min: number, max: number];
+  /** An LED of this colour is on (true) or every LED of this colour is off (false). */
+  red?: boolean;
+  green?: boolean;
+  /** The servo points somewhere in this range of degrees. */
+  servo?: [min: number, max: number];
 }
 export interface Phase {
   /** The situation, finishing the sentence "When …" in the messages. */
@@ -152,7 +170,7 @@ function judgePhase(tr: Trace, p: Phase, start: number, end: number): string | n
   const e = p.expect, during = p.mode === 'during', states = during ? tr.window(start, end) : [tr.at(end - 100)];
   const when = `When ${p.when}`, last = states[states.length - 1];
   const lit = (want: boolean, what: string, read: (s: Sample) => boolean, none: boolean): string | null => {
-    if (none) return 'I could not find an LED on your bench.';
+    if (none) return `I could not find ${what === 'LED' ? 'an LED' : `a ${what}`} on your bench.`;
     if (during) {
       const seen = states.some(read);
       if (want && !seen) return `${when}, the ${what} should have turned on, but it stayed off.`;
@@ -163,6 +181,18 @@ function judgePhase(tr: Trace, p: Phase, start: number, end: number): string | n
   };
   if (e.led !== undefined) { const m = lit(e.led, 'LED', ledOn, tr.ledCount === 0); if (m) return m; }
   if (e.builtin !== undefined) { const m = lit(e.builtin, 'on-board LED', s => s.builtin > 0.5, false); if (m) return m; }
+  for (const color of ['red', 'green'] as const) {
+    const want = e[color];
+    if (want === undefined) continue;
+    const m = lit(want, `${color} LED`, colorOn(tr, color), !tr.ledColors.includes(LED_COLOR[color]));
+    if (m) return m;
+  }
+  if (e.servo) {
+    if (tr.servoCount === 0) return 'I could not find a servo on your bench.';
+    const a = servoAt(last), [lo, hi] = e.servo, aim = lo === 0 ? `${hi}° or less` : hi === 180 ? `${lo}° or more` : `about ${Math.round((lo + hi) / 2)}°`;
+    if (a < 0) return `${when}, the servo should point ${aim}, but it was not getting a signal. Check that the sketch calls attach() with the pin its orange wire is on, and that the servo has 5 V and GND.`;
+    if (a < lo || a > hi) return `${when}, the servo should point ${aim}, but it was at ${a}°.`;
+  }
   if (e.sound !== undefined) {
     if (tr.buzzerCount === 0) return 'I could not find a buzzer on your bench.';
     const seen = states.some(soundOn);
@@ -201,13 +231,16 @@ function stretches(tr: Trace, state: (s: Sample) => boolean) {
   return out;
 }
 
-/** An LED that turns on and off again and again, at a pace the eye can follow. */
-export function blinks(label: string, who: 'led' | 'builtin' = 'led'): Scenario {
+/** An LED that turns on and off again and again, at a pace the eye can follow. `who` can name one colour of LED, so the others may do as they like. */
+export function blinks(label: string, who: 'led' | 'builtin' | LedColor = 'led', plan: InputStep[] = []): Scenario {
   return {
-    label, plan: [], run: 8000,
+    label, plan, run: 8000,
     judge(tr) {
+      const color = who === 'red' || who === 'green' ? who : null;
       if (who === 'led' && tr.ledCount === 0) return 'I could not find an LED on your bench.';
-      const name = who === 'led' ? 'LED' : 'on-board LED', list = stretches(tr, s => (who === 'led' ? ledOn(s) : s.builtin > 0.5));
+      if (color && !tr.ledColors.includes(LED_COLOR[color])) return `I could not find a ${color} LED on your bench.`;
+      const name = who === 'led' ? 'LED' : color ? `${color} LED` : 'on-board LED';
+      const list = stretches(tr, color ? colorOn(tr, color) : s => (who === 'led' ? ledOn(s) : s.builtin > 0.5));
       const body = list.slice(1);   // the first stretch is only the moment before setup() has run
       const anyOn = list.some(x => x.on), anyOff = body.some(x => !x.on);
       if (!anyOn) return `The ${name} stays dark: it never turns on.`;

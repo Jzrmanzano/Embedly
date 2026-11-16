@@ -16,7 +16,8 @@ export const ITEM_INFO: Record<string, Info> = {
   buzzer: ['Piezo buzzer', 'Turns a signal that switches on and off very fast into a sound.'],
   sonar: ['HC-SR04 distance sensor', 'Sends out an ultrasonic ping and times how long the echo takes to come back.'],
   wire: ['Jumper wire', 'Carries current between two points with no resistance. Drag either end to a new hole or pin, or type new places below.'],
-  pad: ['Touch pad', 'A bare piece of metal on a wire. A finger near it changes its electrical capacitance.']
+  pad: ['Touch pad', 'A bare piece of metal on a wire. A finger near it changes its electrical capacitance.'],
+  servo: ['Servo motor', 'Turns its arm to the angle the sketch asks for, from 0° to 180°, and holds it there. Brown is GND, red is + (5 V), orange is the signal from a pin.']
 };
 
 export const BOARDS: Record<BoardId, Board> = {

@@ -32,6 +32,8 @@ export interface Solution {
   ledDuty(id: string): number;
   /** Volts across a buzzer. */
   buzzVolts(id: string): number;
+  /** Volts between a servo's + and GND legs. */
+  servoVolts(id: string): number;
   /** Output pins that are currently driving the net a part is on. */
   pinsDriving(id: string): number[];
   /** Amps in a wire, positive when conventional current runs from its first end (`a`) to its second (`b`). */
@@ -50,10 +52,17 @@ export interface Analysis {
   pinAt(point: string): number | null;
   /** True when the two connection points are joined by wires, rails or breadboard columns alone. */
   joined(a: string, b: string): boolean;
+  /** The pin a servo's signal leg is wired to, or null. */
+  servoPin(id: string): number | null;
 }
 
+/** The connection points of a servo's three legs. */
+export const servoLegs = (it: { row: string; col: number }) => ({ gnd: `${it.row}${it.col}`, vcc: `${it.row}${it.col + 1}`, sig: `${it.row}${it.col + 2}` });
+/** A servo needs about 5 V to turn. */
+export const SERVO_MIN_VOLTS = 4.5;
+
 export const LED_BURN_AMPS = 0.03, PIN_MAX_AMPS = 0.04;
-const R_PIN = 25, R_PULLUP = 30000, R_LED = 10, R_BUZZER = 1000, R_POT = 10000, R_SONAR = 333, R_SWITCH = 0.05, G_MIN = 1e-9;
+const R_PIN = 25, R_PULLUP = 30000, R_LED = 10, R_BUZZER = 1000, R_POT = 10000, R_SONAR = 333, R_SERVO = 500, R_SWITCH = 0.05, G_MIN = 1e-9;
 
 class Sets {
   private p = new Map<string, string>();
@@ -110,7 +119,7 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
 
   /* 1. Everything wired together shares a net. */
   const els: El[] = [], uses = new Map<string, number>(), sonars: { id: string; vcc: string; trig: string; echo: string; gnd: string }[] = [];
-  const pads: { id: string; at: string }[] = [], buzzers: El[] = [];
+  const pads: { id: string; at: string }[] = [], buzzers: El[] = [], servos: { id: string; el: El; sig: string }[] = [];
   const touch = (n: string) => uses.set(sets.find(term(n)), (uses.get(sets.find(term(n))) ?? 0) + 1);
   const ids = items.map((it, k) => itemId(it, k));
   const needsRoot: [El, string[]][] = [];
@@ -136,6 +145,11 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
         sonars.push({ id, vcc, trig, echo, gnd }); break;
       }
       case 'pad': pads.push({ id, at: 'PAD' }); break;
+      case 'servo': {
+        const { gnd, vcc, sig } = servoLegs(it), e = mk('LOAD', vcc, gnd, { ohms: R_SERVO });
+        servos.push({ id, el: e, sig });
+        needsRoot.push([e, [gnd, vcc, sig]]); break;
+      }
     }
   });
   for (const [el, terms] of needsRoot) { els.push(el); terms.forEach(touch); }
@@ -207,7 +221,16 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
         if (!ok) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: 'Knob has no power',
           plain: 'A potentiometer divides a voltage, so its outer legs need power on one side and GND on the other. The middle leg then reads between them.' });
       }
-      if (e.kind === 'LOAD') {
+      if (e.kind === 'LOAD' && e.it.t === 'servo') {
+        const sig = sets.find(term(servoLegs(e.it).sig)), onPin = (r: string) => pinRoots.some(([, pr]) => pr === r);
+        if (rb !== gnd) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: 'Servo has no ground', plain: 'The servo\'s brown GND leg is not connected to GND, so it cannot turn.' });
+        else if (!live(ra, SERVO_MIN_VOLTS)) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: 'Servo has no power',
+          plain: onPin(ra) ? 'The servo\'s red + leg is wired to a pin. A pin cannot give a motor enough current. Power it from 5V (or VIN on the ESP32) and use the orange signal leg for the pin.'
+            : (volts(ra) ?? 0) > 0 ? `The servo needs about 5 V but its red + leg only gets ${volts(ra)} V, so it cannot turn. Power it from 5V${board === 'esp32' ? ' (VIN on the ESP32)' : ''}.`
+            : 'The servo\'s red + leg is not connected to a 5 V supply, so it cannot turn.' });
+        else if (!onPin(sig)) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: 'Servo signal is not connected', plain: 'The servo\'s orange signal leg is not wired to a pin, so the sketch cannot tell it where to turn.' });
+      }
+      else if (e.kind === 'LOAD') {
         if (rb !== gnd) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: 'Sensor has no ground', plain: 'The distance sensor\'s GND leg is not connected to GND, so it cannot work.' });
         else if (!live(ra, 4.5)) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: 'Sensor has no power',
           plain: (volts(ra) ?? 0) > 0 ? `The distance sensor needs 5 V but only gets ${volts(ra)} V, so its readings fail.` : 'The distance sensor\'s VCC leg is not connected to a 5 V supply, so it cannot work.' });
@@ -219,7 +242,7 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
   function solveAll(driveIn: Record<number, Drive> | ((p: number) => Drive), inputs: Record<string, number> = {}, burnt: Iterable<string> = []): Solution {
     const drive = (p: number): Drive => (typeof driveIn === 'function' ? driveIn(p) : driveIn[p]) ?? { mode: 'in', level: 0 };
     const dead = new Set(burnt), closed = (e: El) => (inputs[e.id] ?? 0) > 0.5;
-    const blank: Solution = { shorted: true, volt: () => 0, ledAmps: () => 0, ledGlow: () => 0, ledDuty: () => 0, buzzVolts: () => 0, pinsDriving: () => [], pinAmps: () => 0, pinVolt: () => 0, wireAmps: () => 0 };
+    const blank: Solution = { shorted: true, volt: () => 0, ledAmps: () => 0, ledGlow: () => 0, ledDuty: () => 0, buzzVolts: () => 0, servoVolts: () => 0, pinsDriving: () => [], pinAmps: () => 0, pinVolt: () => 0, wireAmps: () => 0 };
     if (shorted) return blank;
 
     const idx = new Map<string, number>();
@@ -336,6 +359,7 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
       },
       ledDuty: id => { const q = part(id); return q && amps(q.e, q.a, q.b) > 0 ? dutyOf(q) : 0; },
       buzzVolts: id => { const q = part(id); return q ? Math.abs(volt(q.a) - volt(q.b)) : 0; },
+      servoVolts: id => { const q = part(id); return q && q.e.it.t === 'servo' ? volt(q.a) - volt(q.b) : 0; },
       pinsDriving: driving,
       pinVolt: p => { const r = pinRoots.find(([n2]) => n2 === p)?.[1]; return r ? volt(r) : 0; },
       pinAmps: p => {
@@ -350,6 +374,7 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
     issues, solve: solveAll,
     pinAt: point => { const r = root(point); return pinRoots.find(([, pr]) => pr === r)?.[0] ?? null; },
     joined: (a, b) => root(a) === root(b),
+    servoPin: id => { const s = servos.find(x => x.id === id); if (!s) return null; const r = root(s.sig); return pinRoots.find(([, pr]) => pr === r)?.[0] ?? null; },
   };
 }
 

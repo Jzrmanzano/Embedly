@@ -5,6 +5,7 @@ const PATHS = {
   map: <><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v14" /></>,
   brief: <><path d="M9 4h6v3H9z" /><path d="M8 5.5H6.5A1.5 1.5 0 0 0 5 7v13a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 20V7a1.5 1.5 0 0 0-1.5-1.5H16" /><path d="M8.5 12h7M8.5 16h4" /></>,
   code: <path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 6l-3 12" />,
+  book: <><path d="M12 7C10.4 5.6 7.8 5 4 5v13c3.8 0 6.4.6 8 2 1.6-1.4 4.2-2 8-2V5c-3.8 0-6.4.6-8 2z" /><path d="M12 7v13" /></>,
   play: <path d="M7 5v14l12-7z" fill="currentColor" />,
   step: <><path d="M5.5 5v14" /><path d="M10 5l9 7-9 7z" fill="currentColor" /></>,
   forward: <path d="m5 5 7 7-7 7M12 5l7 7-7 7" />,

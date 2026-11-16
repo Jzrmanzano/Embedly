@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { MISSIONS, missionKey, PARTS } from '../data/missions';
 import { WIRE_CSS, wiringRows } from '../data/wiring';
-import { checkMission, fillAnswerCode, goTo, revealHint, showAnswer } from '../state/actions';
+import { checkMission, fillAnswerCode, goTo, revealHint, showAnswer, showGuide } from '../state/actions';
 import { missionOf, useLab } from '../state/store';
 
 /** Mission text is trusted HTML from src/data, so inline <code> tags can be used in it. */
@@ -26,6 +26,7 @@ export function MissionPanel() {
       <h2>{m.title}</h2>
       <p {...html(m.story)} />
       <div className="goal"><b>Goal</b><span>{m.goal}</span></div>
+      {m.showParts && <p className="g-tip">New to all this? The guide explains every instruction and every part from the very start. <button type="button" className="link" onClick={showGuide}>Open the guide</button> (or press <kbd>G</kbd>).</p>}
 
       {m.sandbox ? (
         <p className="free">This is free build, so there is nothing to check. Every part you have unlocked is in the tray.</p>

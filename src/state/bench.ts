@@ -2,7 +2,7 @@
 import { ESP_HOLES } from '../data/boards';
 import { itemId, type BoardId, type Item, type WireColor } from '../types';
 
-export type ToolKind = 'led' | 'res' | 'buzzer' | 'wire' | 'button' | 'pot' | 'sonar' | 'pad';
+export type ToolKind = 'led' | 'res' | 'buzzer' | 'wire' | 'button' | 'pot' | 'sonar' | 'pad' | 'servo';
 export interface Tool { kind: ToolKind; color?: number; ohms?: number }
 
 /** Parts that go between two points the student picks one after the other. */
@@ -34,18 +34,18 @@ export function holesOf(it: Item): string[] {
     case 'wire': case 'res': case 'buzzer': return [it.a, it.b];
     case 'led': return [it.a, it.k];
     case 'button': return [`e${it.col}`, `e${it.col + 2}`, `f${it.col}`, `f${it.col + 2}`];
-    case 'pot': return [0, 1, 2].map(i => `${it.row}${it.col + i}`);
+    case 'pot': case 'servo': return [0, 1, 2].map(i => `${it.row}${it.col + i}`);
     case 'sonar': return [0, 1, 2, 3].map(i => `${it.row}${it.col + i}`);
     case 'pad': return [];
   }
 }
 
-const NAMES: Record<ToolKind, string> = { led: 'LED', res: 'resistor', buzzer: 'buzzer', wire: 'wire', button: 'button', pot: 'knob', sonar: 'distance sensor', pad: 'touch pad' };
+const NAMES: Record<ToolKind, string> = { led: 'LED', res: 'resistor', buzzer: 'buzzer', wire: 'wire', button: 'button', pot: 'knob', sonar: 'distance sensor', pad: 'touch pad', servo: 'servo' };
 
 /** Why an item cannot go on the bench as it is, or null when it can. */
 export function placementError(board: BoardId, items: Item[], it: Item): string | null {
   const valid = new Set(allTerminals(board, items)), used = new Set(items.flatMap(holesOf)), leads = holesOf(it), what = NAMES[it.t];
-  if ((it.t === 'button' || it.t === 'pot') && it.col + 2 > COLS) return `A ${what} needs three columns. Pick a column further left.`;
+  if ((it.t === 'button' || it.t === 'pot' || it.t === 'servo') && it.col + 2 > COLS) return `A ${what} needs three columns. Pick a column further left.`;
   if (it.t === 'sonar' && it.col + 3 > COLS) return 'A distance sensor needs four columns. Pick a column further left.';
   if (new Set(leads).size < leads.length) return 'Pick two different points.';
   for (const p of leads) {
@@ -53,7 +53,7 @@ export function placementError(board: BoardId, items: Item[], it: Item): string 
     if (!valid.has(p)) return /^[a-j]\d+$/.test(p) && board === 'esp32' ? 'That spot is under the ESP32. Use the free holes on the right, or its pins.' : `${p} is not a place on this bench.`;
     if (used.has(p)) return `${p} is already taken. Each hole holds one leg or wire end.`;
   }
-  if ((it.t === 'pot' || it.t === 'sonar') && board === 'esp32' && it.col < ESP_FIRST_FREE) return 'That spot is under the ESP32. Use the free holes on the right.';
+  if ((it.t === 'pot' || it.t === 'sonar' || it.t === 'servo') && board === 'esp32' && it.col < ESP_FIRST_FREE) return 'That spot is under the ESP32. Use the free holes on the right.';
   if (it.t === 'pad' && items.some(x => x.t === 'pad')) return 'There is only one touch pad.';
   return null;
 }
@@ -86,6 +86,7 @@ export function makeItem(tool: Tool, items: Item[], a: string, b?: string): Item
     case 'pot': return { t: 'pot', id: nextId(items, 'pot'), row, col, ctl: DEFAULT_CTL.pot! };
     case 'sonar': return { t: 'sonar', id: nextId(items, 'sonar'), row, col, ctl: DEFAULT_CTL.sonar! };
     case 'pad': return { t: 'pad', id: nextId(items, 'pad'), ctl: DEFAULT_CTL.pad! };
+    case 'servo': return { t: 'servo', id: nextId(items, 'servo'), row, col };
   }
 }
 

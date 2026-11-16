@@ -10,7 +10,9 @@ export type Item =
   | { t: 'pot'; id: string; row: string; col: number; pin?: number; ctl: string }
   | { t: 'buzzer'; id: string; a: string; b: string; pin?: number }
   | { t: 'sonar'; id: string; row: string; col: number; trig?: number; echo?: number; ctl: string }
-  | { t: 'pad'; id: string; pin?: number; ctl: string };
+  | { t: 'pad'; id: string; pin?: number; ctl: string }
+  /** A hobby servo plugged in by its three-pin lead: GND (brown) in `row``col`, + (red) one column right, signal (orange) two columns right. */
+  | { t: 'servo'; id: string; row: string; col: number };
 
 export const itemId = (it: Item, index: number): string => (('id' in it && it.id) || it.t + index);
 

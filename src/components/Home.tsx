@@ -1,5 +1,7 @@
 import { BOARDS } from '../data/boards';
+import { GUIDE } from '../data/guide';
 import { MISSIONS } from '../data/missions';
+import { startWithGuide } from '../state/actions';
 import { Icon } from './Icons';
 
 const ALL_BOARDS = Object.values(BOARDS);
@@ -9,7 +11,7 @@ const TAGLINES: Record<string, string> = {
 };
 const STEPS = [
   ['Pick a place', 'Open the campus map and choose a mission: a small device to build for somewhere at school, like a night light or a door chime.'],
-  ['Build and predict', 'Place the parts and wires on the 3D bench yourself, write the sketch, and say what you expect before you run it.'],
+  ['Build and predict', 'Place the parts and wires on the 3D bench yourself, write the sketch, and say what you expect before you run it. Stuck? The built-in guide explains every instruction and part.'],
   ['Prove it', 'Run the checks on your own build. Every one has to pass, and passing unlocks new parts and the next places on the map.'],
 ] as const;
 
@@ -56,6 +58,7 @@ export function Home() {
               <a className="cta" href="#uno-tour">Start with the Arduino Uno →</a>
               <a className="ghost" href="#esp32-tour">Try the ESP32</a>
             </div>
+            <p className="hero-note">New to this? <a href="#uno-tour" onClick={e => { e.preventDefault(); startWithGuide(); }}>Read the guide first</a>: {GUIDE.length} short chapters on the code, the breadboard and the parts.</p>
           </div>
           <BoardArt />
         </section>

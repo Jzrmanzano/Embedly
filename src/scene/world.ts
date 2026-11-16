@@ -334,6 +334,34 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
     set(30);
     return { g, set, top: new T.Vector3(cx, y + 25, z) };
   }
+  /** A 9 g hobby servo. Its three-pin lead plugs into the breadboard and the motor sits on the table beyond the nearest edge, its white arm turning to the angle. */
+  function mkServo(it: Of<'servo'>): Made {
+    const g = new T.Group(), legs = [0, 1, 2].map(i => anchor(`${it.row}${it.col + i}`)), mid = legs[1], y = mid.y;
+    const away = it.row <= 'e' ? -1 : 1, bodyZ = away * 46, bodyX = mid.x;
+    legs.forEach(p => box(g, p.x, y, p.z, 0.6, 2.6, 0.6, GOLD, { nh: 1 }));
+    box(g, mid.x, y + 2.6, mid.z, 7.6, 6, 2.6, DARK);   // the plug on the end of the lead
+    const LEAD = [0x7a4a21, 0xd6453d, 0xf08a24];   // brown GND, red +, orange signal
+    legs.forEach((p, i) => {
+      const s = new T.Vector3(p.x, y + 8.6, p.z), e = new T.Vector3(bodyX - 2.6 + i * 2.6, 9, bodyZ - away * 6.2);
+      const curve = new T.CubicBezierCurve3(s, s.clone().setY(s.y + 8), e.clone().add(new T.Vector3(0, 10, -away * 10)), e);
+      g.add(new T.Mesh(new T.TubeGeometry(curve, 20, 0.6, 6), toon(LEAD[i])));
+      g.add(new T.Mesh(new T.TubeGeometry(curve, 20, 0.6 + HT, 6), shell(g)));
+    });
+    box(g, bodyX, 0, bodyZ, 23, 22.5, 12.2, 0x2f6db5);   // the case
+    box(g, bodyX, 15.5, bodyZ, 32.5, 2.4, 12.2, 0x2f6db5);   // mounting tabs
+    const shaftX = bodyX + 5.6, topY = 22.5;
+    cyl(g, shaftX, topY, bodyZ, 5.8, 1.6, 0x2a5ea0);
+    const arm = new T.Group(); arm.userData.hm = shell(g); arm.position.set(shaftX, topY + 1.6, bodyZ); g.add(arm);
+    cyl(arm, 0, 0, 0, 3.2, 2.6, 0xf2f2ee);
+    box(arm, 8, 0.6, 0, 16, 1.6, 4.2, 0xf2f2ee);   // the horn, pointing along +x at 0°
+    cyl(arm, 15, 0.6, 0, 2.1, 1.6, 0xf2f2ee);
+    shadow(g, bodyX, bodyZ, 32, 12);
+    let target = 90, shown = 90;
+    const turn = () => { arm.rotation.y = (shown * Math.PI) / 180; };   // 0° points right, 90° points away across the table, 180° points left
+    turn();
+    itemAnim.push(() => { if (Math.abs(target - shown) < 0.3) return; shown += (target - shown) * 0.18; turn(); });   // a real servo takes a moment to get there
+    return { g, set: angle => { if (angle >= 0) target = angle; }, top: new T.Vector3(bodyX, topY + 8, bodyZ) };
+  }
   function mkPad(): Made {
     const at = padPos!, g = new T.Group(), m = box(g, at.x, 0, at.z, 18, 0.8, 18, 0xc98a4b);
     const set = (on: number) => { m.material.emissive.setHex(0xffc27a); m.material.emissiveIntensity = on ? 0.7 : 0; };
@@ -349,6 +377,7 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
       case 'buzzer': return mkBuzzer(it);
       case 'sonar': return mkSonar(it);
       case 'pad': return mkPad();
+      case 'servo': return mkServo(it);
     }
   }
 

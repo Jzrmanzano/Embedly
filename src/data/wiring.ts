@@ -20,12 +20,13 @@ export function wiringRows(circuit: Item[]): WiringRow[] {
   return circuit.map((it): WiringRow => {
     switch (it.t) {
       case 'led': return { part: 'LED', where: `long leg in ${it.a}, short leg in ${it.k}` };
-      case 'res': return { part: '220 Ω resistor', where: `${it.a} to ${it.b}` };
+      case 'res': { const ohms = it.ohms ?? 220; return { part: `${ohms >= 1000 ? `${ohms / 1000} kΩ` : `${ohms} Ω`} resistor`, where: `${it.a} to ${it.b}` }; }
       case 'button': return { part: 'Push button', where: `across the centre gap: e${it.col}, e${it.col + 2}, f${it.col}, f${it.col + 2}` };
       case 'pot': return { part: 'Potentiometer', where: `${it.row}${it.col}, ${it.row}${it.col + 1}, ${it.row}${it.col + 2}` };
       case 'buzzer': return { part: 'Buzzer', where: `one leg in ${it.a}, the other in ${it.b}` };
       case 'sonar': return { part: 'HC-SR04', where: `VCC ${it.row}${it.col}, Trig ${it.row}${it.col + 1}, Echo ${it.row}${it.col + 2}, GND ${it.row}${it.col + 3}` };
       case 'pad': return { part: 'Touch pad', where: 'on the table, on the end of the white wire' };
+      case 'servo': return { part: 'Servo', where: `GND (brown) ${it.row}${it.col}, + (red) ${it.row}${it.col + 1}, signal (orange) ${it.row}${it.col + 2}` };
       case 'wire': return { part: `${it.c[0].toUpperCase() + it.c.slice(1)} wire`, where: `${pointName(it.a)} to ${pointName(it.b)}`, wire: it.c };
     }
   });

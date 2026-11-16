@@ -1,24 +1,41 @@
-import { Canvas } from '@react-three/fiber';
-import { Component, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from 'react';
 import { ITEM_INFO } from '../data/boards';
 import { lockedBy, PARTS, unlockedParts, type PartId } from '../data/missions';
-import { Bench, view } from '../scene/Bench';
+import { view } from '../scene/view';
 import { analyze } from '../sim/circuit';
 import { cancelTool, currentReadout, dismissNotice, escapePanel, flipItem, moveWireTyped, pickTool, placeTyped, redo, removeItem, requestRun, resetBench, resumeRun, selectHot, setHelp, setInput, setNav, stepOnce, stopRun, toggleLabels, togglePanel, toggleSound, undo } from '../state/actions';
 import { TWO_POINT, type Tool, type ToolKind } from '../state/bench';
 import { benchOf, boardOf, keyOf, missionOf, useLab } from '../state/store';
 import { itemId, type Item } from '../types';
+import { Boundary, isLoadError } from './Boundary';
 import { Icon } from './Icons';
 
-/** Shows a message in place of the 3D view on devices where WebGL cannot start. */
-class Fallback extends Component<{ children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
-  static getDerivedStateFromError() { return { failed: true }; }
-  render() {
-    return this.state.failed
-      ? <p className="fail">The 3D view could not start on this device. The missions, code editor and serial monitor still work.</p>
-      : this.props.children;
-  }
+/** The 3D view and three.js come in their own file, fetched when the bench first shows. */
+const loadScene = () => import('../scene/Scene');
+
+/** The 3D view, loaded on demand. If it crashes or cannot load, a message takes its place and everything else on the bench keeps working. */
+function Scene3D({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | null> }) {
+  const board = useLab(s => s.board), [attempt, setAttempt] = useState(0);
+  const Scene = useMemo(() => lazy(loadScene), [attempt]);   // a fresh lazy() on retry, since a failed one remembers its failure
+  return (
+    <Boundary
+      resetKey={`${board}-${attempt}`}
+      fallback={(error, retry) => (
+        <div className="fail" role="alert">
+          <div>
+            <p>{isLoadError(error)
+              ? 'The 3D view could not be downloaded. Check the internet connection and try again.'
+              : 'The 3D view stopped working. On some devices it cannot start at all. The missions, code editor and Serial Monitor still work.'}</p>
+            <button type="button" onClick={() => { setAttempt(a => a + 1); retry(); }}>Try again</button>
+          </div>
+        </div>
+      )}
+    >
+      <Suspense fallback={<p className="fail" role="status">Setting up the bench…</p>}>
+        <Scene labelLayer={labelLayer} />
+      </Suspense>
+    </Boundary>
+  );
 }
 
 /* --- the parts tray --- */
@@ -33,6 +50,7 @@ const STEPS: Record<ToolKind, [string, string?]> = {
   pot: ['Click the hole for the knob\'s left leg. It uses three columns in a row.'],
   sonar: ['Click the hole for the sensor\'s VCC leg. It uses four columns in a row.'],
   pad: ['The touch pad sits on the table. Connect it with a wire to PAD.'],
+  servo: ['Click the hole for the servo\'s brown GND leg. Its lead uses three columns in a row: GND, + and signal.'],
 };
 
 function Tray() {
@@ -253,6 +271,7 @@ function useHotkeys() {
         const letter = k.toLowerCase();
         if (letter === 'm') togglePanel('map');
         else if (letter === 'b') togglePanel('brief');
+        else if (letter === 'g') togglePanel('guide');
         else if (letter === 'c') togglePanel('code');
         else if (letter === 't') view.top();
         else if (k === '0') view.fit();
@@ -306,23 +325,11 @@ function Tools() {
 /** The 3D bench with everything that sits on it. The panels (map, brief, code) open over it from the side. */
 export function Stage() {
   const labels = useLab(s => s.labels);
-  const down = useRef([0, 0]), labelLayer = useRef<HTMLDivElement>(null);
+  const labelLayer = useRef<HTMLDivElement>(null);
   useHotkeys();
   return (
-    <div className="stage" onPointerDown={e => { down.current = [e.clientX, e.clientY]; }}>
-      <Fallback>
-        {/* legacy linear flat: plain colours in, plain colours out. The toon look needs no colour management or tone mapping. */}
-        <Canvas
-          orthographic legacy linear flat
-          dpr={[1, 2]}
-          gl={{ antialias: true, alpha: true }}
-          camera={{ manual: true, near: 1, far: 4000 }}
-          style={{ position: 'absolute', inset: 0 }}
-          onPointerMissed={e => { if (Math.hypot(e.clientX - down.current[0], e.clientY - down.current[1]) < 5 && !useLab.getState().tool) selectHot(null); }}
-        >
-          <Bench labelLayer={labelLayer} />
-        </Canvas>
-      </Fallback>
+    <div className="stage">
+      <Scene3D labelLayer={labelLayer} />
       <div className="hotlayer" ref={labelLayer} hidden={!labels} />
       <Probe />
       <RunBar />

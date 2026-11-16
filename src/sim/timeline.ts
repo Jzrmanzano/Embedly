@@ -8,13 +8,15 @@ export interface Frame {
   line: number;
   drive: Record<number, Drive>;
   tones: Record<number, number>;
+  /** The angle sent on each pin that has a servo attached. Frames recorded before servos existed have none. */
+  servos?: Record<number, number>;
   inputs: Record<string, number>;
 }
 
 export const MAX_FRAMES = 1500;
 
 const same = (a: Frame, b: Frame) =>
-  a.line === b.line && a.t === b.t && JSON.stringify(a.drive) === JSON.stringify(b.drive) && JSON.stringify(a.tones) === JSON.stringify(b.tones);
+  a.line === b.line && a.t === b.t && JSON.stringify(a.drive) === JSON.stringify(b.drive) && JSON.stringify(a.tones) === JSON.stringify(b.tones) && JSON.stringify(a.servos) === JSON.stringify(b.servos);
 
 /** Adds a frame unless it repeats the last one, and forgets the oldest frames beyond the ceiling. */
 export function pushFrame(frames: Frame[], f: Frame): void {

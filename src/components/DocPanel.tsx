@@ -1,4 +1,5 @@
-import { setTab } from '../state/actions';
+import { chapterOf } from '../data/guide';
+import { readGuide, setTab, showGuide } from '../state/actions';
 import { boardOf, missionOf, useLab, type Tab } from '../state/store';
 import type { Board } from '../types';
 import { html, MissionPanel } from './MissionPanel';
@@ -11,6 +12,11 @@ function Notes() {
     <>
       <h2>How the code works</h2>
       <ul>{m.how.map((x, i) => <li key={i} {...html(x)} />)}</ul>
+      <h3>Explained in the guide</h3>
+      <ul className="g-links">
+        {m.guide.map(id => <li key={id}><button type="button" className="link" onClick={() => readGuide(id)}>{chapterOf(id)?.title ?? id}</button></li>)}
+      </ul>
+      <p className="actions"><button type="button" onClick={showGuide}>All topics</button><small>Every instruction and part, explained from the start.</small></p>
     </>
   );
 }

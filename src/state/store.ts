@@ -3,7 +3,7 @@ import { BOARDS } from '../data/boards';
 import { MISSIONS, missionKey } from '../data/missions';
 import type { CheckResult } from '../sim/check';
 import type { BoardId, Item } from '../types';
-import { NONE as NO_PANELS, type Panel, type Panels } from './panels';
+import { NONE as NO_PANELS, USUAL_WIDTHS, type Panel, type Panels, type Widths } from './panels';
 import type { Tool } from './bench';
 
 export type Tab = 'mission' | 'notes' | 'board';
@@ -45,8 +45,12 @@ export interface LabState {
   /** Which panels are open over the bench, and the panel the student just asked for, which should take the keyboard focus. */
   panels: Panels;
   focusPanel: { name: Panel; n: number } | null;
+  /** How wide the student has dragged the left and right panels. */
+  widths: Widths;
   /** The keyboard help is open. */
   help: boolean;
+  /** The chapter of the guide that is open, or null for its contents page. */
+  guide: string | null;
   /** Step mode: the sketch is held before the line shown, waiting for Step. */
   paused: boolean;
   line: number | null;
@@ -100,9 +104,18 @@ export function saveBenches(benches: Record<string, Item[]>, burnt: Record<strin
   try { localStorage.setItem(BENCH_KEY, JSON.stringify({ benches, burnt })); } catch { /* the bench just is not remembered */ }
 }
 
+const WIDTH_KEY = 'boardlab-panel-widths';
+function loadWidths(): Widths {
+  const px = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
+  try { const v = JSON.parse(localStorage.getItem(WIDTH_KEY) || '{}'); return { left: px(v?.left), right: px(v?.right) }; } catch { return USUAL_WIDTHS; }
+}
+export function saveWidths(widths: Widths) {
+  try { localStorage.setItem(WIDTH_KEY, JSON.stringify(widths)); } catch { /* the widths just are not remembered */ }
+}
+
 const saved = loadBenches();
 export const useLab = create<LabState>(() => ({
-  home: true, board: 'uno', mission: 0, tab: 'mission', panels: NO_PANELS, focusPanel: null, help: false, hot: null, edits: {}, ...saved, undo: {}, redo: {},
+  home: true, board: 'uno', mission: 0, tab: 'mission', panels: NO_PANELS, focusPanel: null, widths: loadWidths(), help: false, guide: null, hot: null, edits: {}, ...saved, undo: {}, redo: {},
   tool: null, pending: null, point: null, notice: null, drag: null, sparks: 0, paused: false, line: null, cursor: null, frameTick: 0, probe: null,
   inputs: {}, ...loadProgress(), results: null, checking: false, asking: null,
   sound: false, nav: 'pan', labels: true, running: false, errLine: null, serial: '',

@@ -1,5 +1,5 @@
 import type { Board, Item } from '../types';
-import { analyze, LED_BURN_AMPS, PIN_MAX_AMPS, type Analysis, type Drive, type Solution } from './circuit';
+import { analyze, LED_BURN_AMPS, PIN_MAX_AMPS, SERVO_MIN_VOLTS, type Analysis, type Drive, type Solution } from './circuit';
 import type { Hardware } from './interpreter';
 import type { Frame } from './timeline';
 
@@ -21,12 +21,18 @@ export interface Readout {
   buzzFreq(id: string): number;
   /** The board's own LED, 0 to 1. */
   builtinGlow: number;
+  /** The angle a servo is being told to hold, or -1 when it gets no signal or no power. */
+  servoAngle(id: string): number;
 }
 
-function readoutOf(board: Board, circuit: Solution, drive: (pin: number) => Drive, tones: Record<number, number>): Readout {
+/** How much of each 20 ms frame a servo pulse is high: 0.5 ms for 0° up to 2.5 ms for 180°. */
+const servoDuty = (angle: number) => (0.5 + (angle / 180) * 2) / 20;
+
+function readoutOf(board: Board, analysis: Analysis, circuit: Solution, drive: (pin: number) => Drive, tones: Record<number, number>, servos: Record<number, number>): Readout {
   const d = drive(board.builtin);
   return {
     circuit,
+    servoAngle: id => { const p = analysis.servoPin(id); return p != null && p in servos && circuit.servoVolts(id) >= SERVO_MIN_VOLTS ? servos[p] : -1; },
     ledGlow: id => circuit.ledGlow(id),
     buzzFreq: id => (circuit.buzzVolts(id) < 1 ? 0 : Math.max(0, ...circuit.pinsDriving(id).map(p => tones[p] || 0))),
     builtinGlow: d.mode === 'out' ? d.level : d.mode === 'pullup' ? 0.07 : 0,   // a pin left as INPUT can only make an LED glow faintly
@@ -36,12 +42,14 @@ function readoutOf(board: Board, circuit: Solution, drive: (pin: number) => Driv
 /** The board as it was at a recorded frame. */
 export function makeReadout(board: Board, analysis: Analysis, frame: Frame, burnt: Iterable<string> = []): Readout {
   const off: Drive = { mode: 'in', level: 0 }, drive = (p: number): Drive => (frame.tones[p] ? { mode: 'out', level: 1 } : frame.drive[p] ?? off);
-  return readoutOf(board, analysis.solve(drive, frame.inputs, burnt), drive, frame.tones);
+  return readoutOf(board, analysis, analysis.solve(drive, frame.inputs, burnt), drive, frame.tones, frame.servos ?? {});
 }
 
 export interface VirtualHW extends Hardware {
   /** Frequency currently sounding on each pin, 0 when silent. */
   tones: Record<number, number>;
+  /** The angle sent on each pin that has a servo attached. */
+  servos: Record<number, number>;
   /** Ends a delay() early so a stopped sketch returns at once. */
   wakeUp(): void;
   /** How brightly the LEDs driven by this pin shine, 0 to 1 (the board's own LED counts for its pin). */
@@ -69,7 +77,7 @@ export interface VirtualHW extends Hardware {
 
 /** The pins of a virtual board, connected through the student's wiring to the parts of one circuit. `inputs` reads the on-screen button, knob and wall. */
 export function makeHW(board: Board, circuit: Item[], inputs: () => Record<string, number>, print: (text: string) => void, hooks: HWHooks = {}): VirtualHW {
-  const mode: Record<number, number> = {}, level: Record<number, number> = {}, tones: Record<number, number> = {}, t0 = performance.now();
+  const mode: Record<number, number> = {}, level: Record<number, number> = {}, tones: Record<number, number> = {}, servos: Record<number, number> = {}, t0 = performance.now();
   const analysis = analyze(board.id, circuit), burnt = new Set(hooks.burnt ?? []), warned = new Set<number>();
   const logic = board.id === 'uno' ? 5 : 3.3;
   let wake: (() => void) | null = null, timer: ReturnType<typeof setTimeout> | undefined;
@@ -82,7 +90,7 @@ export function makeHW(board: Board, circuit: Item[], inputs: () => Record<strin
   const drive = (p: number): Drive => (tones[p] ? { mode: 'out', level: 1 } : raw(p));
   /** The circuit solved for the pins and inputs as they are now, solved again only when something changed. */
   function circuitNow(): Solution {
-    const k = JSON.stringify([mode, level, tones, inputs()]);   // solved again only when something that matters has changed
+    const k = JSON.stringify([mode, level, tones, servos, inputs()]);   // solved again only when something that matters has changed
     if (key && k === key) return sol;
     for (let again = 0; again < 4; again++) {   // a burnt LED changes the circuit, so look again after each
       sol = analysis.solve(drive, inputs(), burnt);
@@ -107,7 +115,7 @@ export function makeHW(board: Board, circuit: Item[], inputs: () => Record<strin
   const ledIds = circuit.filter(it => it.t === 'led').map(it => (it as Extract<Item, { t: 'led' }>).id);
 
   const hw: VirtualHW = {
-    consts: board.consts, tones, print, analysis, line: 0, skipDelays: false,
+    consts: board.consts, tones, servos, print, analysis, line: 0, skipDelays: false,
     sleep: ms => { if (hw.skipDelays) { skew += ms; hooks.onChange?.(); return Promise.resolve(); } return new Promise<void>(r => { wake = r; timer = setTimeout(r, ms); }); },
     pause: () => new Promise<void>(r => setTimeout(r, 0)),
     wakeUp() { clearTimeout(timer); wake?.(); },
@@ -115,8 +123,8 @@ export function makeHW(board: Board, circuit: Item[], inputs: () => Record<strin
     elapsed: () => (hooks.virtualClock ? skew + ticks : performance.now() - t0 + skew),
     advance(ms) { skew += ms; },
     pinMode(p, m) { mode[p] = m; if (m !== 1) level[p] = m === 2 ? 1 : 0; changed(); },
-    digitalWrite(p, v) { level[p] = v ? 1 : 0; changed(); },
-    analogWrite(p, v) { mode[p] = 1; level[p] = Math.min(255, Math.max(0, v)) / 255; changed(); },
+    digitalWrite(p, v) { delete servos[p]; level[p] = v ? 1 : 0; changed(); },
+    analogWrite(p, v) { delete servos[p]; mode[p] = 1; level[p] = Math.min(255, Math.max(0, v)) / 255; changed(); },
     digitalRead(p) {
       if (mode[p] === 1) return level[p] > 0.5 ? 1 : 0;
       return circuitNow().pinVolt(p) > logic * 0.6 ? 1 : 0;
@@ -127,6 +135,11 @@ export function makeHW(board: Board, circuit: Item[], inputs: () => Record<strin
     },
     tone(p, f, d) { tones[p] = f; changed(); if (d) setTimeout(() => { if (tones[p] === f) { tones[p] = 0; changed(); } }, d); },
     noTone(p) { tones[p] = 0; changed(); },
+    servo(p, angle) {   // the pin becomes an output that sends a short pulse every 20 ms; the pulse's length is the angle
+      if (angle == null) { delete servos[p]; level[p] = 0; }
+      else { servos[p] = angle; mode[p] = 1; level[p] = servoDuty(angle); }
+      changed();
+    },
     pulseIn(p) {
       const s = find('sonar', it => analysis.pinAt(`${it.row}${it.col + 2}`) === p);
       if (!s) return 0;
@@ -146,9 +159,9 @@ export function makeHW(board: Board, circuit: Item[], inputs: () => Record<strin
       return Math.max(0, ...now.pinsDriving(id).map(p => tones[p] || 0));
     },
     circuit: circuitNow,
-    readout: () => readoutOf(board, circuitNow(), drive, tones),
+    readout: () => readoutOf(board, analysis, circuitNow(), drive, tones, servos),
     snapshot: () => {
-      const pins = new Set([...Object.keys(mode), ...Object.keys(level), ...Object.keys(tones)].map(Number)), snap: Frame = { t: hw.now(), line: hw.line, drive: {}, tones: { ...tones }, inputs: { ...inputs() } };
+      const pins = new Set([...Object.keys(mode), ...Object.keys(level), ...Object.keys(tones)].map(Number)), snap: Frame = { t: hw.now(), line: hw.line, drive: {}, tones: { ...tones }, servos: { ...servos }, inputs: { ...inputs() } };
       for (const p of pins) snap.drive[p] = raw(p);
       return snap;
     },

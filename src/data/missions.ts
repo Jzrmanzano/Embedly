@@ -1,11 +1,11 @@
 /* Campus Missions. Each mission is a small device to build for somewhere on a school campus, checked by running the student's own sketch on the student's own circuit.
    The reference build in each mission (`circuit` and `answer`) is what the tests run to prove the checks can be passed, and what the last hint offers. */
-import { blinks, ledOn, phases, reaction, soundOn, sweeps, type InputStep, type Sample, type Scenario, type Trace } from '../sim/check';
+import { blinks, colorOn, ledOn, phases, reaction, servoAt, soundOn, sweeps, type InputStep, type Sample, type Scenario, type Trace } from '../sim/check';
 import type { Tool } from '../state/bench';
 import type { BoardId, Item } from '../types';
 
 /* --- the parts tray --- */
-export type PartId = 'led-red' | 'led-green' | 'res-220' | 'res-1k' | 'res-10k' | 'wire' | 'button' | 'knob' | 'buzzer' | 'sonar' | 'pad';
+export type PartId = 'led-red' | 'led-green' | 'res-220' | 'res-1k' | 'res-10k' | 'wire' | 'button' | 'knob' | 'buzzer' | 'sonar' | 'pad' | 'servo';
 export const PARTS: Record<PartId, { label: string; tool: Tool; swatch?: string; only?: BoardId }> = {
   'led-red': { label: 'Red LED', tool: { kind: 'led', color: 0xff3b30 }, swatch: '#ff3b30' },
   'led-green': { label: 'Green LED', tool: { kind: 'led', color: 0x2ecc40 }, swatch: '#2ecc40' },
@@ -18,6 +18,7 @@ export const PARTS: Record<PartId, { label: string; tool: Tool; swatch?: string;
   buzzer: { label: 'Buzzer', tool: { kind: 'buzzer' } },
   sonar: { label: 'Distance sensor', tool: { kind: 'sonar' } },
   pad: { label: 'Touch pad', tool: { kind: 'pad' }, only: 'esp32' },
+  servo: { label: 'Servo', tool: { kind: 'servo' } },
 };
 /** What the tray holds before any mission has been passed. */
 export const BASE_PARTS: PartId[] = ['led-red', 'res-220', 'wire'];
@@ -27,7 +28,7 @@ export function partIdOf(it: Item): PartId {
     case 'led': return it.color === 0x2ecc40 ? 'led-green' : 'led-red';
     case 'res': return it.ohms === 1000 ? 'res-1k' : it.ohms === 10000 ? 'res-10k' : 'res-220';
     case 'pot': return 'knob';
-    case 'wire': case 'button': case 'buzzer': case 'sonar': case 'pad': return it.t;
+    case 'wire': case 'button': case 'buzzer': case 'sonar': case 'pad': case 'servo': return it.t;
   }
 }
 
@@ -65,6 +66,8 @@ export interface Mission {
   story: string;
   goal: string;
   how: string[];
+  /** The chapters of the guide (ids from src/data/guide.ts) that explain what this mission uses, most useful first. */
+  guide: string[];
   /** The on-screen controls, named for the story ("Hallway light level"). */
   controls?: Partial<Record<'button' | 'pot' | 'sonar' | 'pad', string>>;
   starter: string;
@@ -128,10 +131,14 @@ const reactExplain = (laterId: string, laterText: string, earlierId: string, ear
 
 const dark = 0.1, bright = 0.9;
 
+/** Three short taps of a button at uneven moments, so a sketch that only looks at the button now and then misses at least one. */
+const TAP_TIMES = [1000, 2250, 3600];
+const TAPS: InputStep[] = [{ from: 0, set: { button: 0 } }, ...TAP_TIMES.flatMap(t => [{ from: t, set: { button: 1 } }, { from: t + 150, set: { button: 0 } }])];
+
 /* --- the Uno missions --- */
 const UNO: Mission[] = [
   {
-    id: 'tour', title: 'Workshop tour', place: 'Maker Workshop', hook: 'Meet the board and make its own light blink.', map: [25, 93], after: [], showParts: true,
+    id: 'tour', title: 'Workshop tour', place: 'Maker Workshop', hook: 'Meet the board and make its own light blink.', map: [25, 93], after: [], showParts: true, guide: ['sketch', 'pinmode', 'digitalwrite', 'delay', 'serial'],
     story: 'Every maker starts in the workshop. An Arduino Uno is a small computer that runs one program, called a sketch. Click the labels on the board to see what each part does. Then finish the sketch so the tiny light marked <b>L</b> blinks.',
     goal: 'Make the board\'s own L light blink, half a second on and half a second off.',
     how: ['<code>setup()</code> runs once when the board starts. <code>loop()</code> runs again and again, forever.', '<code>LED_BUILTIN</code> is pin 13, the pin wired to the L light.', '<code>Serial.println()</code> sends text to the Serial Monitor under the code.'],
@@ -173,7 +180,7 @@ void loop() {
     unlocks: [],
   },
   {
-    id: 'beacon', title: 'Gate beacon', place: 'Front Gate', hook: 'Build a blinking light so delivery drivers can find the gate.', map: [30, 80], after: [],
+    id: 'beacon', title: 'Gate beacon', place: 'Front Gate', hook: 'Build a blinking light so delivery drivers can find the gate.', map: [30, 83], after: [], guide: ['circuit', 'breadboard', 'led', 'resistor', 'variables'],
     story: 'The front gate has no light and delivery drivers keep missing it after dark. Build a <b>beacon</b>: an LED that blinks about once a second. You will wire it yourself, so remember that current needs a complete loop and that an LED needs a resistor.',
     goal: 'Wire an LED and a resistor to any digital pin, and make the LED blink about once a second.',
     how: ['<code>const int LED_PIN = 13;</code> gives the pin a name, so you change one line if you move the wire.', '<code>pinMode(LED_PIN, OUTPUT)</code> lets the pin supply current.', 'HIGH puts 5 V on the pin and lights the LED. LOW puts 0 V and it goes dark.'],
@@ -217,7 +224,7 @@ void loop() {
     unlocks: ['knob', 'res-10k'],
   },
   {
-    id: 'nightlight', title: 'Night light', place: 'Main Hallway', hook: 'Turn a light on when the hallway gets dark.', map: [70, 67], after: ['beacon'],
+    id: 'nightlight', title: 'Night light', place: 'Main Hallway', hook: 'Turn a light on when the hallway gets dark.', map: [70, 73], after: ['beacon'], guide: ['knob', 'analog', 'ifelse'],
     story: 'The main hallway is pitch dark after the last bell, and the lights are on a timer nobody trusts. Build a <b>night light</b> that comes on by itself when it is dark and goes off when it is bright. The knob stands in for the light sensor: <b>0% is darkness</b>, <b>100% is full daylight</b>.',
     goal: 'The LED comes on when the light level is low and goes off when it is high.',
     controls: { pot: 'Hallway light level' },
@@ -280,7 +287,7 @@ void loop() {
     unlocks: ['button'],
   },
   {
-    id: 'lamp', title: 'Reading lamp', place: 'Reading Room', hook: 'Dim a lamp smoothly with a dial.', map: [30, 54], after: ['nightlight'],
+    id: 'lamp', title: 'Reading lamp', place: 'Reading Room', hook: 'Dim a lamp smoothly with a dial.', map: [30, 63], after: ['nightlight'], guide: ['analog', 'knob'],
     story: 'The reading room lamp is either blinding or off. Build a <b>dimmer</b>: turning the dial up should make the lamp brighter, and all the way down should switch it off. A pin cannot output half a voltage, but it can switch on and off so fast that the LED looks dimmer. That is called PWM.',
     goal: 'The LED\'s brightness follows the dial from off to full.',
     controls: { pot: 'Lamp dial' },
@@ -346,7 +353,7 @@ void loop() {
     unlocks: ['buzzer'],
   },
   {
-    id: 'chime', title: 'Door chime', place: 'Front Office', hook: 'Play a two-note chime when a visitor presses the bell.', map: [70, 41], after: ['lamp'],
+    id: 'chime', title: 'Door chime', place: 'Front Office', hook: 'Play a two-note chime when a visitor presses the bell.', map: [70, 53], after: ['lamp'], guide: ['button', 'digitalread', 'buzzer'],
     story: 'Visitors to the front office stand at the door and wait because nobody hears them. Build a <b>door chime</b>: when the bell button is pressed it plays two notes, and the rest of the time it stays silent.',
     goal: 'A button press plays a chime of two different notes. No press, no sound.',
     controls: { button: 'Hold to press the bell' },
@@ -422,7 +429,7 @@ void loop() {
     unlocks: ['sonar'],
   },
   {
-    id: 'parking', title: 'Parking bay sensor', place: 'Parking Lot', hook: 'Warn the driver when the car is too close to the wall.', map: [30, 28], after: ['chime'],
+    id: 'parking', title: 'Parking bay sensor', place: 'Parking Lot', hook: 'Warn the driver when the car is too close to the wall.', map: [30, 43], after: ['chime'], guide: ['sonar', 'ifelse', 'serial'],
     story: 'Cars keep bumping the wall at the end of the staff parking bay. Build a <b>proximity warning</b>: a distance sensor measures how far away the wall is, and an LED comes on when the car is closer than <b>20 cm</b>. The slider under the 3D view moves the wall.',
     goal: 'The LED turns on only when the wall is closer than 20 cm.',
     controls: { sonar: 'Distance from the sensor to the wall' },
@@ -524,7 +531,7 @@ void loop() {
     unlocks: ['led-green', 'res-1k'],
   },
   {
-    id: 'greenhouse', title: 'Plant alert', place: 'Greenhouse', hook: 'Warn the gardeners when the soil gets too dry.', map: [70, 15], after: ['parking'],
+    id: 'greenhouse', title: 'Plant alert', place: 'Greenhouse', hook: 'Warn the gardeners when the soil gets too dry.', map: [70, 33], after: ['parking'], guide: ['analog', 'ifelse', 'buzzer'],
     story: 'The school greenhouse dries out over the weekend and the tomato plants suffer. Build a <b>plant-watering alert</b>: when the soil moisture falls below <b>30%</b>, light the alert LED <em>and</em> sound the buzzer. When the soil is moist again, go quiet. The knob stands in for the moisture probe.',
     goal: 'LED on and buzzer sounding when moisture is under 30%. Dark and silent otherwise.',
     controls: { pot: 'Soil moisture' },
@@ -604,7 +611,217 @@ void loop() {
     unlocks: [],
   },
   {
-    id: 'workshop', title: 'Open studio', place: 'Open Studio', hook: 'Free build with every part you have unlocked.', map: [75, 93], after: ['beacon'], sandbox: true,
+    id: 'crossing', title: 'Crossing signal', place: 'School Crossing', hook: 'Keep a warning light blinking and answer the walk button at once.', map: [30, 23], after: ['greenhouse'], guide: ['millis', 'delay', 'button', 'variables'],
+    story: 'The crossing outside the school has a red <b>warning light</b> that blinks all day, and a green <b>walk light</b> that should come on the moment a child presses the button. The old sketch blinks with <code>delay()</code>. While the board waits it cannot see the button, so quick taps are missed. Rewrite it so the board never stops to wait: watch the clock with <code>millis()</code> instead.',
+    goal: 'The red LED keeps blinking about once a second. The green LED lights the instant the button is pressed and goes off when it is let go.',
+    controls: { button: 'Hold to press the walk button' },
+    how: [
+      '<code>millis()</code> is how many milliseconds the board has been running. It keeps counting while the sketch does other things.',
+      'Remember when the red light last changed. When <code>millis() - lastChange &gt;= 500</code>, flip it and remember the new time.',
+      'With no <code>delay()</code> in <code>loop()</code>, the board goes round thousands of times a second and looks at the button every time.',
+    ],
+    starter: `// Crossing signal
+const int WARN_PIN = 12;     // red warning light
+const int WALK_PIN = 11;     // green walk light
+const int BUTTON_PIN = 2;    // reads LOW while pressed
+
+void setup() {
+  pinMode(WARN_PIN, OUTPUT);
+  pinMode(WALK_PIN, OUTPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+}
+
+void loop() {
+  // the warning light: it blinks, but while delay() waits the board cannot see the button
+  digitalWrite(WARN_PIN, HIGH);
+  delay(500);
+  digitalWrite(WARN_PIN, LOW);
+  delay(500);
+
+  // the walk light: on while the button is held
+  if (digitalRead(BUTTON_PIN) == LOW) {
+    digitalWrite(WALK_PIN, HIGH);
+  } else {
+    digitalWrite(WALK_PIN, LOW);
+  }
+}`,
+    circuit: [
+      { t: 'wire', a: 'U:12', b: 'a5', c: 'orange' },
+      { t: 'led', id: 'warn', a: 'e5', k: 'e6', color: 0xff3b30 },
+      { t: 'res', a: 'c6', b: 'c9' },
+      { t: 'wire', a: 'a9', b: 'T-9', c: 'black' },
+      { t: 'wire', a: 'U:11', b: 'a11', c: 'green' },
+      { t: 'led', id: 'walk', a: 'e11', k: 'e12', color: 0x2ecc40 },
+      { t: 'res', a: 'c12', b: 'c15' },
+      { t: 'wire', a: 'a15', b: 'T-15', c: 'black' },
+      { t: 'button', id: 'btn', col: 20, ctl: 'Hold to press the button' },
+      { t: 'wire', a: 'U:2', b: 'a20', c: 'yellow' }, { t: 'wire', a: 'a22', b: 'T-22', c: 'black' },
+      { t: 'wire', a: 'U:GND', b: 'T-1', c: 'black' },
+    ],
+    answer: `const int WARN_PIN = 12;     // red warning light
+const int WALK_PIN = 11;     // green walk light
+const int BUTTON_PIN = 2;    // reads LOW while pressed
+
+unsigned long lastChange = 0;   // when the warning light last changed
+bool warnOn = false;
+
+void setup() {
+  pinMode(WARN_PIN, OUTPUT);
+  pinMode(WALK_PIN, OUTPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+}
+
+void loop() {
+  unsigned long now = millis();
+
+  // the warning light: flip it every 500 ms, without waiting
+  if (now - lastChange >= 500) {
+    warnOn = !warnOn;
+    digitalWrite(WARN_PIN, warnOn);
+    lastChange = now;
+  }
+
+  // the walk light: checked on every pass, so it answers at once
+  if (digitalRead(BUTTON_PIN) == LOW) {
+    digitalWrite(WALK_PIN, HIGH);
+  } else {
+    digitalWrite(WALK_PIN, LOW);
+  }
+}`,
+    predict: {
+      question: 'Three children each tap the walk button quickly, one after another. What will the green walk light do?',
+      options: [{ id: 'instant', label: 'It lights for every tap, straight away' }, { id: 'late', label: 'It misses some of the taps' }, { id: 'never', label: 'It never lights' }],
+      demo: TAPS, run: 4000,
+      classify: tr => {
+        const green = colorOn(tr, 'green'), seen = TAP_TIMES.filter(t => tr.window(t, t + 100).some(green)).length;
+        return seen === TAP_TIMES.length ? 'instant' : tr.samples.some(green) ? 'late' : 'never';
+      },
+      works: 'instant',
+      explain: {
+        instant: 'The walk light answered every tap, because the board never stopped to wait.',
+        late: 'Some taps were missed. While delay() waits, the board is not looking at the button at all. Use millis() so loop() never stops.',
+        never: 'The walk light never came on. Check the button and green LED wiring, and that the sketch writes HIGH to the walk pin while the button reads LOW.',
+      },
+    },
+    hints: [
+      'Tap the walk button quickly a few times while the sketch runs. Does the green light answer every tap? Open the Timeline: the board only looks at the button once a second, between the delays.',
+      'Take out both <code>delay()</code> calls. Keep a variable <code>lastChange</code> with the time the red light last changed. When <code>millis() - lastChange &gt;= 500</code>, flip the light and set <code>lastChange</code> to the time now. The button check can stay as it is.',
+      'Above setup(): unsigned long lastChange = 0; bool warnOn = false; In loop(): unsigned long now = millis(); if (now - lastChange >= 500) { warnOn = !warnOn; digitalWrite(WARN_PIN, warnOn); lastChange = now; } then the same if/else for the button, with no delay() anywhere.',
+    ],
+    checks: [
+      blinks('The red warning light keeps blinking', 'red'),
+      blinks('It keeps blinking while someone holds the button', 'red', [{ from: 0, set: { button: 1 } }]),
+      phases('The walk light stays off while nobody waits', [{ when: 'nobody is at the crossing', set: { button: 0 }, ms: 2500, mode: 'during', expect: { green: false } }]),
+      phases('The walk light answers every tap at once', [
+        { when: 'nobody is at the crossing', set: { button: 0 }, ms: 1000, expect: { green: false } },
+        { when: 'a child taps the button', set: { button: 1 }, ms: 150, expect: { green: true } },
+        { when: 'they let go', set: { button: 0 }, ms: 1100, expect: { green: false } },
+        { when: 'a second child taps the button', set: { button: 1 }, ms: 150, expect: { green: true } },
+        { when: 'they let go', set: { button: 0 }, ms: 1200, expect: { green: false } },
+        { when: 'a third child taps the button', set: { button: 1 }, ms: 150, expect: { green: true } },
+      ]),
+    ],
+    unlocks: ['servo'],
+  },
+  {
+    id: 'barrier', title: 'Bus-bay barrier', place: 'Bus Loop', hook: 'Lift a barrier arm with a servo when the bus driver presses the button.', map: [70, 13], after: ['crossing'], guide: ['servo', 'button', 'digitalread'],
+    story: 'Cars keep parking in the bus loop, so the school has put a <b>barrier arm</b> across it. Build the controller: a <b>servo</b> motor turns the arm. It rests down at <b>0°</b>. When the bus driver presses the button, the arm lifts to <b>90°</b>, stays up for <b>3 seconds</b> so the bus can drive through, then comes back down by itself.',
+    goal: 'The servo rests at 0°. A press lifts it to 90° for about 3 seconds, then it goes back to 0°.',
+    controls: { button: 'Hold to press the driver\'s button' },
+    how: [
+      '<code>#include &lt;Servo.h&gt;</code> brings in the Servo library, and <code>Servo barrier;</code> makes one servo for the sketch to control.',
+      '<code>barrier.attach(9)</code> says which pin its orange signal wire is on. <code>barrier.write(90)</code> turns it to 90° and holds it there.',
+      'A servo\'s motor needs more current than a pin can give, so its red wire goes to <b>5V</b> and its brown wire to <b>GND</b>. Only the orange signal wire goes to a pin.',
+    ],
+    starter: `// Bus-bay barrier
+#include <Servo.h>
+
+const int BUTTON_PIN = 2;   // reads LOW while pressed
+const int SERVO_PIN = 9;
+
+Servo barrier;
+
+void setup() {
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  barrier.attach(SERVO_PIN);
+  barrier.write(0);   // start with the arm down
+}
+
+void loop() {
+  // when the button is pressed: lift the arm to 90, wait 3 seconds, then put it back down to 0
+}`,
+    circuit: [
+      { t: 'button', id: 'btn', col: 20, ctl: 'Hold to press the button' },
+      { t: 'wire', a: 'U:2', b: 'a20', c: 'yellow' }, { t: 'wire', a: 'a22', b: 'T-22', c: 'black' }, { t: 'wire', a: 'U:GND', b: 'T-1', c: 'black' },
+      { t: 'servo', id: 'servo', row: 'g', col: 24 },
+      { t: 'wire', a: 'j24', b: 'B-24', c: 'black' }, { t: 'wire', a: 'j25', b: 'B+25', c: 'red' }, { t: 'wire', a: 'j26', b: 'U:9', c: 'orange' },
+      { t: 'wire', a: 'U:5V', b: 'B+1', c: 'red' }, { t: 'wire', a: 'U:GNDb', b: 'B-2', c: 'black' },
+    ],
+    answer: `#include <Servo.h>
+
+const int BUTTON_PIN = 2;   // reads LOW while pressed
+const int SERVO_PIN = 9;
+
+Servo barrier;
+
+void setup() {
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  barrier.attach(SERVO_PIN);
+  barrier.write(0);   // start with the arm down
+}
+
+void loop() {
+  if (digitalRead(BUTTON_PIN) == LOW) {   // the driver pressed the button
+    barrier.write(90);   // lift the arm
+    delay(3000);         // time for the bus to drive through
+    barrier.write(0);    // and down again
+  }
+}`,
+    predict: {
+      question: 'The barrier is wired and the sketch is ready. The bus driver taps the button once. What will the arm do?',
+      options: [
+        { id: 'lifts', label: 'It lifts, waits, then comes down by itself' }, { id: 'stays', label: 'It lifts and stays up' },
+        { id: 'held', label: 'It is only up while the button is held' }, { id: 'never', label: 'It does not move' },
+      ],
+      demo: [{ from: 0, set: { button: 0 } }, { from: 1000, set: { button: 1 } }, { from: 1300, set: { button: 0 } }], run: 6000,
+      classify: tr => {
+        const up = (t: number) => servoAt(tr.at(t)) >= 45;
+        return up(2600) ? (up(5800) ? 'stays' : 'lifts') : up(1200) ? 'held' : 'never';
+      },
+      works: 'lifts',
+      explain: {
+        lifts: 'The arm lifted, waited while the bus drove through, and came down again by itself.',
+        stays: 'The arm lifted but never came down. After the wait, write 0 to put it back.',
+        held: 'The arm was only up while the button was held, so it dropped before the bus could get through. Lift it, then wait with delay() before putting it down.',
+        never: 'The arm did not move. Check that the sketch writes 90 when the button reads LOW, that attach() uses the pin the orange wire is on, and that the servo has 5 V and GND.',
+      },
+    },
+    hints: [
+      'Press the button while the sketch runs and watch the servo arm. Does the Circuit check say anything about the servo? Its red + wire needs 5 V.',
+      'Inside <code>loop()</code>, check <code>if (digitalRead(BUTTON_PIN) == LOW)</code>. Inside it: <code>barrier.write(90)</code>, a <code>delay()</code> of 3000 milliseconds, then <code>barrier.write(0)</code>.',
+      'In loop(): if (digitalRead(BUTTON_PIN) == LOW) { barrier.write(90); delay(3000); barrier.write(0); } Put the servo lead in g24 to g26, then wire j24 to the − rail, j25 to the + rail and j26 to pin 9, with the rails on 5V and GND.',
+    ],
+    checks: [
+      phases('The arm rests down', [{ when: 'no bus is waiting', set: { button: 0 }, ms: 1500, expect: { servo: [0, 10] } }]),
+      phases('A press lifts the arm', [
+        { when: 'no bus is waiting', set: { button: 0 }, ms: 800, expect: { servo: [0, 10] } },
+        { when: 'the driver presses the button', set: { button: 1 }, ms: 600, expect: { servo: [80, 100] } },
+      ]),
+      phases('The arm stays up while the bus drives through', [
+        { when: 'no bus is waiting', set: { button: 0 }, ms: 800, expect: { servo: [0, 10] } },
+        { when: 'the driver taps the button', set: { button: 1 }, ms: 300, expect: { servo: [80, 100] } },
+        { when: 'the bus is driving through, two seconds later', set: { button: 0 }, ms: 2000, expect: { servo: [80, 100] } },
+      ]),
+      phases('The arm comes down again by itself', [
+        { when: 'no bus is waiting', set: { button: 0 }, ms: 800, expect: { servo: [0, 10] } },
+        { when: 'the driver taps the button', set: { button: 1 }, ms: 300, expect: { servo: [80, 100] } },
+        { when: 'the bus has gone, five seconds later', set: { button: 0 }, ms: 5000, expect: { servo: [0, 10] } },
+      ]),
+    ],
+    unlocks: [],
+  },
+  {
+    id: 'workshop', title: 'Open studio', place: 'Open Studio', hook: 'Free build with every part you have unlocked.', map: [75, 93], after: ['beacon'], sandbox: true, guide: ['circuit', 'breadboard', 'switch', 'loops', 'functions'],
     story: 'The studio is yours: no goal and no checks. Everything you have unlocked is in the tray. Build something you would want on the campus, wire it, write the sketch, and run it. Passing more missions puts more parts in the tray.',
     goal: 'Build anything you like.',
     how: ['Use the tray to add parts and wires. Drag a wire end to move it, and use Step to watch your sketch one line at a time.', 'Point at a hole or pin to read its voltage while the sketch runs.'],
@@ -621,7 +838,7 @@ void loop() {
 /* --- the ESP32 missions --- */
 const ESP: Mission[] = [
   {
-    id: 'tour', title: 'Workshop tour', place: 'Maker Workshop', hook: 'Meet the board and make its own light blink.', map: [25, 93], after: [], showParts: true,
+    id: 'tour', title: 'Workshop tour', place: 'Maker Workshop', hook: 'Meet the board and make its own light blink.', map: [25, 93], after: [], showParts: true, guide: ['sketch', 'pinmode', 'digitalwrite', 'delay', 'serial'],
     story: 'The ESP32 is programmed like an Arduino but is much faster and has Wi-Fi and Bluetooth built in. Its pins point downwards, so it plugs into a breadboard. Click the labels to explore. Then finish the sketch so the blue light on the board blinks.',
     goal: 'Make the board\'s own blue light blink, half a second on and half a second off.',
     how: ['The blue light is wired to GPIO 2.', 'The ESP32 usually talks to the computer at 115200 baud, faster than the Uno\'s 9600.', 'Every pin works at 3.3 V. Connecting 5 V to a pin can damage the chip.'],
@@ -664,7 +881,7 @@ void loop() {
     unlocks: [],
   },
   {
-    id: 'beacon', title: 'Gate beacon', place: 'Front Gate', hook: 'Build a blinking light so delivery drivers can find the gate.', map: [30, 80], after: [],
+    id: 'beacon', title: 'Gate beacon', place: 'Front Gate', hook: 'Build a blinking light so delivery drivers can find the gate.', map: [30, 80], after: [], guide: ['circuit', 'breadboard', 'led', 'resistor', 'variables'],
     story: 'The front gate has no light and delivery drivers keep missing it after dark. Build a <b>beacon</b>: an LED that blinks about once a second. On the ESP32 each pin shares a breadboard column with the free hole beside it, so a wire in that hole reaches the pin.',
     goal: 'Wire an LED and a resistor to a pin, and make the LED blink about once a second.',
     how: ['On the ESP32 you use the GPIO number in code. The pin labelled D5 is GPIO 5.', 'HIGH is 3.3 V here, not 5 V. That is still enough to light an LED.', 'The breadboard has the free holes on the right of the board, columns 22 to 30.'],
@@ -704,7 +921,7 @@ void loop() {
     unlocks: ['pad', 'knob', 'res-10k'],
   },
   {
-    id: 'touchlamp', title: 'Study-desk lamp', place: 'Library Desk', hook: 'Switch a lamp on with a touch, no button needed.', map: [70, 67], after: ['beacon'],
+    id: 'touchlamp', title: 'Study-desk lamp', place: 'Library Desk', hook: 'Switch a lamp on with a touch, no button needed.', map: [70, 67], after: ['beacon'], guide: ['touch', 'serial', 'ifelse'],
     story: 'The library desks have lamps with fiddly switches that students keep breaking. Build a <b>touch lamp</b>: the LED is on while a finger touches the pad and off when it lets go. Ten ESP32 pins can sense touch with nothing more than a wire.',
     goal: 'The LED is on while the pad is touched and off otherwise.',
     controls: { pad: 'Hold to touch the pad' },
@@ -767,7 +984,7 @@ void loop() {
     unlocks: ['button', 'buzzer'],
   },
   {
-    id: 'toggle', title: 'Cafeteria lights', place: 'Cafeteria', hook: 'One press switches the lights on, the next press switches them off.', map: [30, 54], after: ['touchlamp'],
+    id: 'toggle', title: 'Cafeteria lights', place: 'Cafeteria', hook: 'One press switches the lights on, the next press switches them off.', map: [30, 54], after: ['touchlamp'], guide: ['button', 'digitalread', 'variables'],
     story: 'The cafeteria has one switch that is wired badly: you have to hold it down to keep the lights on. Build a <b>push-on, push-off</b> switch: one press turns the LED on and it stays on, the next press turns it off. The sketch has to remember what the light is doing.',
     goal: 'Each press of the button flips the LED, and the LED keeps its state after the button is let go.',
     controls: { button: 'Hold to press the button' },
@@ -857,7 +1074,7 @@ void loop() {
     unlocks: ['led-green'],
   },
   {
-    id: 'siren', title: 'Sports-hall siren', place: 'Sports Hall', hook: 'Slide a buzzer up and down like an alarm.', map: [70, 41], after: ['toggle'],
+    id: 'siren', title: 'Sports-hall siren', place: 'Sports Hall', hook: 'Slide a buzzer up and down like an alarm.', map: [70, 41], after: ['toggle'], guide: ['buzzer', 'loops'],
     story: 'The sports hall needs an alarm that cuts through the noise of a basketball game. A steady beep is easy to ignore, but a <b>siren</b> that slides up and down in pitch is not. Build one with a buzzer and two loops that change the note a little at a time.',
     goal: 'The buzzer slides up from a low note to a high note and back down, again and again.',
     how: ['The first <code>for</code> loop raises the frequency from 400 Hz to 1000 Hz in steps of 20.', 'The second loop counts back down. <code>f -= 20</code> means "subtract 20 from f".', 'The short <code>delay()</code> sets how fast the pitch moves.'],
@@ -912,7 +1129,7 @@ void loop() {
     unlocks: ['res-1k', 'sonar'],
   },
   {
-    id: 'nightlight', title: 'Night light', place: 'Main Hallway', hook: 'Turn a light on when the hallway gets dark, with the ESP32\'s finer readings.', map: [30, 28], after: ['siren'],
+    id: 'nightlight', title: 'Night light', place: 'Main Hallway', hook: 'Turn a light on when the hallway gets dark, with the ESP32\'s finer readings.', map: [30, 28], after: ['siren'], guide: ['knob', 'analog', 'ifelse'],
     story: 'The main hallway is dark after the last bell. Build a <b>night light</b> that comes on by itself when it is dark. The ESP32 measures voltage in 4096 steps instead of 1024, so the numbers are four times bigger. The knob stands in for the light sensor and runs from <b>3.3 V</b>, never 5 V, because the pins cannot take more.',
     goal: 'The LED comes on when the light level is low and goes off when it is high.',
     controls: { pot: 'Hallway light level' },
@@ -975,10 +1192,99 @@ void loop() {
         { when: 'the sun comes back', set: { pot: bright }, expect: { led: false } },
       ]),
     ],
+    unlocks: ['servo'],
+  },
+  {
+    id: 'weather', title: 'Wind gauge', place: 'Rooftop Weather Station', hook: 'Swing a servo needle to show how hard the wind blows.', map: [70, 15], after: ['nightlight'], guide: ['servo', 'analog', 'knob'],
+    story: 'The science club runs a weather station on the roof and wants a big <b>wind gauge</b> in the entrance hall that everyone can read from across the room. A <b>servo</b> turns a needle across a half-circle dial: <b>0°</b> for still air, <b>180°</b> for a gale, and everything in between. The knob stands in for the wind sensor.',
+    goal: 'The servo needle points at 0° when the air is still and 180° in a gale, and follows the wind in between.',
+    controls: { pot: 'Wind speed' },
+    how: [
+      'On the ESP32 the library is <code>ESP32Servo.h</code>, but the Servo in it works just like the Arduino one: <code>attach()</code> it to a pin, then <code>write()</code> an angle.',
+      '<code>map(wind, 0, 4095, 0, 180)</code> turns the 12-bit reading into an angle.',
+      'The servo needs 5 V, so power it from <b>VIN</b>, which carries the 5 V from USB. Its signal can still come from a 3.3 V pin. The sensor must stay on <b>3V3</b>.',
+    ],
+    starter: `// Wind gauge
+#include <ESP32Servo.h>
+
+const int SENSOR_PIN = 34;   // the wind sensor (the knob): 0 to 4095
+const int SERVO_PIN = 13;
+
+Servo needle;
+
+void setup() {
+  needle.attach(SERVO_PIN);
+}
+
+void loop() {
+  int wind = analogRead(SENSOR_PIN);
+
+  // turn the reading (0 to 4095) into an angle (0 to 180) and write it to the needle
+
+  delay(50);
+}`,
+    circuit: [
+      { t: 'servo', id: 'servo', row: 'g', col: 22 },
+      { t: 'wire', a: 'j22', b: 'B-22', c: 'black' }, { t: 'wire', a: 'j23', b: 'B+23', c: 'red' }, { t: 'wire', a: 'j24', b: 'E:D13', c: 'orange' },
+      { t: 'wire', a: 'E:VIN', b: 'B+26', c: 'red' }, { t: 'wire', a: 'E:GND', b: 'B-26', c: 'black' },
+      { t: 'pot', id: 'pot', row: 'd', col: 27, ctl: 'Knob position' },
+      { t: 'wire', a: 'a27', b: 'T+27', c: 'red' }, { t: 'wire', a: 'a29', b: 'T-29', c: 'black' }, { t: 'wire', a: 'a28', b: 'E:D34', c: 'green' },
+      { t: 'wire', a: 'E:3V3', b: 'T+23', c: 'red' }, { t: 'wire', a: 'E:GNDf', b: 'T-24', c: 'black' },
+    ],
+    answer: `#include <ESP32Servo.h>
+
+const int SENSOR_PIN = 34;   // the wind sensor (the knob): 0 to 4095
+const int SERVO_PIN = 13;
+
+Servo needle;
+
+void setup() {
+  needle.attach(SERVO_PIN);
+}
+
+void loop() {
+  int wind = analogRead(SENSOR_PIN);
+  int angle = map(wind, 0, 4095, 0, 180);
+  needle.write(angle);
+  delay(50);
+}`,
+    predict: {
+      question: 'The gauge is built. The air starts still, then the wind picks up to a gale. What will the needle do?',
+      options: [{ id: 'follows', label: 'It swings across as the wind rises' }, { id: 'backwards', label: 'It swings the other way' }, { id: 'still', label: 'It does not move' }],
+      demo: [{ from: 0, set: { pot: 0.05 } }, { from: 2000, set: { pot: 0.95 } }], run: 4000,
+      classify: tr => {
+        const a = servoAt(tr.at(1800)), b = servoAt(tr.at(3800));
+        return a < 0 || b < 0 ? 'still' : b - a > 45 ? 'follows' : a - b > 45 ? 'backwards' : 'still';
+      },
+      works: 'follows',
+      explain: {
+        follows: 'The needle swung across as the wind rose, which is a wind gauge.',
+        backwards: 'The needle swung the wrong way: it showed a gale when the air was still. Swap the last two numbers in map().',
+        still: 'The needle did not move with the wind. Check that the sketch writes the mapped angle to the servo, and that the servo has 5 V from VIN.',
+      },
+    },
+    hints: [
+      'Turn the Wind speed knob while the sketch runs. Does the needle move? Print <code>wind</code> to the Serial Monitor to see what the sensor reads: on the ESP32 it goes up to 4095.',
+      '<code>map(wind, 0, 4095, 0, 180)</code> gives the angle. Write it to the servo with <code>needle.write(angle)</code>. Power the servo from VIN (5 V), and keep the knob on 3V3.',
+      'In loop(): int angle = map(wind, 0, 4095, 0, 180); needle.write(angle); then delay(50). Put the servo lead in g22 to g24, then wire j22 to the − rail, j23 to the + rail and j24 to D13, with VIN on the + rail and GND on the − rail.',
+    ],
+    checks: [
+      phases('The needle rests at 0° in still air', [{ when: 'the air is still (wind 0%)', set: { pot: 0 }, expect: { servo: [0, 8] } }]),
+      phases('The needle swings right over in a gale', [{ when: 'a gale blows (wind 100%)', set: { pot: 1 }, expect: { servo: [172, 180] } }]),
+      phases('In between, the needle points in between', [
+        { when: 'the wind is moderate (50%)', set: { pot: 0.5 }, expect: { servo: [80, 100] } },
+        { when: 'the wind is light (25%)', set: { pot: 0.25 }, expect: { servo: [35, 55] } },
+      ]),
+      phases('It follows the wind as it changes', [
+        { when: 'the air is still', set: { pot: 0 }, expect: { servo: [0, 8] } },
+        { when: 'the wind picks up to a gale', set: { pot: 1 }, expect: { servo: [172, 180] } },
+        { when: 'the wind drops again (10%)', set: { pot: 0.1 }, expect: { servo: [8, 28] } },
+      ]),
+    ],
     unlocks: [],
   },
   {
-    id: 'workshop', title: 'Open studio', place: 'Open Studio', hook: 'Free build with every part you have unlocked.', map: [75, 93], after: ['beacon'], sandbox: true,
+    id: 'workshop', title: 'Open studio', place: 'Open Studio', hook: 'Free build with every part you have unlocked.', map: [75, 93], after: ['beacon'], sandbox: true, guide: ['circuit', 'breadboard', 'switch', 'loops', 'functions'],
     story: 'The studio is yours: no goal and no checks. Everything you have unlocked is in the tray. Build something you would want on the campus, wire it, write the sketch, and run it.',
     goal: 'Build anything you like.',
     how: ['Use the tray to add parts and wires. The ESP32 plugs into the left of the breadboard, so build in columns 22 to 30.', 'Point at a hole or pin to read its voltage while the sketch runs.'],

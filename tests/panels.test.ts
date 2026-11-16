@@ -1,10 +1,10 @@
-/* Which panels are open over the bench. The map and the brief share the left side, the code has the right side, and on a phone only one sheet can be open. */
+/* Which panels are open over the bench. The map, the brief and the guide share the left side, the code has the right side, and on a phone only one sheet can be open. */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { closePanel, closeTop, isOpen, NONE, openPanel, togglePanel } from '../src/state/panels';
+import { clampWidth, closePanel, closeTop, isOpen, MIN_BENCH, MIN_WIDTH, NONE, openPanel, SHARE, togglePanel, widestPanel } from '../src/state/panels';
 
 test('nothing is open to begin with', () => {
-  for (const p of ['map', 'brief', 'code'] as const) assert.equal(isOpen(NONE, p), false);
+  for (const p of ['map', 'brief', 'guide', 'code'] as const) assert.equal(isOpen(NONE, p), false);
 });
 
 test('the brief and the code can be open together on a wide screen', () => {
@@ -18,6 +18,11 @@ test('the map and the brief share the left side: opening one closes the other', 
   assert.equal(isOpen(brief, 'map'), false);
   assert.equal(isOpen(brief, 'brief'), true);
   assert.equal(isOpen(openPanel(brief, 'map', false), 'brief'), false);
+});
+
+test('the guide takes the left side too, so it can be read next to the code', () => {
+  const s = openPanel(openPanel(openPanel(NONE, 'brief', false), 'code', false), 'guide', false);
+  assert.deepEqual([isOpen(s, 'brief'), isOpen(s, 'guide'), isOpen(s, 'code')], [false, true, true]);
 });
 
 test('opening a panel on the right leaves the left alone on a wide screen', () => {
@@ -55,4 +60,28 @@ test('Escape closes the panel that was opened last, then the one before', () => 
 test('closing the panel that was last opened hands "last" to whatever is still open', () => {
   const s = closePanel(openPanel(openPanel(NONE, 'brief', false), 'code', false), 'code');
   assert.equal(closeTop(s).left, null, 'Escape now closes the brief');
+});
+
+/* --- dragging a panel wider or narrower --- */
+test('a panel takes the width asked for when it fits', () => {
+  assert.equal(clampWidth(620.4, 1600, 0), 620);
+});
+
+test('a panel is never dragged too narrow to read', () => {
+  assert.equal(clampWidth(40, 1600, 480), MIN_WIDTH);
+});
+
+test('a panel stops growing while some of the bench still shows, next to the panel on the other side', () => {
+  assert.equal(clampWidth(5000, 1600, 0), 1600 - MIN_BENCH);
+  assert.equal(clampWidth(5000, 1600, 700), 1600 - 700 - MIN_BENCH);
+  assert.equal(widestPanel(1600, 700), 1600 - 700 - MIN_BENCH);
+});
+
+test('with a panel on each side, neither takes more than its share of the screen', () => {
+  assert.equal(clampWidth(5000, 1600, 480), Math.floor(1600 * SHARE));
+  assert.equal(clampWidth(5000, 1600, 0), 1600 - MIN_BENCH, 'alone, a panel may take nearly all of it');
+});
+
+test('on a window with no room to spare a panel keeps its smallest width', () => {
+  assert.equal(clampWidth(900, 700, 400), MIN_WIDTH);
 });

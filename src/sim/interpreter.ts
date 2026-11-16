@@ -14,6 +14,8 @@ export interface Hardware {
   noTone(pin: number): void;
   pulseIn(pin: number): number;
   touchRead(pin: number): number;
+  /** Sends servo pulses on a pin for this angle (0 to 180), or stops them with null. */
+  servo(pin: number, angle: number | null): void;
   print(text: string): void;
 }
 export interface RunControl {
@@ -34,7 +36,7 @@ type Tok =
   | { t: 'num'; v: number; f: boolean; line: number };
 type IdTok = { t: 'id'; v: string; line: number };
 
-interface Ty { float: boolean; str: boolean; isVoid: boolean }
+interface Ty { float: boolean; str: boolean; isVoid: boolean; obj?: 'Servo' }
 type Expr =
   | { k: 'num'; v: number; f?: boolean }
   | { k: 'str'; v: string }
@@ -62,15 +64,22 @@ type Stmt =
   | { k: 'if'; c: Expr; a: Stmt; b: Stmt | null; line: number }
   | { k: 'while' | 'dowhile'; c: Expr; body: Stmt; line: number }
   | { k: 'for'; init: Stmt | null; c: Expr | null; step: Expr | null; body: Stmt; line: number }
-  | { k: 'return'; e: Expr | null; line: number };
+  | { k: 'return'; e: Expr | null; line: number }
+  | { k: 'switch'; e: Expr; cases: { v: Expr | null; at: number; line: number }[]; body: Stmt[]; line: number };
 type DeclStmt = Extract<Stmt, { k: 'decl' }>;
 interface Func { params: { name: string; ty: Ty }[]; ty: Ty; body: Stmt; line: number }
 export interface Program { globals: DeclStmt[]; funcs: Map<string, Func> }
 
-type Val = number | string | Val[];
+/** A Servo object: the pin it is attached to (-1 when it is not) and the last angle written to it. */
+interface ServoObj { servo: true; pin: number; angle: number }
+type Val = number | string | Val[] | ServoObj;
 interface Rec { float: boolean; str: boolean; v: Val }
+const isServo = (v: unknown): v is ServoObj => typeof v === 'object' && v !== null && !Array.isArray(v) && (v as ServoObj).servo === true;
+/** Servo.write() takes degrees but, like the real library, treats big numbers as a pulse width in microseconds. */
+const SERVO_MIN_US = 544, SERVO_MAX_US = 2400;
+const usToDeg = (us: number) => Math.round(Math.min(180, Math.max(0, ((us - SERVO_MIN_US) * 180) / (SERVO_MAX_US - SERVO_MIN_US))));
 
-const TYPES = new Set('int long short float double bool boolean byte char void unsigned signed const static volatile String uint8_t uint16_t uint32_t int8_t int16_t int32_t size_t word'.split(' '));
+const TYPES = new Set('int long short float double bool boolean byte char void unsigned signed const static volatile String uint8_t uint16_t uint32_t int8_t int16_t int32_t size_t word Servo'.split(' '));
 const FLOATS = new Set(['float', 'double']);
 const FLOAT_FN = new Set(['sqrt', 'pow', 'sin', 'cos', 'tan']);
 const MIXED_FN = new Set(['min', 'max', 'abs', 'constrain']);
@@ -115,6 +124,10 @@ function lex(src: string, line0 = 1): { toks: Tok[]; lastLine: number } {
   return { toks, lastLine: line };
 }
 
+/** "LiquidCrystal lcd;" and the like: a library object the simulator does not have. */
+const unknownType = (name: string, line: number) =>
+  new SimError(`"${name}" is not a type this simulator knows. Check the spelling and capital letters. The only library object it has is Servo.`, line);
+
 export function parse(src: string): Program {
   const { toks, lastLine } = lex(src);
   let i = 0;
@@ -138,8 +151,8 @@ export function parse(src: string): Program {
   };
   function readType(): Ty {
     const ty: Ty = { float: false, str: false, isVoid: false };
-    while (isType()) { const w = toks[i++].v as string; if (FLOATS.has(w)) ty.float = true; if (w === 'String') ty.str = true; if (w === 'void') ty.isVoid = true; }
-    while (isOp('*') || isOp('&')) { i++; ty.str = true; }
+    while (isType()) { const w = toks[i++].v as string; if (FLOATS.has(w)) ty.float = true; if (w === 'String') ty.str = true; if (w === 'void') ty.isVoid = true; if (w === 'Servo') ty.obj = 'Servo'; }
+    while (isOp('*') || isOp('&')) { i++; if (!ty.obj) ty.str = true; }   // a Servo& parameter is still the Servo itself
     return ty;
   }
   function declRest(ty: Ty, nameTok: IdTok): DeclStmt {
@@ -183,8 +196,26 @@ export function parse(src: string): Program {
       if (t.v === 'return') { i++; let e: Expr | null = null; if (!isOp(';')) e = expr(); need(';'); return { k: 'return', e, line }; }
       if (t.v === 'break') { i++; need(';'); return { k: 'break' }; }
       if (t.v === 'continue') { i++; need(';'); return { k: 'continue' }; }
-      if (t.v === 'switch') throw new SimError('"switch" is not supported in this simulator yet. Use if / else if instead.', line);
+      if (t.v === 'switch') {
+        i++; need('('); const e = expr(); need(')'); need('{');
+        const cases: { v: Expr | null; at: number; line: number }[] = [], body: Stmt[] = [];
+        while (!isOp('}')) {
+          const c = peek();
+          if (c.t === 'eof') throw new SimError('Missing "}" to close the switch', c.line);
+          if (isId('case')) { i++; cases.push({ v: ternary(), at: body.length, line: c.line }); need(':'); }
+          else if (isId('default')) {
+            if (cases.some(x => !x.v)) throw new SimError('A switch can only have one "default:"', c.line);
+            i++; need(':'); cases.push({ v: null, at: body.length, line: c.line });
+          }
+          else if (!cases.length) throw new SimError('Inside a switch, start with a label such as "case 1:" or "default:"', c.line);
+          else body.push(stmt());
+        }
+        need('}');
+        return { k: 'switch', e, cases, body, line };
+      }
+      if (t.v === 'case' || t.v === 'default') throw new SimError(`"${t.v}" only works inside a switch`, line);
       if (isType()) { const ty = readType(); return declRest(ty, ident()); }
+      if (peek(1).t === 'id') throw unknownType(t.v, line);
     }
     const e = expr(); need(';');
     return { k: 'expr', e, line };
@@ -243,6 +274,7 @@ export function parse(src: string): Program {
 
   const prog: Program = { globals: [], funcs: new Map() };
   while (peek().t !== 'eof') {
+    if (peek().t === 'id' && peek(1).t === 'id' && !isType()) throw unknownType(peek().v as string, peek().line);
     if (!isType()) throw new SimError(`Expected a declaration such as "int x = 0;" or a function such as "void setup() { }" but found ${show(peek())}`, peek().line);
     const ty = readType(), name = ident();
     if (isOp('(')) {
@@ -291,11 +323,13 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
   const fmt = (v: Val, n: Expr | undefined, env: Env, digits?: Val): string => {
     if (typeof v === 'string') return v;
     if (Array.isArray(v)) return '[array]';
+    if (isServo(v)) return '[Servo]';
     if (n && n.k === 'chr') return String.fromCharCode(v);
     if (n && isF(n, env)) return Number(v).toFixed(digits == null ? 2 : (digits as number));
     return String(Math.trunc(v));
   };
   const coerce = (rec: { float: boolean; str: boolean }, v: Val): Val => {
+    if (isServo(v)) return v;
     if (rec.str) return typeof v === 'string' ? v : String(v);
     if (typeof v === 'string') return v;
     if (rec.float) return Number(v);
@@ -433,6 +467,28 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
       throw err(`Serial.${n.name}() is not supported in this simulator`, n.line);
     }
     const v = await ev(n.obj, env);
+    if (isServo(v)) {
+      const num = (k: number) => { if (a.length <= k) throw err(`.${n.name}() needs ${k + 1} value(s) inside the brackets`, n.line); return a[k] as number; };
+      switch (n.name) {
+        case 'attach': {
+          const pin = num(0);
+          if (v.pin >= 0 && v.pin !== pin) hw.servo(v.pin, null);
+          v.pin = pin; hw.servo(pin, v.angle);
+          return 1;
+        }
+        case 'write': case 'writeMicroseconds': {
+          const x = num(0);
+          v.angle = n.name === 'writeMicroseconds' || x >= SERVO_MIN_US ? usToDeg(x) : Math.round(Math.min(180, Math.max(0, x)));
+          if (v.pin >= 0) hw.servo(v.pin, v.angle);
+          return 0;
+        }
+        case 'read': return v.angle;
+        case 'readMicroseconds': return Math.round(SERVO_MIN_US + (v.angle * (SERVO_MAX_US - SERVO_MIN_US)) / 180);
+        case 'attached': return v.pin >= 0 ? 1 : 0;
+        case 'detach': if (v.pin >= 0) hw.servo(v.pin, null); v.pin = -1; return 0;
+      }
+      throw err(`A Servo has no ".${n.name}()". It has attach(), write(), read(), attached() and detach().`, n.line);
+    }
     if (typeof v === 'string') {
       if (n.name === 'length') return v.length;
       if (n.name === 'toInt') return parseInt(v, 10) || 0;
@@ -443,7 +499,11 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
   async function declare(n: DeclStmt, env: Env): Promise<void> {
     for (const d of n.vars) {
       const rec: Rec = { float: n.ty.float, str: n.ty.str && !d.arr, v: 0 };
-      if (d.arr) {
+      const fresh = (): ServoObj => ({ servo: true, pin: -1, angle: 90 });   // a new servo starts at 90°, as in the real library
+      if (n.ty.obj) {
+        if (d.init || d.list) throw err(`A ${n.ty.obj} is made with "${n.ty.obj} ${d.name};" and set up later with ${d.name}.attach(pin)`, d.line);
+        rec.v = d.arr ? Array.from({ length: d.size ? Math.max(0, (await ev(d.size, env)) as number) : 0 }, fresh) : fresh();
+      } else if (d.arr) {
         if (d.list) { const items: Val[] = []; for (const it of d.list) { const x = await ev(it, env); items.push(typeof x === 'string' || n.ty.float ? x : Math.trunc(x as number)); } rec.v = items; }
         else if (d.init) rec.v = await ev(d.init, env);
         else rec.v = new Array<Val>(d.size ? Math.max(0, (await ev(d.size, env)) as number) : 0).fill(0);
@@ -470,6 +530,20 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
         const e = new Env(env);
         if (n.init) await exec(n.init, e);
         while (!n.c || await ev(n.c, e)) { const r = await exec(n.body, e); if (r === BRK) break; if (r && r !== CNT) return r; if (n.step) await ev(n.step, e); await tick(); }
+        return;
+      }
+      case 'switch': {
+        const v = await ev(n.e, env);
+        let start = -1;
+        for (const c of n.cases) if (c.v && (await ev(c.v, env)) === v) { start = c.at; break; }
+        if (start < 0) start = n.cases.find(c => !c.v)?.at ?? -1;
+        if (start < 0) return;
+        const e = new Env(env);
+        for (let k = start; k < n.body.length; k++) {   // runs on into the next case until a break, as in C++
+          const r = await exec(n.body[k], e);
+          if (r === BRK) return;
+          if (r) return r;
+        }
         return;
       }
       case 'return': return { ret: n.e ? await ev(n.e, env) : 0 };
