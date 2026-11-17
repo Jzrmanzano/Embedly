@@ -19,7 +19,7 @@ export function CampusMap() {
     return from.map(a => ({ key: `${a}-${m.id}`, a: at(a), b: m.map, open: isAvailable(board, m, done) }));
   });
   return (
-    <nav className="map" aria-label="Campus map. Each place is a mission.">
+    <nav className="map" aria-label="Mission map. Each place is a mission.">
       <svg className="ground" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
         {roads.map(r => <line key={r.key} x1={r.a[0]} y1={r.a[1]} x2={r.b[0]} y2={r.b[1]} className={r.open ? 'road open' : 'road'} vectorEffect="non-scaling-stroke" />)}
       </svg>

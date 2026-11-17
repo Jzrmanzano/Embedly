@@ -62,7 +62,7 @@ const names = (cards: BoardCard[]) => cards.length === 1 ? `the ${cards[0].name}
 const ROWS: [label: string, about: string, cell: (c: BoardCard) => ReactNode][] = [
   ['Chip', 'The processor, and how fast it runs.', c => c.chip],
   ['Runs at', 'A 5 V part needs a 5 V board, or a level converter in between.', c => `${c.volts} V`],
-  ['Wi-Fi', 'For talking to a phone or the internet over the school network.', c => (c.wifi ? 'Yes' : 'No')],
+  ['Wi-Fi', 'For talking to a phone or the internet over your Wi-Fi network.', c => (c.wifi ? 'Yes' : 'No')],
   ['Bluetooth', 'Lets a phone nearby find it without a network. LE uses little power.', c => c.bluetooth ?? 'No'],
   ['Analog inputs', 'One for each sensor read with analogRead().', c => <>{c.analog}{c.analogNote && <small>{c.analogNote}</small>}</>],
   ['Touch pins', 'Feel a finger on a bare pad with touchRead().', c => c.touch || 'None'],
@@ -85,7 +85,7 @@ export function BoardsPage() {
       <main id="boards-main" className="guide-main" ref={main} tabIndex={-1}>
         <div className="guide-doc wide cmp">
           <h2>Compare the boards</h2>
-          <p className="g-lede">Five boards a school might buy, side by side. Every one runs a sketch the same way; what changes is what each can connect to, and how much room it takes.</p>
+          <p className="g-lede">Five popular boards, side by side. Every one runs a sketch the same way; what changes is what each can connect to, and how much room it takes.</p>
           <Lineup />
 
           <section className="want" aria-labelledby="want-title">

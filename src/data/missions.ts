@@ -1,4 +1,4 @@
-/* Campus Missions. Each mission is a small device to build for somewhere on a school campus, checked by running the student's own sketch on the student's own circuit.
+/* Missions. Each mission is a small device to build, checked by running the student's own sketch on the student's own circuit.
    The reference build in each mission (`circuit` and `answer`) is what the tests run to prove the checks can be passed, and what the last hint offers. */
 import { blinks, colorOn, ledOn, phases, reaction, servoAt, soundOn, sweeps, type InputStep, type Sample, type Scenario, type Trace } from '../sim/check';
 import type { Tool } from '../state/bench';
@@ -52,7 +52,7 @@ export interface Prediction {
 export interface Mission {
   id: string;
   title: string;
-  /** The place on the campus map. */
+  /** The place on the mission map. */
   place: string;
   hook: string;
   /** Where it sits on the map, in percent from the left and the top. */
@@ -239,7 +239,7 @@ void loop() {
   },
   {
     id: 'nightlight', title: 'Night light', place: 'Main Hallway', hook: 'Turn a light on when the hallway gets dark.', map: [70, 73], after: ['beacon'], guide: ['knob', 'analog', 'ifelse'],
-    story: 'The main hallway is pitch dark after the last bell, and the lights are on a timer nobody trusts. Build a <b>night light</b> that comes on by itself when it is dark and goes off when it is bright. The knob stands in for the light sensor: <b>0% is darkness</b>, <b>100% is full daylight</b>.',
+    story: 'The main hallway is pitch dark at night, and the lights are on a timer nobody trusts. Build a <b>night light</b> that comes on by itself when it is dark and goes off when it is bright. The knob stands in for the light sensor: <b>0% is darkness</b>, <b>100% is full daylight</b>.',
     goal: 'The LED comes on when the light level is low and goes off when it is high.',
     controls: { pot: 'Hallway light level' },
     how: ['A knob gives the board a voltage between 0 V and 5 V. <code>analogRead()</code> turns it into a number from 0 to 1023.', '<code>if</code> / <code>else</code> chooses between two things to do. <code>&lt;</code> means "is less than".', 'The sketch keeps checking, because <code>loop()</code> repeats. The short <code>delay()</code> stops it checking thousands of times a second.'],
@@ -444,7 +444,7 @@ void loop() {
   },
   choose({
     id: 'democart', title: 'Demo cart', place: 'Science Lab', hook: 'The lab owns a box of motor shields. Choose the board they plug onto.', map: [25, 53], after: ['chime'], guide: ['boards', 'analog'],
-    story: 'For open day, the science teachers want a cart that drives itself across the lab. They already own ten <b>motor shields</b>: boards that plug on top of an Arduino and drive two motors. The cart\'s motors and its two light sensors are 5 V parts.',
+    story: 'A science club wants a cart that drives itself across the lab. They already own ten <b>motor shields</b>: boards that plug on top of an Arduino and drive two motors. The cart\'s motors and its two light sensors are 5 V parts.',
     needs: [
       { need: { k: 'shield' }, text: 'The lab\'s motor shields plug straight onto it.' },
       { need: { k: 'volts5' }, text: 'Its motors and light sensors are 5 V parts, wired straight to the pins.' },
@@ -458,7 +458,7 @@ void loop() {
   }),
   {
     id: 'parking', title: 'Parking bay sensor', place: 'Parking Lot', hook: 'Warn the driver when the car is too close to the wall.', map: [25, 43], after: ['chime'], guide: ['sonar', 'ifelse', 'serial'],
-    story: 'Cars keep bumping the wall at the end of the staff parking bay. Build a <b>proximity warning</b>: a distance sensor measures how far away the wall is, and an LED comes on when the car is closer than <b>20 cm</b>. The slider under the 3D view moves the wall.',
+    story: 'Cars keep bumping the wall at the end of the parking bay. Build a <b>proximity warning</b>: a distance sensor measures how far away the wall is, and an LED comes on when the car is closer than <b>20 cm</b>. The slider under the 3D view moves the wall.',
     goal: 'The LED turns on only when the wall is closer than 20 cm.',
     controls: { sonar: 'Distance from the sensor to the wall' },
     how: ['The sensor sends out a ping and <code>pulseIn()</code> times how long the echo takes to come back, in microseconds.', 'Sound travels about 0.0343 cm per microsecond, and the ping goes there and back, so <code>distance = duration * 0.0343 / 2</code>.', 'A <code>float</code> can hold a number with a decimal point.'],
@@ -574,7 +574,7 @@ void loop() {
   }),
   {
     id: 'greenhouse', title: 'Plant alert', place: 'Greenhouse', hook: 'Warn the gardeners when the soil gets too dry.', map: [70, 33], after: ['parking'], guide: ['analog', 'ifelse', 'buzzer'],
-    story: 'The school greenhouse dries out over the weekend and the tomato plants suffer. Build a <b>plant-watering alert</b>: when the soil moisture falls below <b>30%</b>, light the alert LED <em>and</em> sound the buzzer. When the soil is moist again, go quiet. The knob stands in for the moisture probe.',
+    story: 'The greenhouse dries out over the weekend and the tomato plants suffer. Build a <b>plant-watering alert</b>: when the soil moisture falls below <b>30%</b>, light the alert LED <em>and</em> sound the buzzer. When the soil is moist again, go quiet. The knob stands in for the moisture probe.',
     goal: 'LED on and buzzer sounding when moisture is under 30%. Dark and silent otherwise.',
     controls: { pot: 'Soil moisture' },
     how: ['<code>map(value, 0, 1023, 0, 100)</code> turns a raw reading into a percentage, which is easier to think about.', 'One <code>if</code> can do several things: put them all between the braces.', 'Remember the <code>else</code> side too. An alert that never switches itself off is worse than none.'],
@@ -653,8 +653,8 @@ void loop() {
     unlocks: [],
   },
   {
-    id: 'crossing', title: 'Crossing signal', place: 'School Crossing', hook: 'Keep a warning light blinking and answer the walk button at once.', map: [30, 23], after: ['greenhouse'], guide: ['millis', 'delay', 'button', 'variables'],
-    story: 'The crossing outside the school has a red <b>warning light</b> that blinks all day, and a green <b>walk light</b> that should come on the moment a child presses the button. The old sketch blinks with <code>delay()</code>. While the board waits it cannot see the button, so quick taps are missed. Rewrite it so the board never stops to wait: watch the clock with <code>millis()</code> instead.',
+    id: 'crossing', title: 'Crossing signal', place: 'Crossing', hook: 'Keep a warning light blinking and answer the walk button at once.', map: [30, 23], after: ['greenhouse'], guide: ['millis', 'delay', 'button', 'variables'],
+    story: 'The pedestrian crossing has a red <b>warning light</b> that blinks all day, and a green <b>walk light</b> that should come on the moment a pedestrian presses the button. The old sketch blinks with <code>delay()</code>. While the board waits it cannot see the button, so quick taps are missed. Rewrite it so the board never stops to wait: watch the clock with <code>millis()</code> instead.',
     goal: 'The red LED keeps blinking about once a second. The green LED lights the instant the button is pressed and goes off when it is let go.',
     controls: { button: 'Hold to press the walk button' },
     how: [
@@ -731,7 +731,7 @@ void loop() {
   }
 }`,
     predict: {
-      question: 'Three children each tap the walk button quickly, one after another. What will the green walk light do?',
+      question: 'Three pedestrians each tap the walk button quickly, one after another. What will the green walk light do?',
       options: [{ id: 'instant', label: 'It lights for every tap, straight away' }, { id: 'late', label: 'It misses some of the taps' }, { id: 'never', label: 'It never lights' }],
       demo: TAPS, run: 4000,
       classify: tr => {
@@ -756,18 +756,18 @@ void loop() {
       phases('The walk light stays off while nobody waits', [{ when: 'nobody is at the crossing', set: { button: 0 }, ms: 2500, mode: 'during', expect: { green: false } }]),
       phases('The walk light answers every tap at once', [
         { when: 'nobody is at the crossing', set: { button: 0 }, ms: 1000, expect: { green: false } },
-        { when: 'a child taps the button', set: { button: 1 }, ms: 150, expect: { green: true } },
+        { when: 'a pedestrian taps the button', set: { button: 1 }, ms: 150, expect: { green: true } },
         { when: 'they let go', set: { button: 0 }, ms: 1100, expect: { green: false } },
-        { when: 'a second child taps the button', set: { button: 1 }, ms: 150, expect: { green: true } },
+        { when: 'a second pedestrian taps the button', set: { button: 1 }, ms: 150, expect: { green: true } },
         { when: 'they let go', set: { button: 0 }, ms: 1200, expect: { green: false } },
-        { when: 'a third child taps the button', set: { button: 1 }, ms: 150, expect: { green: true } },
+        { when: 'a third pedestrian taps the button', set: { button: 1 }, ms: 150, expect: { green: true } },
       ]),
     ],
     unlocks: ['servo'],
   },
   {
     id: 'barrier', title: 'Bus-bay barrier', place: 'Bus Loop', hook: 'Lift a barrier arm with a servo when the bus driver presses the button.', map: [70, 13], after: ['crossing'], guide: ['servo', 'button', 'digitalread'],
-    story: 'Cars keep parking in the bus loop, so the school has put a <b>barrier arm</b> across it. Build the controller: a <b>servo</b> motor turns the arm. It rests down at <b>0°</b>. When the bus driver presses the button, the arm lifts to <b>90°</b>, stays up for <b>3 seconds</b> so the bus can drive through, then comes back down by itself.',
+    story: 'Cars keep parking in the bus loop, so a <b>barrier arm</b> now goes across it. Build the controller: a <b>servo</b> motor turns the arm. It rests down at <b>0°</b>. When the bus driver presses the button, the arm lifts to <b>90°</b>, stays up for <b>3 seconds</b> so the bus can drive through, then comes back down by itself.',
     goal: 'The servo rests at 0°. A press lifts it to 90° for about 3 seconds, then it goes back to 0°.',
     controls: { button: 'Hold to press the driver\'s button' },
     how: [
@@ -864,7 +864,7 @@ void loop() {
   },
   {
     id: 'workshop', title: 'Open studio', place: 'Open Studio', hook: 'Free build with every part you have unlocked.', map: [75, 93], after: ['beacon'], sandbox: true, guide: ['circuit', 'breadboard', 'switch', 'loops', 'functions'],
-    story: 'The studio is yours: no goal and no checks. Everything you have unlocked is in the tray. Build something you would want on the campus, wire it, write the sketch, and run it. Passing more missions puts more parts in the tray.',
+    story: 'The studio is yours: no goal and no checks. Everything you have unlocked is in the tray. Build something you would want in your own space, wire it, write the sketch, and run it. Passing more missions puts more parts in the tray.',
     goal: 'Build anything you like.',
     how: ['Use the tray to add parts and wires. Drag a wire end to move it, and use Step to watch your sketch one line at a time.', 'Point at a hole or pin to read its voltage while the sketch runs.'],
     starter: `// Open studio: your own sketch
@@ -964,7 +964,7 @@ void loop() {
   },
   {
     id: 'touchlamp', title: 'Study-desk lamp', place: 'Library Desk', hook: 'Switch a lamp on with a touch, no button needed.', map: [75, 67], after: ['beacon'], guide: ['touch', 'serial', 'ifelse'],
-    story: 'The library desks have lamps with fiddly switches that students keep breaking. Build a <b>touch lamp</b>: the LED is on while a finger touches the pad and off when it lets go. Ten ESP32 pins can sense touch with nothing more than a wire.',
+    story: 'The reading desks have lamps with fiddly switches that keep breaking. Build a <b>touch lamp</b>: the LED is on while a finger touches the pad and off when it lets go. Ten ESP32 pins can sense touch with nothing more than a wire.',
     goal: 'The LED is on while the pad is touched and off otherwise.',
     controls: { pad: 'Hold to touch the pad' },
     how: ['<code>touchRead()</code> returns a high number normally and a low number when touched.', 'A limit in between decides what counts as a touch.', '<code>value &lt; THRESHOLD</code> is either true or false, which also works as HIGH or LOW.'],
@@ -1027,10 +1027,10 @@ void loop() {
   },
   choose({
     id: 'mural', title: 'Touch mural', place: 'Art Room', hook: 'Choose a board that can feel six touches on a painted wall.', map: [25, 67], after: ['touchlamp'], guide: ['boards', 'touch'],
-    story: 'The art club has painted a mural of the school with six bright spots on it. Behind each spot is a small piece of copper tape. Touch a spot and a sound plays, and the art teacher wants to change the sounds from a laptop over the school Wi-Fi.',
+    story: 'The art club has painted a mural of the town with six bright spots on it. Behind each spot is a small piece of copper tape. Touch a spot and a sound plays, and the artist wants to change the sounds from a laptop over Wi-Fi.',
     needs: [
       { need: { k: 'touch', n: 6 }, text: 'It senses a finger on six copper pads, with nothing in between.' },
-      { need: { k: 'wifi' }, text: 'It connects to the school Wi-Fi.' },
+      { need: { k: 'wifi' }, text: 'It connects to your Wi-Fi.' },
     ],
     hints: [
       'You have already used a pad like these, at the Library Desk.',
@@ -1130,7 +1130,7 @@ void loop() {
   },
   choose({
     id: 'bagtag', title: 'Bag finder tag', place: 'Lost & Found', hook: 'Choose a board small enough to hide in a bag, that a phone can find.', map: [75, 54], after: ['toggle'], guide: ['boards'],
-    story: 'Students keep losing their bags. The office wants a small tag that sits in a bag\'s pocket and lets a phone find it nearby over Bluetooth, the way wireless earbuds are found. The pocket has room for a board 30 × 25 mm.',
+    story: 'People keep losing their bags. The lost-and-found desk wants a small tag that sits in a bag\'s pocket and lets a phone find it nearby over Bluetooth, the way wireless earbuds are found. The pocket has room for a board 30 × 25 mm.',
     needs: [
       { need: { k: 'bluetooth' }, text: 'A phone can find it over Bluetooth.' },
       { need: { k: 'fits', l: 30, w: 25 }, text: 'It fits the pocket, which has room for a board 30 × 25 mm.' },
@@ -1198,9 +1198,9 @@ void loop() {
   },
   choose({
     id: 'visitorlight', title: 'Visitor light', place: 'Guard House', hook: 'Choose a small Wi-Fi board for the guard\'s sign-in light.', map: [25, 41], after: ['siren'], guide: ['boards'],
-    story: 'At the front gate, visitors wait until a light turns green. The guard will switch it from a phone over the school Wi-Fi. The light box is small: it has room for a board 40 × 30 mm.',
+    story: 'At the front gate, visitors wait until a light turns green. The guard will switch it from a phone over Wi-Fi. The light box is small: it has room for a board 40 × 30 mm.',
     needs: [
-      { need: { k: 'wifi' }, text: 'It connects to the school Wi-Fi.' },
+      { need: { k: 'wifi' }, text: 'It connects to your Wi-Fi.' },
       { need: { k: 'fits', l: 40, w: 30 }, text: 'It fits the light box, which has room for a board 40 × 30 mm.' },
     ],
     hints: [
@@ -1211,7 +1211,7 @@ void loop() {
   }),
   {
     id: 'nightlight', title: 'Night light', place: 'Main Hallway', hook: 'Turn a light on when the hallway gets dark, with the ESP32\'s finer readings.', map: [30, 28], after: ['siren'], guide: ['knob', 'analog', 'ifelse'],
-    story: 'The main hallway is dark after the last bell. Build a <b>night light</b> that comes on by itself when it is dark. The ESP32 measures voltage in 4096 steps instead of 1024, so the numbers are four times bigger. The knob stands in for the light sensor and runs from <b>3.3 V</b>, never 5 V, because the pins cannot take more.',
+    story: 'The main hallway is dark at night. Build a <b>night light</b> that comes on by itself when it is dark. The ESP32 measures voltage in 4096 steps instead of 1024, so the numbers are four times bigger. The knob stands in for the light sensor and runs from <b>3.3 V</b>, never 5 V, because the pins cannot take more.',
     goal: 'The LED comes on when the light level is low and goes off when it is high.',
     controls: { pot: 'Hallway light level' },
     how: ['<code>analogRead()</code> gives 0 to 4095 on the ESP32, because its converter has 12 bits.', 'The sensor must be powered from 3V3. A pin cannot take 5 V.', 'Pins D34 to D39 are input-only, which is fine for a sensor.'],
@@ -1366,7 +1366,7 @@ void loop() {
   },
   {
     id: 'workshop', title: 'Open studio', place: 'Open Studio', hook: 'Free build with every part you have unlocked.', map: [75, 93], after: ['beacon'], sandbox: true, guide: ['circuit', 'breadboard', 'switch', 'loops', 'functions'],
-    story: 'The studio is yours: no goal and no checks. Everything you have unlocked is in the tray. Build something you would want on the campus, wire it, write the sketch, and run it.',
+    story: 'The studio is yours: no goal and no checks. Everything you have unlocked is in the tray. Build something you would want in your own space, wire it, write the sketch, and run it.',
     goal: 'Build anything you like.',
     how: ['Use the tray to add parts and wires. The ESP32 plugs into the left of the breadboard, so build in columns 22 to 30.', 'Point at a hole or pin to read its voltage while the sketch runs.'],
     starter: `// Open studio: your own sketch

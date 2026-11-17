@@ -6,11 +6,11 @@ import { ThemeToggle } from './ThemeToggle';
 
 const ALL_BOARDS = Object.values(BOARDS);
 const TAGLINES: Record<string, string> = {
-  uno: 'The classic first board. Simple, forgiving and used in classrooms everywhere.',
+  uno: 'The classic first board. Simple, forgiving and loved by beginners everywhere.',
   esp32: 'A faster board with a 12-bit analog input, touch sensing and Wi-Fi hardware.',
 };
 const STEPS = [
-  ['Pick a place', 'Open the campus map and choose a mission: a small device to build for somewhere at school, like a night light or a door chime.'],
+  ['Pick a mission', 'Open the mission map and choose a small device to build, like a night light or a door chime.'],
   ['Build and predict', 'Place the parts and wires on the 3D bench yourself, write the sketch, and say what you expect before you run it. Stuck? The built-in guide explains every instruction and part.'],
   ['Prove it', 'Run the checks on your own build. Every one has to pass, and passing unlocks new parts and the next places on the map.'],
 ] as const;
@@ -55,8 +55,8 @@ export function Home() {
         <section className="hero">
           <div className="hero-text">
             <ul className="plate" aria-label="What you need"><li>Free</li><li>Runs in the browser</li><li>No hardware needed</li></ul>
-            <h2>Fix real problems around a school campus with Arduino and ESP32.</h2>
-            <p className="lede">Build the device yourself, guess what it will do, then prove it with checks that run your own sketch. {total} missions around a school campus, all in your browser.</p>
+            <h2>Learn Arduino and ESP32 by building real devices.</h2>
+            <p className="lede">Build the device yourself, guess what it will do, then prove it with checks that run your own sketch. {total} hands-on missions for anyone who wants to learn, all in your browser.</p>
             <div className="hero-actions">
               <a className="cta" href="#uno-tour">Start with the Arduino Uno</a>
               <a className="ghost" href="#esp32-tour">Try the ESP32</a>

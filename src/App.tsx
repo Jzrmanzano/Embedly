@@ -136,7 +136,7 @@ export function App() {
       <TopBar />
       <main id="bench" className="bench" tabIndex={-1} aria-label="The bench" data-left={panels.left ?? undefined} data-right={panels.right ?? undefined} style={chosen}>
         {mission.choice ? <SupplyShelf /> : <Stage />}
-        <Drawer name="map" title="Campus map" icon="map" className="mapbody"><CampusMap /></Drawer>
+        <Drawer name="map" title="Mission map" icon="map" className="mapbody"><CampusMap /></Drawer>
         <Drawer name="brief" title="Mission brief" icon="brief"><DocPanel /></Drawer>
         {!mission.choice && <Drawer name="code" title="Code" icon="code"><CodePanel /></Drawer>}
       </main>

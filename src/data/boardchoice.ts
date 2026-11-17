@@ -1,4 +1,4 @@
-/* Choosing the right board. Five boards a school can buy, with what their datasheets say about the things that decide a choice, and the needs a
+/* Choosing the right board. Five popular boards, with what their datasheets say about the things that decide a choice, and the needs a
    device can have. Only the Uno and the ESP32 are on the workshop's bench; the other three are cards to compare. Sizes are the boards' own
    outlines in millimetres; the 30-pin ESP32 DevKit is the one on the bench. */
 
@@ -47,7 +47,7 @@ export type Need =
   | { k: 'analog'; n: number }             // this many analog inputs
   | { k: 'touch'; n: number }              // this many touch pins
   | { k: 'fits'; l: number; w: number }    // fits a space this big in millimetres, either way round
-  | { k: 'shield' };                       // takes the Uno-shaped shields the school already owns
+  | { k: 'shield' };                       // takes the Uno-shaped shields you already own
 /** A choice mission: the needs, each said the way the person asking would say it. */
 export interface Choice { needs: { need: Need; text: string }[] }
 

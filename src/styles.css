@@ -1,4 +1,4 @@
-/* Embedly: a campus workshop.
+/* Embedly: a maker workshop.
    Paper and pegboard by day, chalkboard by night. One safety-orange accent for the thing to press, blueprint blue for links and focus,
    slab-serif signage for headings, a very legible face for reading, and the 3D bench filling the screen with everything else opened over it. */
 :root {
@@ -267,7 +267,7 @@ dl.facts dt { color: var(--muted); } dl.facts dd { margin: 0; }
 .ends label { display: flex; align-items: center; gap: 4px; }
 .ends input { width: 8ch; }
 
-/* --- the campus map --- */
+/* --- the mission map --- */
 .drawer-body.mapbody { padding: 10px; }
 .map { position: relative; flex: 1; min-height: 480px; overflow: hidden; border: 1px solid var(--edge); border-radius: var(--r);
   background-color: color-mix(in srgb, var(--ok) 11%, var(--panel));

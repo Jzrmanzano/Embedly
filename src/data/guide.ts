@@ -311,7 +311,7 @@ void loop() {
       Serial.println("weekend: bell off");
       break;
     default:
-      Serial.println("school day: bell on");
+      Serial.println("day start: bell on");
       break;
   }
 }

@@ -3,7 +3,7 @@ import { setHelp } from '../state/actions';
 import { useLab } from '../state/store';
 
 const KEYS: [string[], string][] = [
-  [['M'], 'Open or close the campus map'],
+  [['M'], 'Open or close the mission map'],
   [['B'], 'Open or close the mission brief'],
   [['G'], 'Go to the guide to the code and the parts, which has a page of its own. G there comes back to the bench'],
   [['C'], 'Open or close the code'],

@@ -23,7 +23,7 @@ npm run build    # type-check, then build the static site into dist/
 
 | Folder | What it holds |
 |---|---|
-| `src/data/missions.ts` | The campus missions for both boards: story, goal, checks, prediction, hints, starter sketch and the reference build. Add or edit missions here. |
+| `src/data/missions.ts` | The missions for both boards: story, goal, checks, prediction, hints, starter sketch and the reference build. Add or edit missions here. |
 | `src/data/boards.ts` | The two boards: parts, pinouts and facts. |
 | `src/data/guide.ts` | The guide: the coding walkthrough and the chapters about the parts. Add or edit chapters here. |
 | `src/sim/check.ts` | The mission check engine: runs the student's own sketch on their own build, with scripted inputs, on a virtual clock. |
@@ -59,7 +59,7 @@ The layout is `src/sim/schematic.ts` (no React, and tested in `tests/schematic.t
 
 ## The bench, the panels and the keyboard
 
-The 3D bench fills the screen. The campus map, the mission brief and the code open over it as panels (Map, Brief and Code in the top bar, or along the bottom on a phone, where a panel is a sheet and only one is open at a time). Guide, next to them, goes to the guide, which is a page of its own. Run, Step and Stop stay on the bench, so the sketch can run without the code open, and the circuit slides to stay centred in whatever the panels leave free. On a wide screen the inner edge of each panel can be dragged to make it wider for reading or narrower for building (double-click for the usual width; with the keyboard, Tab to the edge and use the arrow keys). The widths are remembered in the browser and the rules are in `src/state/panels.ts`.
+The 3D bench fills the screen. The mission map, the mission brief and the code open over it as panels (Map, Brief and Code in the top bar, or along the bottom on a phone, where a panel is a sheet and only one is open at a time). Guide, next to them, goes to the guide, which is a page of its own. Run, Step and Stop stay on the bench, so the sketch can run without the code open, and the circuit slides to stay centred in whatever the panels leave free. On a wide screen the inner edge of each panel can be dragged to make it wider for reading or narrower for building (double-click for the usual width; with the keyboard, Tab to the edge and use the arrow keys). The widths are remembered in the browser and the rules are in `src/state/panels.ts`.
 
 Everything works without a mouse. Press **?** for the full list: **M**, **B** and **C** toggle the panels (focus moves into the panel, and Esc returns it to the button), **G** goes to the guide and back, **Ctrl+Enter** runs or stops, the arrow keys slide the view, **+**, **-**, **0** and **T** zoom, reset and look from the top, and **Delete**, **Ctrl+Z** and **Ctrl+Y** edit the bench. A part is placed from the keyboard by choosing it in the tray and typing its holes.
 
@@ -71,13 +71,13 @@ The **Guide** (**G**) is the textbook next to the missions, on a page of its own
 
 A chapter is an object in `src/data/guide.ts`: a title, a one-line summary and a list of blocks (`p`, `list`, `tip`, `table`, `code` or `fig`). The page and its drawings are in `src/components/GuidePage.tsx`. `tests/guide.test.ts` parses every code block with the simulator's own interpreter, runs the whole sketches, and checks that an example with `prints` prints exactly that, so an example that stops working fails `npm test`.
 
-## Campus missions
+## Missions
 
-Each location on the campus map is a mission: a small device to build for somewhere at a school. A mission is passed only when **Check my build** runs the student's own sketch on their own circuit and every check passes. Before the first run the student predicts what will happen, and the guess is compared with what the simulator does. Hints come in three steps (a nudge, the idea, the answer) and are counted. Passing a mission puts new parts in the tray and opens the missions after it; the first pass also opens the free-build Open Studio.
+Each location on the mission map is a mission: a small device to build. A mission is passed only when **Check my build** runs the student's own sketch on their own circuit and every check passes. Before the first run the student predicts what will happen, and the guess is compared with what the simulator does. Hints come in three steps (a nudge, the idea, the answer) and are counted. Passing a mission puts new parts in the tray and opens the missions after it; the first pass also opens the free-build Open Studio.
 
 ## Choosing a board
 
-Some places on the map ask for a board instead of a build: a chip in the badge marks them. Each is a request from somewhere on campus with two or three needs (Wi-Fi, Bluetooth, 5 V parts, how many analog inputs or touch pins, a space it must fit, the Uno shields the lab already owns). The bench gives way to a **supply shelf** of five boards side by side, drawn to the same scale and standing on the same line: the Arduino Uno, the Arduino Nano, the ESP32 DevKit, the Wemos D1 mini (ESP8266) and the ESP32-C3 SuperMini. Each card lists what decides a choice. Choosing one marks every need as met or not, with the reason, and the mission is passed when every need is met. When more than one board would do, the shelf says so. Only the Uno and the ESP32 are on the bench; the other three are cards to compare. These missions sit beside the build missions on the map and never stand in the way of them.
+Some places on the map ask for a board instead of a build: a chip in the badge marks them. Each is a request from somewhere on the map with two or three needs (Wi-Fi, Bluetooth, 5 V parts, how many analog inputs or touch pins, a space it must fit, the Uno shields the lab already owns). The bench gives way to a **supply shelf** of five boards side by side, drawn to the same scale and standing on the same line: the Arduino Uno, the Arduino Nano, the ESP32 DevKit, the Wemos D1 mini (ESP8266) and the ESP32-C3 SuperMini. Each card lists what decides a choice. Choosing one marks every need as met or not, with the reason, and the mission is passed when every need is met. When more than one board would do, the shelf says so. Only the Uno and the ESP32 are on the bench; the other three are cards to compare. These missions sit beside the build missions on the map and never stand in the way of them.
 
 The boards and their facts are in `src/data/boardchoice.ts`, with `meets` and `why` for each kind of need. A choice mission is made with `choose()` in `src/data/missions.ts`: a story, the needs in the asker's words, and three hints, the last naming every board that works. `tests/boardchoice.test.ts` pins down the right boards for every mission, checks that every board on the shelf is the right answer somewhere and that each need rules something out, and checks that the answer hint names exactly the boards that work. The guide's "Choosing a board" chapter explains each line on the cards.
 
