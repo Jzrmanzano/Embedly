@@ -7,6 +7,7 @@ import { useLab } from '../state/store';
 import { Icon } from './Icons';
 import { html } from './MissionPanel';
 import { PageBar } from './PageBar';
+import { PartSymbol } from './Symbols';
 
 /* --- the drawings --- */
 const COLS = Array.from({ length: 14 }, (_, i) => 30 + i * 20);
@@ -93,24 +94,6 @@ function BlockView({ b }: { b: Block }) {
   );
   const Fig = FIGURES[b.fig];
   return <figure className="g-fig"><Fig /><figcaption>{b.caption}</figcaption></figure>;
-}
-
-/* --- circuit symbols for the parts, drawn on a 48 × 32 grid with the same round stroke as the icons --- */
-const SYMBOLS: Record<string, ReactNode> = {
-  circuit: <><path d="M6 13V5h36v22H6v-10" /><path d="M1 13h10M3 17h6" /><path d="m23 2 3 3-3 3" /></>,
-  breadboard: <><rect x="3" y="3" width="42" height="26" rx="3" /><rect x="20.5" y="6" width="7" height="10" rx="3.5" />{[10, 17, 24, 31, 38].flatMap(x => [9, 13, 19, 23].map(y => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.1" className="dot" />))}</>,
-  led: <><path d="M2 18h14M30 18h16" /><path d="M16 10v16l14-8z" /><path d="M30 10v16" /><path d="m31 7 5-5m-3.5 0H36v3.5M37 9l5-5m-3.5 0H42v3.5" /></>,
-  resistor: <path d="M2 16h9l2.5-6 5 12 5-12 5 12 5-12 2.5 6h9" />,
-  button: <><path d="M2 24h10M36 24h10M10 16h28M24 16V6M19 6h10" /><circle cx="13.5" cy="24" r="1.5" /><circle cx="34.5" cy="24" r="1.5" /></>,
-  knob: <><path d="M2 24h9l2.5-5 5 10 5-10 5 10 5-10 2.5 5h9" /><path d="M24 2v13m-4-4 4 4 4-4" /></>,
-  buzzer: <><path d="M10 20a14 14 0 0 1 28 0z" /><path d="M18 20v10M30 20v10" /><path d="M40 6a9 9 0 0 1 3 6M37 9a5 5 0 0 1 2 4" /></>,
-  sonar: <><rect x="3" y="9" width="42" height="18" rx="2" /><circle cx="14" cy="18" r="6" /><circle cx="34" cy="18" r="6" /><path d="M17 5a11 11 0 0 1 14 0" /></>,
-  servo: <><rect x="3" y="11" width="30" height="16" rx="2" /><circle cx="25" cy="19" r="3" /><path d="m25 19 17-13" /><circle cx="42" cy="6" r="2" /></>,
-  boards: <><rect x="7" y="6" width="36" height="20" rx="2" /><rect x="20" y="11" width="10" height="10" rx="1" /><path d="M3 13h4M3 19h4" /><path d="M12 9.5h26M12 22.5h26" strokeDasharray="1.4 3.2" /></>,
-  touch: <><rect x="18" y="9" width="12" height="12" rx="2" /><path d="M13 7a12 12 0 0 0 0 16M35 7a12 12 0 0 1 0 16M8 3a18 18 0 0 0 0 24M40 3a18 18 0 0 1 0 24M24 21v9" /></>,
-};
-function PartSymbol({ id }: { id: string }) {
-  return SYMBOLS[id] ? <svg className="sym" viewBox="0 0 48 32" aria-hidden="true">{SYMBOLS[id]}</svg> : null;
 }
 
 /* --- the contents --- */

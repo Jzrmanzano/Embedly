@@ -3,16 +3,16 @@
 import { blinks, colorOn, ledOn, phases, reaction, servoAt, soundOn, sweeps, type InputStep, type Sample, type Scenario, type Trace } from '../sim/check';
 import type { Tool } from '../state/bench';
 import type { Choice } from './boardchoice';
-import type { BoardId, Item } from '../types';
+import { LED_COLORS, ledColorName, type BoardId, type Item } from '../types';
 
 /* --- the parts tray --- */
-export type PartId = 'led-red' | 'led-green' | 'res-220' | 'res-1k' | 'res-10k' | 'wire' | 'button' | 'knob' | 'buzzer' | 'sonar' | 'pad' | 'servo';
-export const PARTS: Record<PartId, { label: string; tool: Tool; swatch?: string; only?: BoardId }> = {
+export type PartId = 'led-red' | 'led-green' | 'resistor' | 'wire' | 'button' | 'knob' | 'buzzer' | 'sonar' | 'pad' | 'servo' | 'ldr' | 'temp'
+  | 'led-yellow' | 'led-blue' | 'led-white' | 'rgb' | 'slide' | 'tilt' | 'reed' | 'pir' | 'ir' | 'soil' | 'water' | 'gas' | 'flame' | 'joystick';
+/** Every part of the tray. A `studio` part is one no mission unlocks yet: it is in the Open Studio's tray and nowhere else. */
+export const PARTS: Record<PartId, { label: string; tool: Tool; swatch?: string; only?: BoardId; studio?: true }> = {
   'led-red': { label: 'Red LED', tool: { kind: 'led', color: 0xff3b30 }, swatch: '#ff3b30' },
   'led-green': { label: 'Green LED', tool: { kind: 'led', color: 0x2ecc40 }, swatch: '#2ecc40' },
-  'res-220': { label: '220 Ω', tool: { kind: 'res', ohms: 220 } },
-  'res-1k': { label: '1 kΩ', tool: { kind: 'res', ohms: 1000 } },
-  'res-10k': { label: '10 kΩ', tool: { kind: 'res', ohms: 10000 } },
+  resistor: { label: 'Resistor', tool: { kind: 'res', ohms: 220 } },
   wire: { label: 'Wire', tool: { kind: 'wire' } },
   button: { label: 'Button', tool: { kind: 'button' } },
   knob: { label: 'Knob', tool: { kind: 'pot' } },
@@ -20,16 +20,37 @@ export const PARTS: Record<PartId, { label: string; tool: Tool; swatch?: string;
   sonar: { label: 'Distance sensor', tool: { kind: 'sonar' } },
   pad: { label: 'Touch pad', tool: { kind: 'pad' }, only: 'esp32' },
   servo: { label: 'Servo', tool: { kind: 'servo' } },
+  ldr: { label: 'Light sensor', tool: { kind: 'ldr' } },
+  temp: { label: 'Temp sensor', tool: { kind: 'temp' } },
+  'led-yellow': { label: 'Yellow LED', tool: { kind: 'led', color: LED_COLORS.yellow }, swatch: '#d99a00', studio: true },
+  'led-blue': { label: 'Blue LED', tool: { kind: 'led', color: LED_COLORS.blue }, swatch: '#2f7bff', studio: true },
+  'led-white': { label: 'White LED', tool: { kind: 'led', color: LED_COLORS.white }, swatch: '#8d97a1', studio: true },
+  rgb: { label: 'RGB LED', tool: { kind: 'rgb' }, studio: true },
+  slide: { label: 'Slide switch', tool: { kind: 'slide' }, studio: true },
+  tilt: { label: 'Tilt switch', tool: { kind: 'contact', sub: 'tilt' }, studio: true },
+  reed: { label: 'Reed switch', tool: { kind: 'contact', sub: 'reed' }, studio: true },
+  joystick: { label: 'Joystick', tool: { kind: 'joy' }, studio: true },
+  pir: { label: 'Motion sensor', tool: { kind: 'module', sub: 'pir' }, studio: true },
+  ir: { label: 'Obstacle sensor', tool: { kind: 'module', sub: 'ir' }, studio: true },
+  soil: { label: 'Soil moisture', tool: { kind: 'module', sub: 'soil' }, studio: true },
+  water: { label: 'Water level', tool: { kind: 'module', sub: 'water' }, studio: true },
+  gas: { label: 'Gas sensor', tool: { kind: 'module', sub: 'gas' }, studio: true },
+  flame: { label: 'Flame sensor', tool: { kind: 'module', sub: 'flame' }, studio: true },
 };
+/** The parts that only the Open Studio has. */
+export const STUDIO_PARTS = (Object.keys(PARTS) as PartId[]).filter(id => PARTS[id].studio);
 /** What the tray holds before any mission has been passed. */
-export const BASE_PARTS: PartId[] = ['led-red', 'res-220', 'wire'];
+export const BASE_PARTS: PartId[] = ['led-red', 'resistor', 'wire'];
 
 export function partIdOf(it: Item): PartId {
   switch (it.t) {
-    case 'led': return it.color === 0x2ecc40 ? 'led-green' : 'led-red';
-    case 'res': return it.ohms === 1000 ? 'res-1k' : it.ohms === 10000 ? 'res-10k' : 'res-220';
+    case 'led': { const name = ledColorName(it.color); return name ? `led-${name}` : 'led-red'; }
+    case 'res': return 'resistor';
     case 'pot': return 'knob';
-    case 'wire': case 'button': case 'buzzer': case 'sonar': case 'pad': case 'servo': return it.t;
+    case 'joy': return 'joystick';
+    case 'rgb': case 'slide': return it.t;
+    case 'contact': case 'module': return it.kind;
+    case 'wire': case 'button': case 'buzzer': case 'sonar': case 'pad': case 'servo': case 'ldr': case 'temp': return it.t;
   }
 }
 
@@ -70,7 +91,7 @@ export interface Mission {
   /** The chapters of the guide (ids from src/data/guide.ts) that explain what this mission uses, most useful first. */
   guide: string[];
   /** The on-screen controls, named for the story ("Hallway light level"). */
-  controls?: Partial<Record<'button' | 'pot' | 'sonar' | 'pad', string>>;
+  controls?: Partial<Record<'button' | 'pot' | 'sonar' | 'pad' | 'ldr' | 'temp', string>>;
   starter: string;
   /** The reference build and sketch. */
   circuit: Item[];
@@ -81,6 +102,10 @@ export interface Mission {
   checks: Scenario[];
   /** Parts added to the tray when this mission is passed. */
   unlocks: PartId[];
+  /** A repair job: the bench the student starts from, with faults in it. Without this the bench starts empty. */
+  start?: Item[];
+  /** The build and sketch are somebody else's, and the faults are the student's to find. */
+  repair?: boolean;
   /** A mission answered by choosing a board on the supply shelf, not by building on the bench. */
   choice?: Choice;
 }
@@ -97,6 +122,16 @@ const unoKnob: Item[] = [
   { t: 'pot', id: 'pot', row: 'd', col: 24, ctl: 'Knob position' },
   { t: 'wire', a: 'a24', b: 'T+24', c: 'red' }, { t: 'wire', a: 'a26', b: 'T-26', c: 'black' }, { t: 'wire', a: 'a25', b: 'U:A0', c: 'green' },
 ];
+/** A light sensor on a voltage divider: 5V, the sensor, the point the pin reads, a 10 kΩ resistor, GND. */
+const unoLdr: Item[] = [
+  ...unoLed(9),
+  { t: 'wire', a: 'a15', b: 'T-15', c: 'black' }, { t: 'wire', a: 'U:GND', b: 'T-2', c: 'black' }, { t: 'wire', a: 'U:5V', b: 'T+1', c: 'red' },
+  { t: 'ldr', id: 'ldr', a: 'e24', b: 'e25', ctl: 'Light level' }, { t: 'wire', a: 'a24', b: 'T+24', c: 'red' },
+  { t: 'res', a: 'c25', b: 'c28', ohms: 10000 }, { t: 'wire', a: 'a28', b: 'T-28', c: 'black' },
+  { t: 'wire', a: 'a25', b: 'U:A0', c: 'green' },
+];
+/** The knob's circuit with a TMP36 where the knob was. */
+const unoTemp: Item[] = unoKnob.map((it): Item => (it.t === 'pot' ? { t: 'temp', id: 'temp', row: 'd', col: 24, ctl: 'Temperature' } : it));
 const espLed: Item[] = [
   { t: 'wire', a: 'E:D5', b: 'j22', c: 'orange' },
   { t: 'led', id: 'led', a: 'g22', k: 'g23', color: 0xff3b30 },
@@ -235,7 +270,7 @@ void loop() {
       phases('The LED lights up', [{ when: 'the sketch has been running for a few seconds', ms: 3000, mode: 'during', expect: { led: true } }]),
       blinks('The LED blinks about once a second'),
     ],
-    unlocks: ['knob', 'res-10k'],
+    unlocks: ['knob'],
   },
   {
     id: 'nightlight', title: 'Night light', place: 'Main Hallway', hook: 'Turn a light on when the hallway gets dark.', map: [70, 73], after: ['beacon'], guide: ['knob', 'analog', 'ifelse'],
@@ -298,7 +333,7 @@ void loop() {
         { when: 'the sun comes back', set: { pot: bright }, expect: { led: false } },
       ]),
     ],
-    unlocks: ['button'],
+    unlocks: ['button', 'ldr'],
   },
   {
     id: 'lamp', title: 'Reading lamp', place: 'Reading Room', hook: 'Dim a lamp smoothly with a dial.', map: [30, 63], after: ['nightlight'], guide: ['analog', 'knob'],
@@ -556,7 +591,7 @@ void loop() {
         { when: 'it drives out again', set: { sonar: 60 }, expect: { led: false } },
       ]),
     ],
-    unlocks: ['led-green', 'res-1k'],
+    unlocks: ['led-green'],
   },
   choose({
     id: 'linebot', title: 'Line-follower robot', place: 'Robotics Club', hook: 'Choose a board small enough for the club\'s robot.', map: [75, 43], after: ['parking'], guide: ['boards', 'analog'],
@@ -863,8 +898,178 @@ void loop() {
     unlocks: [],
   },
   {
-    id: 'workshop', title: 'Open studio', place: 'Open Studio', hook: 'Free build with every part you have unlocked.', map: [75, 93], after: ['beacon'], sandbox: true, guide: ['circuit', 'breadboard', 'switch', 'loops', 'functions'],
-    story: 'The studio is yours: no goal and no checks. Everything you have unlocked is in the tray. Build something you would want in your own space, wire it, write the sketch, and run it. Passing more missions puts more parts in the tray.',
+    id: 'streetlamp', title: 'Street lamp', place: 'Staff Car Park', hook: 'Switch a lamp on at dusk with a real light sensor, without it flickering.', map: [25, 73], after: ['nightlight'], guide: ['ldr', 'analog', 'variables'],
+    story: 'The staff car park has a lamp on a pole, and the old timer switches it on at the wrong time all year round. Fit a <b>light sensor</b> instead. At dusk the light fades slowly, and a lamp that flicks on and off at every cloud would drive the neighbours mad, so the lamp needs to be <b>properly dark</b> before it turns on and <b>properly bright</b> before it turns off. The light sensor is a resistor whose value changes with the light, so you will build its voltage divider yourself.',
+    goal: 'The lamp comes on in the dark and goes off in daylight, and it stays as it is in the gloomy stretch in between.',
+    controls: { ldr: 'Light in the car park' },
+    how: [
+      'A light sensor (LDR) is a <b>resistor that changes with light</b>: about 1 kΩ in bright light and 100 kΩ in the dark. A pin cannot read resistance, only voltage, so put the sensor in a <b>divider</b>: 5V, then the sensor, then a 10 kΩ resistor, then GND. The pin reads the point between them.',
+      'In the dark the sensor resists more, so less of the 5 V is left for the pin: <b>dark is a low number</b>, as with the knob.',
+      'To stop flicker, use two limits. Below the first the lamp turns on, above the second it turns off, and in between it keeps doing what it was doing. A <code>bool</code> variable remembers it.',
+    ],
+    starter: `// Staff car park street lamp
+const int SENSOR_PIN = A0;   // the light sensor's divider
+const int LAMP_PIN = 9;
+const int DARK_BELOW = 250;    // below this it is properly dark
+const int BRIGHT_ABOVE = 450;  // above this it is properly bright
+
+bool lampOn = false;         // remembers what the lamp is doing
+
+void setup() {
+  pinMode(LAMP_PIN, OUTPUT);
+}
+
+void loop() {
+  int light = analogRead(SENSOR_PIN);
+
+  // 1. properly dark: remember that the lamp is on
+  // 2. properly bright: remember that it is off
+  // 3. in between: change nothing
+  // then write lampOn to the lamp pin
+
+  delay(50);
+}`,
+    circuit: unoLdr,
+    answer: `const int SENSOR_PIN = A0;
+const int LAMP_PIN = 9;
+const int DARK_BELOW = 250;
+const int BRIGHT_ABOVE = 450;
+
+bool lampOn = false;
+
+void setup() {
+  pinMode(LAMP_PIN, OUTPUT);
+}
+
+void loop() {
+  int light = analogRead(SENSOR_PIN);
+
+  if (light < DARK_BELOW) {
+    lampOn = true;
+  } else if (light > BRIGHT_ABOVE) {
+    lampOn = false;
+  }
+
+  if (lampOn) {
+    digitalWrite(LAMP_PIN, HIGH);
+  } else {
+    digitalWrite(LAMP_PIN, LOW);
+  }
+  delay(50);
+}`,
+    predict: {
+      question: 'The light sensor, its resistor and the lamp are built. It starts out bright, then gets dark. What will the lamp do?',
+      options: [
+        { id: 'dark', label: 'It turns on when it gets dark' }, { id: 'bright', label: 'It turns on when it gets bright' },
+        { id: 'always', label: 'It stays on whatever happens' }, { id: 'never', label: 'It never lights' },
+      ],
+      demo: [{ from: 0, set: { ldr: bright } }, { from: 2000, set: { ldr: dark } }], run: 4000,
+      classify: reacts(ledOn, 1800, 3800, 'dark', 'bright'), works: 'dark',
+      explain: reactExplain('dark', 'It reacted the way it should: it came on when it got dark.', 'bright', 'It reacted, but backwards: it came on when it got bright. Check which way your comparison points.'),
+    },
+    hints: [
+      'Move the Light in the car park slider while the sketch runs and watch the number the sensor gives. Which way does it go in the dark? If it never changes, check the divider: the sensor and the 10 kΩ resistor must meet in the column that goes to A0.',
+      'Dark is a low reading. Turn <code>lampOn</code> on when <code>light &lt; DARK_BELOW</code>, off when <code>light &gt; BRIGHT_ABOVE</code>, and do nothing in between. Then write the lamp pin from <code>lampOn</code>.',
+      'In loop(): int light = analogRead(SENSOR_PIN); if (light < DARK_BELOW) lampOn = true; else if (light > BRIGHT_ABOVE) lampOn = false; then if (lampOn) digitalWrite(LAMP_PIN, HIGH); else digitalWrite(LAMP_PIN, LOW); then delay(50). Wire 5V to the sensor, the sensor to a 10 kΩ resistor, the resistor to GND, and the point between them to A0.',
+    ],
+    checks: [
+      phases('The lamp stays off in daylight', [{ when: 'it is bright (light 90%)', set: { ldr: bright }, expect: { led: false } }]),
+      phases('The lamp comes on in the dark', [{ when: 'it is dark (light 10%)', set: { ldr: dark }, expect: { led: true } }]),
+      phases('It does not flicker at dusk', [
+        { when: 'it is bright', set: { ldr: bright }, expect: { led: false } },
+        { when: 'the light fades to dusk (35%), not dark enough yet', set: { ldr: 0.35 }, expect: { led: false } },
+        { when: 'it gets properly dark', set: { ldr: dark }, expect: { led: true } },
+        { when: 'the light comes back to dusk (35%), not bright enough yet', set: { ldr: 0.35 }, expect: { led: true } },
+        { when: 'the sun is fully up', set: { ldr: bright }, expect: { led: false } },
+      ]),
+    ],
+    unlocks: ['temp'],
+  },
+  {
+    id: 'heatwarn', title: 'Heat warning', place: 'Server Room', hook: 'Read a temperature sensor, print it, and warn when the room gets too hot.', map: [25, 33], after: ['streetlamp'], guide: ['temp', 'analog', 'serial'],
+    story: 'The school\'s server cupboard has no fan, and last summer it got so hot that it shut itself down. Put a <b>temperature sensor</b> in it. The sketch must print the temperature in °C on the Serial Monitor, and turn a warning LED on when it goes over <b>30 °C</b>.',
+    goal: 'The Serial Monitor shows the temperature in °C, and the LED is on above 30 °C and off at or below it.',
+    controls: { temp: 'Room temperature' },
+    how: [
+      'The <b>TMP36</b> gives <b>0.5 V at 0 °C plus 10 mV for every degree</b>. Facing the flat side: left leg to 5V, middle leg is the output (to A0), right leg to GND.',
+      '<code>analogRead()</code> gives 0 to 1023 for 0 to 5 V. Turn it into volts first with <code>raw * 5.0 / 1023.0</code>, then into degrees with <code>(volts - 0.5) * 100.0</code>.',
+      'Use <code>float</code> for numbers with a decimal point, and write them with <code>Serial.println()</code>. Put the numbers in the sketch as <code>5.0</code> and <code>100.0</code>, not <code>5</code> and <code>100</code>, or the division throws away the decimals.',
+    ],
+    starter: `// Server room heat warning
+const int SENSOR_PIN = A0;   // the TMP36's output
+const int WARN_PIN = 9;
+
+void setup() {
+  pinMode(WARN_PIN, OUTPUT);
+  Serial.begin(9600);
+}
+
+void loop() {
+  int raw = analogRead(SENSOR_PIN);    // 0 to 1023
+
+  // 1. turn raw into volts: raw * 5.0 / 1023.0
+  // 2. turn volts into degrees: (volts - 0.5) * 100.0
+  // 3. print the degrees
+  // 4. turn the warning on above 30, otherwise off
+
+  delay(500);
+}`,
+    circuit: unoTemp,
+    answer: `const int SENSOR_PIN = A0;
+const int WARN_PIN = 9;
+
+void setup() {
+  pinMode(WARN_PIN, OUTPUT);
+  Serial.begin(9600);
+}
+
+void loop() {
+  int raw = analogRead(SENSOR_PIN);
+  float volts = raw * 5.0 / 1023.0;      // 0 to 5 V
+  float celsius = (volts - 0.5) * 100.0; // TMP36: 0.5 V at 0 degrees, 10 mV per degree
+
+  Serial.println(celsius);
+
+  if (celsius > 30) {
+    digitalWrite(WARN_PIN, HIGH);
+  } else {
+    digitalWrite(WARN_PIN, LOW);
+  }
+  delay(500);
+}`,
+    predict: {
+      question: 'The sensor and the warning LED are built. The room starts cool, then heats up to 40 °C. What will the LED do?',
+      options: [
+        { id: 'hot', label: 'It turns on when the room gets hot' }, { id: 'cold', label: 'It turns on when the room gets cool' },
+        { id: 'always', label: 'It stays on whatever happens' }, { id: 'never', label: 'It never lights' },
+      ],
+      demo: [{ from: 0, set: { temp: 22 } }, { from: 2000, set: { temp: 40 } }], run: 4000,
+      classify: reacts(ledOn, 1800, 3800, 'hot', 'cold'), works: 'hot',
+      explain: reactExplain('hot', 'It reacted the way it should: it came on when the room got hot.', 'cold', 'It reacted, but backwards: it came on when the room was cool. Check which way your comparison points.'),
+    },
+    hints: [
+      'Print the raw reading first with <code>Serial.println(raw)</code> and move the temperature slider. At 25 °C the sensor gives 0.75 V, which is about 153. If the number never changes, the sensor is not wired to A0, or it has no power.',
+      'Volts are <code>raw * 5.0 / 1023.0</code>. Degrees are <code>(volts - 0.5) * 100.0</code>, because 0.5 V means 0 °C and each 10 mV is a degree. Then <code>if (celsius &gt; 30)</code> chooses the LED.',
+      'In loop(): int raw = analogRead(SENSOR_PIN); float volts = raw * 5.0 / 1023.0; float celsius = (volts - 0.5) * 100.0; Serial.println(celsius); if (celsius > 30) digitalWrite(WARN_PIN, HIGH); else digitalWrite(WARN_PIN, LOW); delay(500). Put 5V on the sensor\'s left leg, A0 on the middle, GND on the right.',
+    ],
+    checks: [
+      phases('It prints the temperature in degrees', [
+        { when: 'the room is 25 °C', set: { temp: 25 }, expect: { serial: /\b2[45]\.\d/ } },
+        { when: 'the room heats up to 40 °C', set: { temp: 40 }, expect: { serial: /\b(39|40)\.\d/ } },
+      ]),
+      phases('The warning stays off while the room is cool', [{ when: 'the room is 22 °C', set: { temp: 22 }, expect: { led: false } }]),
+      phases('The warning comes on when the room is hot', [{ when: 'the room is 38 °C', set: { temp: 38 }, expect: { led: true } }]),
+      phases('It follows the temperature as it changes', [
+        { when: 'the room is cool (22 °C)', set: { temp: 22 }, expect: { led: false } },
+        { when: 'it heats up (38 °C)', set: { temp: 38 }, expect: { led: true } },
+        { when: 'the window is opened and it cools (26 °C)', set: { temp: 26 }, expect: { led: false } },
+      ]),
+    ],
+    unlocks: [],
+  },
+  {
+    id: 'workshop', title: 'Open studio', place: 'Open Studio', hook: 'Free build with every part, open from the start.', map: [75, 93], after: [], sandbox: true, guide: ['circuit', 'breadboard', 'switch', 'loops', 'functions'],
+    story: 'The studio is yours: no goal and no checks. <b>Every part is in the tray here</b>, whether or not a mission has unlocked it yet, so you can build and test a project of your own at any time. Wire it, write the sketch, and run it. The missions teach the parts one at a time, and the <b>i</b> on a part in the tray shows its pinout.',
     goal: 'Build anything you like.',
     how: ['Use the tray to add parts and wires. Drag a wire end to move it, and use Step to watch your sketch one line at a time.', 'Point at a hole or pin to read its voltage while the sketch runs.'],
     starter: `// Open studio: your own sketch
@@ -960,7 +1165,7 @@ void loop() {
       phases('The LED lights up', [{ when: 'the sketch has been running for a few seconds', ms: 3000, mode: 'during', expect: { led: true } }]),
       blinks('The LED blinks about once a second'),
     ],
-    unlocks: ['pad', 'knob', 'res-10k'],
+    unlocks: ['pad', 'knob'],
   },
   {
     id: 'touchlamp', title: 'Study-desk lamp', place: 'Library Desk', hook: 'Switch a lamp on with a touch, no button needed.', map: [75, 67], after: ['beacon'], guide: ['touch', 'serial', 'ifelse'],
@@ -1194,7 +1399,7 @@ void loop() {
       phases('The siren is sounding', [{ when: 'the sketch has been running a moment', ms: 800, mode: 'during', expect: { sound: true } }]),
       sweeps('The siren slides up and back down'),
     ],
-    unlocks: ['res-1k', 'sonar'],
+    unlocks: ['sonar'],
   },
   choose({
     id: 'visitorlight', title: 'Visitor light', place: 'Guard House', hook: 'Choose a small Wi-Fi board for the guard\'s sign-in light.', map: [25, 41], after: ['siren'], guide: ['boards'],
@@ -1273,7 +1478,7 @@ void loop() {
         { when: 'the sun comes back', set: { pot: bright }, expect: { led: false } },
       ]),
     ],
-    unlocks: ['servo'],
+    unlocks: ['servo', 'temp'],
   },
   {
     id: 'weather', title: 'Wind gauge', place: 'Rooftop Weather Station', hook: 'Swing a servo needle to show how hard the wind blows.', map: [70, 15], after: ['nightlight'], guide: ['servo', 'analog', 'knob'],
@@ -1365,8 +1570,93 @@ void loop() {
     unlocks: [],
   },
   {
-    id: 'workshop', title: 'Open studio', place: 'Open Studio', hook: 'Free build with every part you have unlocked.', map: [75, 93], after: ['beacon'], sandbox: true, guide: ['circuit', 'breadboard', 'switch', 'loops', 'functions'],
-    story: 'The studio is yours: no goal and no checks. Everything you have unlocked is in the tray. Build something you would want in your own space, wire it, write the sketch, and run it.',
+    id: 'fridge', title: 'Fridge alarm', place: 'Canteen Kitchen', hook: 'Read a temperature sensor with the ESP32\'s 3.3 V and warn when the fridge gets too warm.', map: [30, 12], after: ['nightlight'], guide: ['temp', 'analog', 'serial'],
+    story: 'The canteen\'s walk-in fridge door is left open all the time, and food inside has gone off twice. Put a <b>temperature sensor</b> in it. The sketch must print the temperature in °C and turn a warning LED on when the fridge is warmer than <b>8 °C</b>. The ESP32 runs on <b>3.3 V</b> and counts to 4095, so the numbers in the sums are different from the Uno\'s.',
+    goal: 'The Serial Monitor shows the temperature in °C, and the LED is on above 8 °C and off at or below it.',
+    controls: { temp: 'Fridge temperature' },
+    how: [
+      'The <b>TMP36</b> gives <b>0.5 V at 0 °C plus 10 mV for every degree</b>, whatever its supply. Power it from <b>3V3</b>, the same as the other parts.',
+      'On the ESP32, <code>analogRead()</code> gives 0 to 4095 for 0 to 3.3 V. So volts are <code>raw * 3.3 / 4095.0</code>.',
+      'Degrees are <code>(volts - 0.5) * 100.0</code>. Print them with <code>Serial.println()</code>, then compare with 8.',
+    ],
+    starter: `// Canteen fridge alarm
+const int SENSOR_PIN = 34;   // the TMP36's output
+const int WARN_PIN = 5;
+
+void setup() {
+  pinMode(WARN_PIN, OUTPUT);
+  Serial.begin(115200);
+}
+
+void loop() {
+  int raw = analogRead(SENSOR_PIN);    // 0 to 4095
+
+  // 1. turn raw into volts: raw * 3.3 / 4095.0
+  // 2. turn volts into degrees: (volts - 0.5) * 100.0
+  // 3. print the degrees
+  // 4. turn the warning on above 8, otherwise off
+
+  delay(500);
+}`,
+    circuit: [
+      ...espLed, { t: 'wire', a: 'E:3V3', b: 'B+4', c: 'red' },
+      { t: 'temp', id: 'temp', row: 'g', col: 28, ctl: 'Temperature' }, { t: 'wire', a: 'j28', b: 'B+28', c: 'red' }, { t: 'wire', a: 'j30', b: 'B-30', c: 'black' }, { t: 'wire', a: 'j29', b: 'E:D34', c: 'green' },
+    ],
+    answer: `const int SENSOR_PIN = 34;
+const int WARN_PIN = 5;
+
+void setup() {
+  pinMode(WARN_PIN, OUTPUT);
+  Serial.begin(115200);
+}
+
+void loop() {
+  int raw = analogRead(SENSOR_PIN);
+  float volts = raw * 3.3 / 4095.0;      // 0 to 3.3 V
+  float celsius = (volts - 0.5) * 100.0; // TMP36: 0.5 V at 0 degrees, 10 mV per degree
+
+  Serial.println(celsius);
+
+  if (celsius > 8) {
+    digitalWrite(WARN_PIN, HIGH);
+  } else {
+    digitalWrite(WARN_PIN, LOW);
+  }
+  delay(500);
+}`,
+    predict: {
+      question: 'The sensor and the warning LED are built. The fridge starts cold, then warms up to 14 °C. What will the LED do?',
+      options: [
+        { id: 'warm', label: 'It turns on when the fridge gets warm' }, { id: 'cold', label: 'It turns on when the fridge is cold' },
+        { id: 'always', label: 'It stays on whatever happens' }, { id: 'never', label: 'It never lights' },
+      ],
+      demo: [{ from: 0, set: { temp: 4 } }, { from: 2000, set: { temp: 14 } }], run: 4000,
+      classify: reacts(ledOn, 1800, 3800, 'warm', 'cold'), works: 'warm',
+      explain: reactExplain('warm', 'It reacted the way it should: it came on when the fridge got warm.', 'cold', 'It reacted, but backwards: it came on when the fridge was cold. Check which way your comparison points.'),
+    },
+    hints: [
+      'Print the raw reading first with <code>Serial.println(raw)</code> and move the temperature slider. At 25 °C the sensor gives 0.75 V, which is about 931 on the ESP32. If it never changes, check the sensor\'s power (3V3), ground and the wire to D34.',
+      'Volts are <code>raw * 3.3 / 4095.0</code> on the ESP32 (the Uno\'s sum uses 5.0 and 1023.0). Degrees are <code>(volts - 0.5) * 100.0</code>. Then <code>if (celsius &gt; 8)</code> chooses the LED.',
+      'In loop(): int raw = analogRead(SENSOR_PIN); float volts = raw * 3.3 / 4095.0; float celsius = (volts - 0.5) * 100.0; Serial.println(celsius); if (celsius > 8) digitalWrite(WARN_PIN, HIGH); else digitalWrite(WARN_PIN, LOW); delay(500). Power the sensor from 3V3.',
+    ],
+    checks: [
+      phases('It prints the temperature in degrees', [
+        { when: 'the fridge is 4 °C', set: { temp: 4 }, expect: { serial: /\b[34]\.\d/ } },
+        { when: 'it warms up to 14 °C', set: { temp: 14 }, expect: { serial: /\b1[34]\.\d/ } },
+      ]),
+      phases('The alarm stays off while the fridge is cold', [{ when: 'the fridge is 4 °C', set: { temp: 4 }, expect: { led: false } }]),
+      phases('The alarm comes on when the fridge is warm', [{ when: 'the fridge is 14 °C', set: { temp: 14 }, expect: { led: true } }]),
+      phases('It follows the temperature as it changes', [
+        { when: 'the fridge is cold (4 °C)', set: { temp: 4 }, expect: { led: false } },
+        { when: 'the door is left open (14 °C)', set: { temp: 14 }, expect: { led: true } },
+        { when: 'the door is shut again (6 °C)', set: { temp: 6 }, expect: { led: false } },
+      ]),
+    ],
+    unlocks: [],
+  },
+  {
+    id: 'workshop', title: 'Open studio', place: 'Open Studio', hook: 'Free build with every part, open from the start.', map: [75, 93], after: [], sandbox: true, guide: ['circuit', 'breadboard', 'switch', 'loops', 'functions'],
+    story: 'The studio is yours: no goal and no checks. <b>Every part is in the tray here</b>, whether or not a mission has unlocked it yet, so you can build and test a project of your own at any time. Wire it, write the sketch, and run it. The missions teach the parts one at a time, and the <b>i</b> on a part in the tray shows its pinout.',
     goal: 'Build anything you like.',
     how: ['Use the tray to add parts and wires. The ESP32 plugs into the left of the breadboard, so build in columns 22 to 30.', 'Point at a hole or pin to read its voltage while the sketch runs.'],
     starter: `// Open studio: your own sketch
@@ -1378,6 +1668,100 @@ void loop() {
     circuit: [], answer: '', hints: ['Nothing to check here.', 'Nothing to check here: this is free build.', 'Nothing to check here: build what you like.'], checks: [], unlocks: [],
   },
 ];
+
+/* --- repair jobs: a mission someone else has already built, with its faults put back in --- */
+interface Repair {
+  id: string; title: string; place: string; hook: string; map: [number, number]; after: string[];
+  story: string; goal: string; how: string[]; hints: Mission['hints']; guide: string[];
+  /** Changes the bench. Returns the part as it should now be, or null to take it away. */
+  fault: (it: Item) => Item | null;
+  /** Changes in the sketch: [what the right sketch says, what the faulty one says]. */
+  code: [from: string, to: string][];
+}
+/** Builds a repair job from a mission: its reference build and sketch with faults put back in. The checks are the same, so the job is done when the mission would be passed. */
+function repairOf(base: Mission, r: Repair): Mission {
+  const starter = r.code.reduce((c, [from, to]) => {
+    if (!c.includes(from)) throw new Error(`repair ${r.id}: the answer of ${base.id} has no "${from}"`);
+    return c.split(from).join(to);
+  }, base.answer);
+  const start = base.circuit.flatMap(it => r.fault(it) ?? []);
+  return {
+    ...base, id: r.id, title: r.title, place: r.place, hook: r.hook, map: r.map, after: r.after, story: r.story, goal: r.goal, how: r.how, hints: r.hints, guide: r.guide,
+    repair: true, start, starter, predict: undefined, controls: base.controls, unlocks: [],
+  };
+}
+const unoMission = (id: string) => UNO.find(m => m.id === id)!, espMission = (id: string) => ESP.find(m => m.id === id)!;
+
+UNO.splice(UNO.length - 1, 0,
+  repairOf(unoMission('beacon'), {
+    id: 'fixbeacon', title: 'Beacon repair', place: 'Loading Dock', hook: 'A rushed install: the beacon never blinks. Find the faults.', map: [75, 83], after: ['beacon'], guide: ['led', 'digitalwrite', 'debugging'],
+    story: 'A volunteer fitted a <b>beacon</b> at the loading dock in a hurry and left. Drivers say it is either dark or stuck on, but never blinks. The bench and the sketch are exactly as they left them. This is a <b>repair job</b>: the checks are the same as for a new beacon, but the faults are somebody else\'s. Press Run, watch what it does, then find out why. <b>There is more than one fault.</b>',
+    goal: 'Make the beacon blink about once a second.',
+    how: ['Start with <b>Check my build</b>. The wiring check names mistakes in the circuit.', 'Then read the sketch line by line and say out loud what each line does to the pin.', 'Fix <b>one thing at a time</b> and run again. If two faults hide each other, fixing the first lets you see the second.'],
+    hints: [
+      'Press Run and watch the LED, then press <b>Check my build</b>. The first problem is something the wiring check can name. The second only shows up once the first is fixed.',
+      'An LED only works one way round, long leg towards the pin. Select the LED and press Flip. Then read the sketch: what level does the pin end up at in each half of the loop?',
+      'Select the LED and press Flip. In loop(), the second digitalWrite must say LOW, not HIGH, or the LED never goes off.',
+    ],
+    fault: it => (it.t === 'led' ? { ...it, a: it.k, k: it.a } : it),
+    code: [['digitalWrite(LED_PIN, LOW);', 'digitalWrite(LED_PIN, HIGH);']],
+  }),
+  repairOf(unoMission('nightlight'), {
+    id: 'fixnight', title: 'Night light repair', place: 'Caretaker\'s Office', hook: 'The caretaker built it and the light is on all day. Find the faults.', map: [75, 63], after: ['nightlight'], guide: ['knob', 'analog', 'debugging'],
+    story: 'The caretaker built a <b>night light</b> for the hallway, but the light is on all day and nothing the light level does changes it. The sketch and the bench are just as the caretaker left them. This is a <b>repair job</b>: find out why, and fix it. <b>There is more than one fault.</b>',
+    goal: 'The LED comes on when the light level is low and goes off when it is high.',
+    how: ['Print the number the sensor gives with <code>Serial.println()</code> and move the light level slider. Does it change?', 'A sensor that never changes is often a sensor with no power or no ground.', 'The reading is 0 to 1023 on the Uno. Is the number in the comparison one the reading can ever reach?'],
+    hints: [
+      'Print <code>light</code> to the Serial Monitor and move the slider. If the number does not follow it, look at the knob in the circuit check. If it does, look at the number the sketch compares it with.',
+      'The knob needs power on one outer leg and GND on the other, or its middle leg floats at one end. And the Uno\'s reading never goes above 1023, so a limit of 3000 is always passed.',
+      'Wire a26 to the - rail (GND) to give the knob its ground. In the sketch, change <code>light &lt; 3000</code> to <code>light &lt; 300</code>.',
+    ],
+    fault: it => (it.t === 'wire' && it.a === 'a26' ? null : it),
+    code: [['light < 300', 'light < 3000']],
+  }),
+  repairOf(unoMission('chime'), {
+    id: 'fixchime', title: 'Chime repair', place: 'Visitor Centre', hook: 'The new chime is silent, then rings all the time. Find the faults.', map: [25, 13], after: ['chime'], guide: ['button', 'digitalread', 'debugging'],
+    story: 'The <b>door chime</b> in the visitor centre is wired and written, yet it does not work. Visitors say it stays silent when they press the bell. A trainee says that when the bell cable was unplugged it rang non-stop. This is a <b>repair job</b>. <b>There is more than one fault, and one of them hides the other.</b>',
+    goal: 'A button press plays a chime of two different notes. No press, no sound.',
+    how: ['Does the buzzer make any sound at all? If never, the problem is between the pin and the buzzer, not in the button.', 'The sketch plays a note on a pin. Is the buzzer\'s wire on that pin?', 'With <code>INPUT_PULLUP</code>, the button reads <b>LOW</b> when it is pressed and HIGH when it is not.'],
+    hints: [
+      'Compare the pin number in the sketch with the pin the buzzer\'s wire goes to. Fix that first, so that you can hear what the sketch does.',
+      'Once you can hear it, you will find it plays when nobody presses the bell. Which reading means pressed with <code>INPUT_PULLUP</code>?',
+      'Move the buzzer\'s wire from pin 7 to pin 8 (the sketch plays on <code>BUZZER_PIN</code> = 8). Then change <code>digitalRead(BUTTON_PIN) == HIGH</code> to <code>== LOW</code>.',
+    ],
+    fault: it => (it.t === 'wire' && it.a === 'U:8' ? { ...it, a: 'U:7' } : it),
+    code: [['digitalRead(BUTTON_PIN) == LOW', 'digitalRead(BUTTON_PIN) == HIGH']],
+  }),
+);
+
+ESP.splice(ESP.length - 1, 0,
+  repairOf(espMission('touchlamp'), {
+    id: 'fixtouch', title: 'Touch lamp repair', place: 'Study Hall', hook: 'The desk lamp ignores every touch. Find the faults.', map: [75, 28], after: ['touchlamp'], guide: ['touch', 'serial', 'debugging'],
+    story: 'A student built a <b>touch lamp</b> for the study hall, but touching the pad does nothing: the lamp just sits there. The bench and the sketch are as they left them. This is a <b>repair job</b>. <b>There is more than one fault.</b>',
+    goal: 'The LED is on while the pad is touched and off otherwise.',
+    how: ['Open the Serial Monitor. Print <code>touchRead()</code> and hold the pad: do the numbers drop?', 'A pad that reads the same whatever you do is usually not connected to the pin the sketch reads.', 'Touching makes the number <b>smaller</b>. Which way does the comparison point?'],
+    hints: [
+      'Print <code>value</code> and hold the pad. If the number never drops, the pad is not wired to the pin in the sketch (D4).',
+      'Once the pad is wired, the lamp comes on when nobody touches it, because the comparison points the wrong way. A touch makes the number smaller.',
+      'Wire D4 to PAD with a wire. In the sketch change <code>value &gt; THRESHOLD</code> to <code>value &lt; THRESHOLD</code>.',
+    ],
+    fault: it => (it.t === 'wire' && it.b === 'PAD' ? null : it),
+    code: [['value < THRESHOLD', 'value > THRESHOLD']],
+  }),
+  repairOf(espMission('weather'), {
+    id: 'fixgauge', title: 'Wind gauge repair', place: 'Rooftop Mast', hook: 'The needle jerks to the end and the servo is weak. Find the faults.', map: [75, 80], after: ['weather'], guide: ['servo', 'analog', 'debugging'],
+    story: 'The science club\'s <b>wind gauge</b> was copied from an Arduino Uno tutorial and moved to an ESP32. Now the needle barely moves in a light breeze and slams over to the end stop in anything stronger. The servo also hums and does not turn properly. This is a <b>repair job</b>. <b>There is more than one fault.</b>',
+    goal: 'The servo needle points at 0° when the air is still and 180° in a gale, and follows the wind in between.',
+    how: ['The ESP32 counts to <b>4095</b>, not 1023. The sums in an Uno tutorial need changing.', 'A servo needs 5 V to turn. On the ESP32 that is the <b>VIN</b> pin, not 3V3.', 'Check the circuit check panel first: it knows what the servo needs.'],
+    hints: [
+      'The circuit check names the servo\'s problem. And look at the numbers in <code>map()</code>: what is the biggest number the ESP32\'s <code>analogRead()</code> gives?',
+      'The servo\'s red wire must be on a 5 V supply. VIN carries the 5 V from USB. And <code>map(wind, 0, 1023, 0, 180)</code> reaches 180° at a quarter of the wind.',
+      'Wire VIN (not 3V3) to the + rail the servo uses. In the sketch change <code>map(wind, 0, 1023, 0, 180)</code> to <code>map(wind, 0, 4095, 0, 180)</code>.',
+    ],
+    fault: it => (it.t === 'wire' && it.a === 'E:VIN' ? { ...it, a: 'E:3V3' } : it),
+    code: [['map(wind, 0, 4095, 0, 180)', 'map(wind, 0, 1023, 0, 180)']],
+  }),
+);
 
 export const MISSIONS: Record<BoardId, Mission[]> = { uno: UNO, esp32: ESP };
 
@@ -1391,7 +1775,10 @@ export function unlockedParts(passed: Iterable<string>): Set<PartId> {
   return have;
 }
 
-/** A mission is open once every mission it comes after has been passed. */
+/** The parts that can be picked up in a mission. The studio has every part from the start, so a project can be built there at any time; everywhere else the tray holds what the passed missions have unlocked. */
+export const trayParts = (m: Mission, passed: Iterable<string>): Set<PartId> => (m.sandbox ? new Set(Object.keys(PARTS) as PartId[]) : unlockedParts(passed));
+
+/** A mission is open once every mission it comes after has been passed. The studio comes after nothing, so it is always open. */
 export const isAvailable = (board: BoardId, m: Mission, passed: Set<string>) => m.after.every(id => passed.has(missionKey(board, id)));
 
 /** The first mission that puts a part in the tray, or null when the tray starts with it. */

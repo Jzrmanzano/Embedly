@@ -1,19 +1,22 @@
-/* Which panels are open over the bench. The map and the mission brief take turns on the left, the code editor has the right side,
+/* Which panels are open over the bench. The map and the mission brief take turns on the left, the parts drawer and the code editor take turns on the right,
    and on a narrow screen only one of them is open at a time so the bench is never completely covered. (The guide is a page of its own.) */
-export type Panel = 'map' | 'brief' | 'code';
+export type Panel = 'map' | 'brief' | 'parts' | 'code';
 export interface Panels {
   left: 'map' | 'brief' | null;
-  right: 'code' | null;
+  right: 'parts' | 'code' | null;
   /** The panel opened most recently, which Escape closes first. */
   last: Panel | null;
 }
 export const NONE: Panels = { left: null, right: null, last: null };
 
+/** The side a panel opens on. */
+export const sideOf = (name: Panel): 'left' | 'right' => (name === 'code' || name === 'parts' ? 'right' : 'left');
+
 export const isOpen = (p: Panels, name: Panel) => p.left === name || p.right === name;
 
 export function openPanel(p: Panels, name: Panel, narrow: boolean): Panels {
   const next: Panels = narrow ? { left: null, right: null, last: name } : { ...p, last: name };
-  if (name === 'code') next.right = 'code'; else next.left = name;
+  if (name === 'code' || name === 'parts') next.right = name; else next.left = name;
   return next;
 }
 

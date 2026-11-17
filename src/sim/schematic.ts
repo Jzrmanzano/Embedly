@@ -3,9 +3,10 @@
    hangs below it on a branch. The knob, the distance sensor, the servo and the touch pad sit at the end of the rows that feed them.
    Ground and power are drawn with their usual symbols wherever a row reaches them, rather than as long rails, as most schematics do.
    A connection that cannot be drawn as a line gets a name tag at both ends. This is layout only: no React and no DOM. */
+import { ohmsLabel } from '../data/resistor';
 import { spanOf } from '../data/symbols';
-import { itemId, type BoardId, type Item } from '../types';
-import { analyze, boardPins, servoLegs, type Net } from './circuit';
+import { itemId, ledColorName, type BoardId, type Item, type ModuleKind } from '../types';
+import { analyze, boardPins, joyLegs, rgbLegs, servoLegs, type Net } from './circuit';
 
 /** Pixels per symbol unit (about a tenth of an inch on paper). */
 export const UNIT = 68;
@@ -18,7 +19,7 @@ export interface PartAt { id: string; symbol: 'resistor' | 'led' | 'button' | 'b
 /** A knob, drawn with its wiper leg at (x, y) and its two ends above and below. */
 export interface KnobAt { id: string; x: number; y: number; label: string }
 /** A labelled box: the board (pins on its right) or a module (pins on its left). */
-export interface BoxAt { id: string; kind: 'board' | 'sonar' | 'servo'; title: string; x: number; y: number; w: number; h: number; side: 'left' | 'right'; pins: { name: string; y: number }[] }
+export interface BoxAt { id: string; kind: 'board' | 'sonar' | 'servo' | 'temp' | 'box'; title: string; x: number; y: number; w: number; h: number; side: 'left' | 'right'; pins: { name: string; y: number }[] }
 /** Room in the servo's box for the dial that shows its angle. */
 export const DIAL_ROOM = 64;
 /** Ground and power symbols, legs with nothing on them, name tags, and the dots where lines join. */
@@ -45,10 +46,14 @@ export const tagWidth = (text: string) => Math.round(text.length * 6.6 + 14);
 
 interface Two { id: string; symbol: PartAt['symbol']; legs: [Net, Net]; label: string; color?: number }
 interface Leg { name: string; net: Net }
-interface Block { id: string; kind: 'knob' | 'sonar' | 'servo' | 'pad'; title: string; legs: Leg[] }
+/** A part drawn at the end of its rows. A plain `box` is any other module: `title` names it in a sentence and `box` is written over its box. */
+interface Block { id: string; kind: 'knob' | 'sonar' | 'servo' | 'pad' | 'temp' | 'box'; title: string; box?: string; legs: Leg[] }
 
-const ohmsText = (ohms: number) => (ohms >= 1000 ? `${ohms / 1000} kΩ` : `${ohms} Ω`);
-const ledText = (color: number) => (color === 0x2ecc40 ? 'green LED' : color === 0xff3b30 ? 'red LED' : 'LED');
+const ledText = (color: number) => { const name = ledColorName(color); return name ? `${name} LED` : 'LED'; };
+const MODULE_TITLE: Record<ModuleKind, [words: string, box: string]> = {
+  pir: ['motion sensor', 'PIR sensor'], ir: ['obstacle sensor', 'IR sensor'], soil: ['soil moisture sensor', 'Soil sensor'],
+  water: ['water level sensor', 'Water sensor'], gas: ['gas sensor', 'MQ-2'], flame: ['flame sensor', 'Flame sensor'],
+};
 
 export function layoutSchematic(board: BoardId, items: Item[]): Schematic {
   const an = analyze(board, items), net = (point: string) => an.netOf(point);
@@ -63,7 +68,9 @@ export function layoutSchematic(board: BoardId, items: Item[]): Schematic {
     const id = itemId(it, k);
     switch (it.t) {
       case 'led': twos.push({ id, symbol: 'led', legs: [net(it.a), net(it.k)], label: ledText(it.color), color: it.color }); break;
-      case 'res': twos.push({ id, symbol: 'resistor', legs: [net(it.a), net(it.b)], label: ohmsText(it.ohms ?? 220) }); break;
+      case 'res': twos.push({ id, symbol: 'resistor', legs: [net(it.a), net(it.b)], label: ohmsLabel(it.ohms ?? 220) }); break;
+      case 'ldr': twos.push({ id, symbol: 'resistor', legs: [net(it.a), net(it.b)], label: 'light sensor' }); break;
+      case 'temp': blocks.push({ id, kind: 'temp', title: 'TMP36', legs: ['+', 'OUT', 'GND'].map((name, i) => ({ name, net: net(`${it.row}${it.col + i}`) })) }); break;
       case 'buzzer': twos.push({ id, symbol: 'buzzer', legs: [net(it.a), net(it.b)], label: 'buzzer' }); break;
       case 'button': twos.push({ id, symbol: 'button', legs: [net(`e${it.col}`), net(`e${it.col + 2}`)], label: 'button' }); break;
       case 'pot': {
@@ -75,6 +82,11 @@ export function layoutSchematic(board: BoardId, items: Item[]): Schematic {
       case 'sonar': blocks.push({ id, kind: 'sonar', title: 'HC-SR04', legs: ['VCC', 'TRIG', 'ECHO', 'GND'].map((name, i) => ({ name, net: net(`${it.row}${it.col + i}`) })) }); break;
       case 'servo': { const l = servoLegs(it); blocks.push({ id, kind: 'servo', title: 'servo', legs: [{ name: 'GND', net: net(l.gnd) }, { name: '+', net: net(l.vcc) }, { name: 'signal', net: net(l.sig) }] }); break; }
       case 'pad': blocks.push({ id, kind: 'pad', title: 'touch pad', legs: [{ name: 'pad', net: net('PAD') }] }); break;
+      case 'contact': twos.push({ id, symbol: 'button', legs: [net(it.a), net(it.b)], label: it.kind === 'tilt' ? 'tilt switch' : 'reed switch' }); break;
+      case 'slide': blocks.push({ id, kind: 'box', title: 'slide switch', box: 'Slide switch', legs: ['1', 'COM', '2'].map((name, i) => ({ name, net: net(`${it.row}${it.col + i}`) })) }); break;
+      case 'module': blocks.push({ id, kind: 'box', title: MODULE_TITLE[it.kind][0], box: MODULE_TITLE[it.kind][1], legs: ['+', 'OUT', 'GND'].map((name, i) => ({ name, net: net(`${it.row}${it.col + i}`) })) }); break;
+      case 'rgb': { const l = rgbLegs(it); blocks.push({ id, kind: 'box', title: 'RGB LED', box: 'RGB LED', legs: [{ name: 'R', net: net(l.r) }, { name: '−', net: net(l.com) }, { name: 'G', net: net(l.g) }, { name: 'B', net: net(l.b) }] }); break; }
+      case 'joy': { const l = joyLegs(it); blocks.push({ id, kind: 'box', title: 'joystick', box: 'Joystick', legs: [{ name: 'GND', net: net(l.gnd) }, { name: '+', net: net(l.vcc) }, { name: 'VRx', net: net(l.x) }, { name: 'VRy', net: net(l.y) }, { name: 'SW', net: net(l.sw) }] }); break; }
       case 'wire': break;
     }
   });
@@ -167,7 +179,7 @@ export function layoutSchematic(board: BoardId, items: Item[]): Schematic {
     }
     const ys = b.legs.map(() => take());
     if (b.kind === 'pad') pads.push({ id: b.id, at: [BLOCK_X, ys[0]] });
-    else boxes.push({ id: b.id, kind: b.kind, title: b.kind === 'sonar' ? 'HC-SR04' : 'Servo', x: BLOCK_X, y: ys[0] - 26, w: BOX_W + (b.kind === 'servo' ? DIAL_ROOM : 0), h: ys[ys.length - 1] - ys[0] + 52, side: 'left', pins: b.legs.map((l, i) => ({ name: l.name, y: ys[i] })) });
+    else boxes.push({ id: b.id, kind: b.kind, title: b.box ?? (b.kind === 'sonar' ? 'HC-SR04' : b.kind === 'temp' ? 'TMP36' : 'Servo'), x: BLOCK_X, y: ys[0] - 26, w: BOX_W + (b.kind === 'servo' ? DIAL_ROOM : 0), h: ys[ys.length - 1] - ys[0] + 52, side: 'left', pins: b.legs.map((l, i) => ({ name: l.name, y: ys[i] })) });
     b.legs.forEach((l, i) => feed(l.net, ys[i], b, l.name));
   }
   /** A leg of a box: a row straight from the board pin it is wired to, or a short line ending in ground, power or a tag. */

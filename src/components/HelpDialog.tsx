@@ -6,6 +6,7 @@ const KEYS: [string[], string][] = [
   [['M'], 'Open or close the mission map'],
   [['B'], 'Open or close the mission brief'],
   [['G'], 'Go to the guide to the code and the parts, which has a page of its own. G there comes back to the bench'],
+  [['P'], 'Open or close the parts drawer'],
   [['C'], 'Open or close the code'],
   [['Ctrl', 'Enter'], 'Run the sketch, or stop it (works inside the editor too)'],
   [['←', '↑', '→', '↓'], 'Slide the view. Hold Shift to go faster'],
@@ -18,7 +19,7 @@ const KEYS: [string[], string][] = [
   [['?'], 'Open this help'],
 ];
 
-/** Every shortcut in one place. Parts and wires can be placed without a mouse too: choose a part in the tray, then type its holes. */
+/** Every shortcut in one place. Parts and wires can be placed without a mouse too: choose a part in the Parts drawer, then type its holes. */
 export function HelpDialog() {
   const open = useLab(s => s.help), close = useRef<HTMLButtonElement>(null);
   useEffect(() => { if (open) close.current?.focus(); }, [open]);
@@ -38,7 +39,7 @@ export function HelpDialog() {
             <tr key={what}><td>{keys.map((k, i) => <span key={k}>{i > 0 && ' + '}<kbd>{k}</kbd></span>)}</td><td>{what}</td></tr>
           ))}
         </tbody></table>
-        <p className="note">To place a part: Tab to a part in the tray and press Enter, then type where it goes in the box that appears, such as <code>e10 e11</code>. To move a wire, select it and edit its From and To boxes. Tab reaches the part labels on the bench, and Enter selects one. To make a panel wider, drag its inner edge, or Tab to the edge and press <kbd>←</kbd> or <kbd>→</kbd> (Enter puts the usual width back).</p>
+        <p className="note">To place a part: Tab to a part in the Parts drawer and press Enter, then type where it goes in the box that appears, such as <code>e10 e11</code>. To move a wire, select it and edit its From and To boxes. Tab reaches the part labels on the bench, and Enter selects one. To make a panel wider, drag its inner edge, or Tab to the edge and press <kbd>←</kbd> or <kbd>→</kbd> (Enter puts the usual width back).</p>
         <div className="actions"><button ref={close} type="button" className="go" onClick={done}>Close</button></div>
       </div>
     </div>

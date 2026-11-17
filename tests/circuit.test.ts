@@ -195,3 +195,80 @@ test('a distance sensor with no power returns nothing', async () => {
   assert.ok(await read(sonar) > 1000);
   assert.equal(await read(sonar.filter(it => !(it.t === 'wire' && it.a === 'f18'))), 0);
 });
+
+/* --- the light sensor and the temperature sensor --- */
+const LDR_DIVIDER: Item[] = [
+  { t: 'wire', a: 'U:5V', b: 'T+1', c: 'red' }, { t: 'wire', a: 'U:GND', b: 'T-2', c: 'black' },
+  { t: 'ldr', id: 'ldr', a: 'e24', b: 'e25', ctl: 'Light level' }, { t: 'wire', a: 'a24', b: 'T+24', c: 'red' },
+  { t: 'res', a: 'c25', b: 'c28', ohms: 10000 }, { t: 'wire', a: 'a28', b: 'T-28', c: 'black' }, { t: 'wire', a: 'a25', b: 'U:A0', c: 'green' },
+];
+const TEMP_SENSOR = (supply: 'U:5V' | 'U:3V3'): Item[] => [
+  { t: 'wire', a: supply, b: 'T+1', c: 'red' }, { t: 'wire', a: 'U:GND', b: 'T-2', c: 'black' },
+  { t: 'temp', id: 'temp', row: 'd', col: 24, ctl: 'Temperature' }, { t: 'wire', a: 'a24', b: 'T+24', c: 'red' }, { t: 'wire', a: 'a26', b: 'T-26', c: 'black' }, { t: 'wire', a: 'a25', b: 'U:A0', c: 'green' },
+];
+
+test('a light sensor in a divider reads high in the light and low in the dark', () => {
+  const a = analyze('uno', LDR_DIVIDER);
+  assert.deepEqual(a.issues, []);
+  const at = (light: number) => a.solve({}, { ldr: light }).pinVolt(14);
+  assert.ok(at(1) > 4.3 && at(1) < 4.7, `bright ${at(1)}`);
+  assert.ok(Math.abs(at(0.5) - 2.5) < 0.1, `half light ${at(0.5)}`);
+  assert.ok(at(0) > 0.3 && at(0) < 0.6, `dark ${at(0)}`);
+  assert.ok(at(1) > at(0.7) && at(0.7) > at(0.4) && at(0.4) > at(0), 'more light always reads higher');
+});
+
+test('a light sensor with the fixed resistor on the other side reads the other way round', () => {
+  const swapped: Item[] = [
+    { t: 'wire', a: 'U:5V', b: 'T+1', c: 'red' }, { t: 'wire', a: 'U:GND', b: 'T-2', c: 'black' },
+    { t: 'res', a: 'e24', b: 'e25', ohms: 10000 }, { t: 'wire', a: 'a24', b: 'T+24', c: 'red' },
+    { t: 'ldr', id: 'ldr', a: 'c25', b: 'c28', ctl: 'Light level' }, { t: 'wire', a: 'a28', b: 'T-28', c: 'black' }, { t: 'wire', a: 'a25', b: 'U:A0', c: 'green' },
+  ];
+  const a = analyze('uno', swapped);
+  assert.ok(a.solve({}, { ldr: 0 }).pinVolt(14) > a.solve({}, { ldr: 1 }).pinVolt(14), 'darker reads higher');
+});
+
+test('a light sensor current shows in the wires and a light sensor in a loop with itself is reported as bypassed', () => {
+  const a = analyze('uno', LDR_DIVIDER), s = a.solve({}, { ldr: 0.5 });
+  assert.ok(Math.abs(s.wireAmps('wire1')) < 1, 'the wires exist');
+  const bypass = analyze('uno', [{ t: 'ldr', id: 'ldr', a: 'e24', b: 'a24', ctl: 'Light level' }]);
+  assert.ok(bypass.issues.some(i => i.kind === 'part-bypassed' && /light sensor/.test(i.title)));
+});
+
+test('a temperature sensor gives 0.5 V at 0 degrees and 10 mV for each degree more, on either supply', () => {
+  for (const [supply, logic] of [['U:5V', 5], ['U:3V3', 3.3]] as const) {
+    const a = analyze('uno', TEMP_SENSOR(supply));
+    assert.deepEqual(a.issues, [], `${supply} has no problems`);
+    const at = (c: number) => a.solve({}, { temp: c }).pinVolt(14);
+    assert.ok(Math.abs(at(0) - 0.5) < 0.01, `0 degrees on ${logic} V: ${at(0)}`);
+    assert.ok(Math.abs(at(25) - 0.75) < 0.01, `25 degrees on ${logic} V: ${at(25)}`);
+    assert.ok(Math.abs(at(100) - 1.5) < 0.01, `100 degrees on ${logic} V: ${at(100)}`);
+    assert.ok(Math.abs(at(-20) - 0.3) < 0.01, `-20 degrees on ${logic} V: ${at(-20)}`);
+  }
+});
+
+test('a temperature sensor gives nothing without power, and the mistakes are named', () => {
+  const kind = (items: Item[]) => analyze('uno', items).issues.map(i => `${i.kind}:${i.title}`);
+  const noPower = TEMP_SENSOR('U:5V').filter(it => !(it.t === 'wire' && it.a === 'a24'));
+  assert.deepEqual(kind(noPower), ['unpowered:Temperature sensor has no power']);
+  assert.ok(analyze('uno', noPower).solve({}, { temp: 25 }).pinVolt(14) < 0.1, 'no output');
+  const noGround = TEMP_SENSOR('U:5V').filter(it => !(it.t === 'wire' && it.a === 'a26'));
+  assert.deepEqual(kind(noGround), ['unpowered:Temperature sensor has no ground']);
+  const backwards = TEMP_SENSOR('U:5V').map((it): Item => (it.t === 'wire' && it.a === 'a24' ? { ...it, a: 'a26' } : it.t === 'wire' && it.a === 'a26' ? { ...it, a: 'a24' } : it));
+  assert.deepEqual(kind(backwards), ['unpowered:Temperature sensor is in backwards']);
+  const noPin = TEMP_SENSOR('U:5V').filter(it => !(it.t === 'wire' && it.a === 'a25'));
+  assert.deepEqual(kind(noPin), ['unpowered:Temperature sensor is not connected to a pin']);
+});
+
+test('a temperature sensor on the ESP32 reads in 12 bits against 3.3 V', async () => {
+  const items: Item[] = [
+    { t: 'wire', a: 'E:3V3', b: 'B+4', c: 'red' }, { t: 'wire', a: 'E:GND', b: 'B-5', c: 'black' },
+    { t: 'temp', id: 'temp', row: 'g', col: 28, ctl: 'Temperature' }, { t: 'wire', a: 'j28', b: 'B+28', c: 'red' }, { t: 'wire', a: 'j30', b: 'B-30', c: 'black' }, { t: 'wire', a: 'j29', b: 'E:D34', c: 'green' },
+  ];
+  assert.deepEqual(kinds('esp32', items), []);
+  let out = '';
+  const hw = makeHW(BOARDS.esp32, items, () => ({ temp: 25 }), s => { out += s; });
+  hw.sleep = () => Promise.resolve();
+  const ctl = { stop: false, onLoop() { ctl.stop = true; } };
+  await run('void setup() { Serial.begin(115200); }\nvoid loop() { int raw = analogRead(34); Serial.println(raw); }', hw, ctl);
+  assert.ok(Math.abs(+out - 931) <= 2, `0.75 V of 3.3 V is about 931, got ${out.trim()}`);
+});

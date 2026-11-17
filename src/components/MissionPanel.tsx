@@ -20,18 +20,19 @@ export function MissionPanel() {
     () => results ?? ['The wiring has no mistakes', ...m.checks.map(c => c.label)].map(label => ({ label, pass: null as boolean | null, detail: '' })),
     [results, m],
   );
-  const next = useMemo(() => MISSIONS[board].filter(x => !x.sandbox && x.after.includes(m.id) && !passed[missionKey(board, x.id)]), [board, m, passed]);
+  const next = useMemo(() => MISSIONS[board].filter(x => !x.sandbox && !x.repair && x.after.includes(m.id) && !passed[missionKey(board, x.id)]), [board, m, passed]);
+  const sides = useMemo(() => MISSIONS[board].filter(x => x.repair && x.after.includes(m.id) && !passed[missionKey(board, x.id)]), [board, m, passed]);
 
   return (
     <>
-      <p className="place">{m.place}{pass && <span className="done-chip">Passed</span>}</p>
+      <p className="place">{m.place}{m.repair && <span className="repair-chip">Side quest</span>}{pass && <span className="done-chip">Passed</span>}</p>
       <h2>{m.title}</h2>
       <p {...html(m.story)} />
       <div className="goal"><b>Goal</b><span>{m.goal}</span></div>
       {m.showParts && <p className="g-tip">New to all this? The guide explains every instruction and every part from the very start. <a className="link" href={guideHash(null)}>Open the guide</a> (or press <kbd>G</kbd>). It opens on its own page, and <kbd>G</kbd> there brings you back.</p>}
 
       {m.sandbox ? (
-        <p className="free">This is free build, so there is nothing to check. Every part you have unlocked is in the tray.</p>
+        <p className="free">This is free build, so there is nothing to check. Every part is in the tray, and what you build here is kept in this browser.</p>
       ) : (
         <>
           {m.choice ? (
@@ -55,6 +56,7 @@ export function MissionPanel() {
             <small>{results ? (results.every(r => r.pass) ? 'Every check passes.' : 'Fix what is marked, then check again.') : 'Runs your sketch on your build against every check.'}</small>
           </p>
 
+          {m.repair ? <p className="repair-note"><b>Side quest: a repair job.</b> This one is optional and does not count towards the main quest. The bench and the sketch start with faults in them. Press Run and watch what goes wrong first, then find out why. There is no prediction to make, because you are looking for the cause. <a className="link" href={guideHash('debugging')}>How to debug</a></p> : <>
           <h3>Your prediction</h3>
           {guess && m.predict ? (
             <p className={guess.right ? 'guess right' : 'guess wrong'}>
@@ -62,6 +64,7 @@ export function MissionPanel() {
               {' '}{m.predict.explain[guess.actual]}
             </p>
           ) : <p className="muted">The first time you press Run, you will be asked what you expect to happen. Then you can compare.</p>}
+          </>}
           </>}
 
           <h3>Hints <small>{hints} of 3 used</small></h3>
@@ -94,6 +97,7 @@ export function MissionPanel() {
         <div className="reward">
           <b>Passed with {pass.hints === 0 ? 'no hints' : pass.hints === 1 ? '1 hint' : `${pass.hints} hints`}.</b>
           {m.unlocks.length > 0 && <span>Unlocked: {m.unlocks.map(p => PARTS[p].label).join(', ')}.</span>}
+          {sides.length > 0 && <span>Side quest: {sides.map((x, i) => <button key={x.id} type="button" className="link" onClick={() => goTo(board, x.id)}>{x.title}{i < sides.length - 1 ? ',' : ''}</button>)}</span>}
           {next.length > 0 && <span>Next: {next.map((x, i) => <button key={x.id} type="button" className="link" onClick={() => goTo(board, x.id)}>{x.place}{i < next.length - 1 ? ',' : ''}</button>)}</span>}
         </div>
       )}

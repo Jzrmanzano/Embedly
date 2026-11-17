@@ -1,12 +1,19 @@
 /* The rules of placing parts on the bench: which connection points exist, which are taken, and what a part needs. No 3D and no React in here. */
 import { ESP_HOLES } from '../data/boards';
-import { itemId, type BoardId, type Item, type WireColor } from '../types';
+import { itemId, kindOf, type BoardId, type ContactKind, type Item, type ModuleKind, type PartKind, type WireColor } from '../types';
 
-export type ToolKind = 'led' | 'res' | 'buzzer' | 'wire' | 'button' | 'pot' | 'sonar' | 'pad' | 'servo';
-export interface Tool { kind: ToolKind; color?: number; ohms?: number }
+export type ToolKind = Item['t'];
+/** The part in hand. `sub` says which sensor module or which contact it is. */
+export interface Tool { kind: ToolKind; color?: number; ohms?: number; sub?: ModuleKind | ContactKind }
+/** Which kind of part a tool places, named as kindOf names the item it makes. */
+export const toolKind = (tool: Tool): PartKind => (tool.kind === 'module' || tool.kind === 'contact' ? tool.sub ?? (tool.kind === 'module' ? 'pir' : 'tilt') : tool.kind);
+/** Are these the same part of the tray? A resistor of any value is the resistor. */
+export const sameTool = (a: Tool | null | undefined, b: Tool | null | undefined) => !!a && !!b && a.kind === b.kind && a.color === b.color && a.sub === b.sub && (b.kind === 'res' || a.ohms === b.ohms);
 
 /** Parts that go between two points the student picks one after the other. */
-export const TWO_POINT: ToolKind[] = ['led', 'res', 'buzzer', 'wire'];
+export const TWO_POINT: ToolKind[] = ['led', 'res', 'buzzer', 'wire', 'ldr', 'contact'];
+/** How many holes side by side the legs of a part take, for the parts that stand in one row. */
+export const WIDTH: Partial<Record<Item['t'], number>> = { pot: 3, servo: 3, temp: 3, slide: 3, module: 3, sonar: 4, rgb: 4, joy: 5 };
 export const COLS = 30;
 /** Columns 1 to 21 of the breadboard are under the ESP32. Its own pins take their place. */
 const ESP_FIRST_FREE = 22;
@@ -31,29 +38,35 @@ export function allTerminals(board: BoardId, items: Item[]): string[] {
 /** The points an item sticks a leg or wire end into. */
 export function holesOf(it: Item): string[] {
   switch (it.t) {
-    case 'wire': case 'res': case 'buzzer': return [it.a, it.b];
+    case 'wire': case 'res': case 'buzzer': case 'ldr': case 'contact': return [it.a, it.b];
     case 'led': return [it.a, it.k];
-    case 'button': return [`e${it.col}`, `e${it.col + 2}`, `f${it.col}`, `f${it.col + 2}`];
-    case 'pot': case 'servo': return [0, 1, 2].map(i => `${it.row}${it.col + i}`);
-    case 'sonar': return [0, 1, 2, 3].map(i => `${it.row}${it.col + i}`);
+    case 'button': return [`e${it.col}`, `e${it.col + 1}`, `e${it.col + 2}`, `f${it.col}`, `f${it.col + 1}`, `f${it.col + 2}`];   // the body covers the middle column too, though no leg goes in it
+    case 'pot': case 'servo': case 'temp': case 'sonar': case 'rgb': case 'slide': case 'module': case 'joy': return Array.from({ length: WIDTH[it.t]! }, (_, i) => `${it.row}${it.col + i}`);
     case 'pad': return [];
   }
 }
 
-const NAMES: Record<ToolKind, string> = { led: 'LED', res: 'resistor', buzzer: 'buzzer', wire: 'wire', button: 'button', pot: 'knob', sonar: 'distance sensor', pad: 'touch pad', servo: 'servo' };
+const NAMES: Record<PartKind, string> = {
+  led: 'LED', res: 'resistor', buzzer: 'buzzer', wire: 'wire', button: 'button', pot: 'knob', sonar: 'distance sensor', pad: 'touch pad', servo: 'servo', ldr: 'light sensor', temp: 'temperature sensor',
+  rgb: 'RGB LED', slide: 'slide switch', joy: 'joystick', tilt: 'tilt switch', reed: 'reed switch',
+  pir: 'motion sensor', ir: 'obstacle sensor', soil: 'soil moisture sensor', water: 'water level sensor', gas: 'gas sensor', flame: 'flame sensor',
+};
+const COUNT = ['', 'one', 'two', 'three', 'four', 'five'];
+/** "A knob", "An obstacle sensor", "An LED". */
+const withArticle = (what: string) => `${/^([aeio]|LED|RGB)/.test(what) ? 'An' : 'A'} ${what}`;
 
 /** Why an item cannot go on the bench as it is, or null when it can. */
 export function placementError(board: BoardId, items: Item[], it: Item): string | null {
-  const valid = new Set(allTerminals(board, items)), used = new Set(items.flatMap(holesOf)), leads = holesOf(it), what = NAMES[it.t];
-  if ((it.t === 'button' || it.t === 'pot' || it.t === 'servo') && it.col + 2 > COLS) return `A ${what} needs three columns. Pick a column further left.`;
-  if (it.t === 'sonar' && it.col + 3 > COLS) return 'A distance sensor needs four columns. Pick a column further left.';
+  const valid = new Set(allTerminals(board, items)), used = new Set(items.flatMap(holesOf)), leads = holesOf(it), what = NAMES[kindOf(it)];
+  const wide = it.t === 'button' ? 3 : WIDTH[it.t];
+  if (wide && 'col' in it && it.col + wide - 1 > COLS) return `${withArticle(what)} needs ${COUNT[wide]} columns. Pick a column further left.`;
   if (new Set(leads).size < leads.length) return 'Pick two different points.';
   for (const p of leads) {
-    if (it.t !== 'wire' && !isHole(p)) return `A ${what} goes into the breadboard, not a board pin. Use a wire to reach the pin.`;
+    if (it.t !== 'wire' && !isHole(p)) return `${withArticle(what)} goes into the breadboard, not a board pin. Use a wire to reach the pin.`;
     if (!valid.has(p)) return /^[a-j]\d+$/.test(p) && board === 'esp32' ? 'That spot is under the ESP32. Use the free holes on the right, or its pins.' : `${p} is not a place on this bench.`;
     if (used.has(p)) return `${p} is already taken. Each hole holds one leg or wire end.`;
   }
-  if ((it.t === 'pot' || it.t === 'sonar' || it.t === 'servo') && board === 'esp32' && it.col < ESP_FIRST_FREE) return 'That spot is under the ESP32. Use the free holes on the right.';
+  if (WIDTH[it.t] && 'col' in it && board === 'esp32' && it.col < ESP_FIRST_FREE) return 'That spot is under the ESP32. Use the free holes on the right.';
   if (it.t === 'pad' && items.some(x => x.t === 'pad')) return 'There is only one touch pad.';
   return null;
 }
@@ -68,8 +81,17 @@ export function nextId(items: Item[], prefix: string): string {
   for (let n = 1; ; n++) if (!taken.has(prefix + n)) return prefix + n;
 }
 
-const DEFAULT_CTL: Partial<Record<ToolKind, string>> = { button: 'Hold to press the button', pot: 'Knob position', sonar: 'Distance to the wall', pad: 'Hold to touch the pad' };
-export const defaultInput = (it: Item): number => (it.t === 'pot' ? 0.5 : it.t === 'sonar' ? 30 : 0);
+const DEFAULT_CTL: Partial<Record<PartKind, string>> = {
+  button: 'Hold to press the button', pot: 'Knob position', sonar: 'Distance to the wall', pad: 'Hold to touch the pad', ldr: 'Light level', temp: 'Temperature',
+  slide: 'Switch', joy: 'Joystick', tilt: 'Tilt switch', reed: 'Magnet', pir: 'Movement', ir: 'Path in front', soil: 'Soil moisture', water: 'Water level', gas: 'Gas in the air', flame: 'Flame',
+};
+/** What an on-screen control starts at: a knob, a light sensor, damp soil and a joystick at rest are in the middle, and everything else is off, far away or at room temperature. */
+export const defaultInput = (it: Item): number => (it.t === 'pot' || it.t === 'ldr' || it.t === 'joy' || (it.t === 'module' && it.kind === 'soil') ? 0.5 : it.t === 'sonar' ? 30 : it.t === 'temp' ? 25 : 0);
+/** Every on-screen value a part keeps, by the name it is kept under. A joystick keeps three: left to right under its id, down to up and the press of its stick beside it. */
+export function inputsOf(it: Item, id: string): Record<string, number> {
+  if (!('ctl' in it)) return {};
+  return it.t === 'joy' ? { [id]: 0.5, [`${id}:y`]: 0.5, [`${id}:sw`]: 0 } : { [id]: defaultInput(it) };
+}
 
 /** Builds the item for a tool and the point(s) the student chose. */
 export function makeItem(tool: Tool, items: Item[], a: string, b?: string): Item {
@@ -86,7 +108,14 @@ export function makeItem(tool: Tool, items: Item[], a: string, b?: string): Item
     case 'pot': return { t: 'pot', id: nextId(items, 'pot'), row, col, ctl: DEFAULT_CTL.pot! };
     case 'sonar': return { t: 'sonar', id: nextId(items, 'sonar'), row, col, ctl: DEFAULT_CTL.sonar! };
     case 'pad': return { t: 'pad', id: nextId(items, 'pad'), ctl: DEFAULT_CTL.pad! };
+    case 'ldr': return { t: 'ldr', id: nextId(items, 'ldr'), a, b: b!, ctl: DEFAULT_CTL.ldr! };
+    case 'temp': return { t: 'temp', id: nextId(items, 'temp'), row, col, ctl: DEFAULT_CTL.temp! };
     case 'servo': return { t: 'servo', id: nextId(items, 'servo'), row, col };
+    case 'rgb': return { t: 'rgb', id: nextId(items, 'rgb'), row, col };
+    case 'slide': return { t: 'slide', id: nextId(items, 'slide'), row, col, ctl: DEFAULT_CTL.slide! };
+    case 'joy': return { t: 'joy', id: nextId(items, 'joy'), row, col, ctl: DEFAULT_CTL.joy! };
+    case 'contact': { const kind = toolKind(tool) as ContactKind; return { t: 'contact', kind, id: nextId(items, kind), a, b: b!, ctl: DEFAULT_CTL[kind]! }; }
+    case 'module': { const kind = toolKind(tool) as ModuleKind; return { t: 'module', kind, id: nextId(items, kind), row, col, ctl: DEFAULT_CTL[kind]! }; }
   }
 }
 

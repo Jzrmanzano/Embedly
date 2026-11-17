@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, type ComponentRef, type Re
 import * as T from 'three';
 import { BOARDS, ITEM_INFO } from '../data/boards';
 import { setTone } from '../sim/audio';
+import { RGB_CHANNELS } from '../sim/circuit';
 import { beginMove, currentReadout, finishMove, isWireEnd, moveTo, pressPoint, releasePoint, selectHot, setPoint, setProbe } from '../state/actions';
 import { allTerminals, movedWire } from '../state/bench';
 import { benchOf, burntOf, keyOf, missionOf, useLab } from '../state/store';
@@ -56,7 +57,8 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
   useEffect(() => {
     const els = world.hots.map(h => {
       const el = document.createElement('button');
-      el.type = 'button'; el.className = 'hot'; el.textContent = h.title; el.onclick = () => selectHot(h.id);
+      el.type = 'button'; el.className = h.sign ? `hot pole ${h.sign === '+' ? 'plus' : 'minus'}` : 'hot'; el.textContent = h.sign ? (h.sign === '+' ? '+' : '−') : h.title; el.onclick = () => selectHot(h.id);
+      if (h.sign) el.setAttribute('aria-label', h.title);
       return el;
     });
     labelLayer.current!.append(...els); labelEls.current = els;
@@ -124,7 +126,7 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
 
   const measure = () => {   // side panels only; on a phone they are sheets along the bottom
     const wide = matchMedia('(min-width: 761px)').matches, width = (sel: string) => (wide ? document.querySelector<HTMLElement>(sel)?.offsetWidth ?? 0 : 0);
-    insets.current = { l: width('.drawer.left'), r: width('.drawer.right') };
+    insets.current = { l: width('.rail.left') + width('.drawer.left'), r: width('.rail.right') + width('.drawer.right') };
   };
   const frustum = () => {
     const a = size.width / size.height, h = viewH.current, shift = ((insets.current.l - insets.current.r) / 2) * (h / size.height);   // slide the window so the scene sits in the free part
@@ -181,6 +183,7 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
     benchOf(s).forEach((it, k) => {
       const id = itemId(it, k);
       if (it.t === 'led') world.set(id, now ? now.ledGlow(id) : 0);
+      if (it.t === 'rgb') world.set(id, now ? RGB_CHANNELS.reduce((n, c) => n * 256 + Math.round(now.ledGlow(`${id}:${c[0]}`) * 255), 0) : 0);   // its three brightnesses in one number
       if (it.t === 'wire') world.set(id, now ? now.circuit.wireAmps(id) : 0);
       if (it.t === 'buzzer') { const f = now ? now.buzzFreq(id) : 0; world.set(id, f); freq ||= f; }
       if (it.t === 'servo' && now) world.set(id, now.servoAngle(id));   // an unpowered or stopped servo stays where it was

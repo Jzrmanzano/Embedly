@@ -1,6 +1,7 @@
 /* The mission check engine. It runs the student's own sketch on the student's own circuit, with scripted inputs (a wall that moves, a button that is pressed),
    on the sketch's own clock so that a run takes milliseconds and always comes out the same. Then it asks questions of what happened. */
 import { BOARDS } from '../data/boards';
+import { inputsOf } from '../state/bench';
 import { itemId, type BoardId, type Item } from '../types';
 import { analyze } from './circuit';
 import { makeHW, makeReadout, type VirtualHW } from './hardware';
@@ -8,16 +9,20 @@ import { run, SimError, type RunControl } from './interpreter';
 import type { Frame } from './timeline';
 
 /* --- inputs --- */
-export type InputKind = 'button' | 'pot' | 'sonar' | 'pad';
-/** From `from` milliseconds on, these inputs have these values. Parts of the same kind all take the same value. A knob is 0 to 1, the wall is in cm, a button or pad is 0 or 1. */
+export type InputKind = 'button' | 'pot' | 'sonar' | 'pad' | 'ldr' | 'temp';
+/** From `from` milliseconds on, these inputs have these values. Parts of the same kind all take the same value. A knob or a light sensor is 0 to 1, the temperature is in °C, the wall is in cm, a button or pad is 0 or 1. */
 export interface InputStep { from: number; set: Partial<Record<InputKind, number>> }
-const REST: Record<InputKind, number> = { button: 0, pad: 0, pot: 0.5, sonar: 100 };
+const REST: Record<InputKind, number> = { button: 0, pad: 0, pot: 0.5, sonar: 100, ldr: 0.5, temp: 25 };
 
 export function inputsAt(items: Item[], plan: InputStep[], t: number): Record<string, number> {
   const value = { ...REST };
   for (const step of plan) if (step.from <= t) Object.assign(value, step.set);
   const out: Record<string, number> = {};
-  items.forEach((it, k) => { if ('ctl' in it) out[itemId(it, k)] = value[it.t]; });
+  items.forEach((it, k) => {
+    const id = itemId(it, k);
+    Object.assign(out, inputsOf(it, id));   // a part no check scripts keeps its resting value
+    if ('ctl' in it && it.t in value) out[id] = value[it.t as InputKind];
+  });
   return out;
 }
 

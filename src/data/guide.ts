@@ -465,6 +465,37 @@ void loop() {
 
   /* ------------------------------------------------------------ parts ------------------------------------------------------------ */
   {
+    id: 'debugging', group: 'code', title: 'Debugging: finding what is wrong', lede: 'Nothing works the first time. Here is how to find out why.',
+    blocks: [
+      { p: 'Every fault is in one of three places: the <b>circuit</b> (a part in backwards, a wire in the wrong hole), the <b>sketch</b> (a wrong number, a comparison pointing the wrong way) or the <b>agreement between them</b> (the sketch uses pin 8, the wire is on pin 7). Debugging is just working out which one.' },
+      { list: [
+        '<b>Say what it does, in words.</b> "The LED stays dark." "The buzzer plays when nobody presses." The words point at the cause.',
+        '<b>Let the bench tell you.</b> The circuit check panel and <b>Check my build</b> name wiring mistakes in plain words.',
+        '<b>Let the sketch tell you.</b> Print what it sees with <code>Serial.println()</code>. If a sensor never changes, no sketch can use it.',
+        '<b>Change one thing at a time.</b> Then run it again. If you change three things and it works, you do not know which one mattered.',
+      ] },
+      { code: `void setup() {
+  Serial.begin(9600);
+}
+
+void loop() {
+  int value = analogRead(A0);
+  Serial.print("A0 reads ");
+  Serial.println(value);      // what does the sensor really say?
+  delay(500);
+}` },
+      { table: [
+        ['The LED never lights', 'The LED is in backwards, or a leg is not in the loop, or the wire is on a different pin than the sketch uses, or the sketch never writes HIGH.'],
+        ['The LED is always on', 'The sketch never writes LOW, or the comparison is always true (a limit the reading can never reach).'],
+        ['A sensor reading never changes', 'The sensor has no power or no ground, or its wire is not on the pin the sketch reads.'],
+        ['A reading is far too big or small', 'The Uno counts to 1023 and the ESP32 to 4095. A sum copied from the other board is wrong.'],
+        ['A button does the opposite', 'With <code>INPUT_PULLUP</code> a pressed button reads LOW, not HIGH.'],
+        ['Fixing one thing changes nothing', 'There are two faults, and the first one hides the second. Keep going.'],
+      ], head: ['What you see', 'Look for'] },
+      { tip: 'Two faults can hide each other. A buzzer on the wrong pin is silent, so you cannot see that the sketch also plays at the wrong time. After every fix, run it again and look afresh.' },
+    ],
+  },
+  {
     id: 'circuit', group: 'parts', title: 'What a circuit is', lede: 'Electricity only flows around a complete loop.',
     blocks: [
       { p: 'A <b>circuit</b> is a closed path: out of a power source, through the parts, and back again. Break the path anywhere and everything stops, which is called an <b>open circuit</b>.' },
@@ -557,6 +588,66 @@ void loop() {
       { p: 'Turning the knob moves the middle leg\'s voltage smoothly from 0 V up to the supply voltage, and <code>analogRead()</code> turns that into 0 to 1023 (or 0 to 4095 on the ESP32).' },
       { p: 'In the missions a knob often stands in for a real sensor, such as a light sensor or a soil probe. Those work the same way: they give the board a voltage that rises and falls.' },
       { tip: 'On the ESP32, never feed a pin more than 3.3 V. Power a knob from <b>3V3</b>, not from VIN.' },
+    ],
+  },
+  {
+    id: 'ldr', group: 'parts', title: 'Light sensors (LDR)', lede: 'A resistor that changes with the light on it.',
+    blocks: [
+      { p: 'A light-dependent resistor, or <b>LDR</b>, has two legs and no front or back. The more light falls on it, the <b>less</b> it resists: about 1 kΩ in bright light and 100 kΩ in the dark.' },
+      { p: 'A pin cannot read resistance, only voltage. So pair the LDR with a fixed resistor to make a <b>voltage divider</b>: 5V, then the LDR, then a 10 kΩ resistor, then GND. The pin reads the point where they meet.' },
+      { table: [
+        ['Bright', 'The LDR is about 1 kΩ, so most of the 5 V is across the 10 kΩ. The pin reads <b>high</b>, around 930 on the Uno.'],
+        ['Dim', 'The LDR is about 10 kΩ, so the voltage splits evenly. The pin reads about 512.'],
+        ['Dark', 'The LDR is about 100 kΩ, so most of the 5 V is across the LDR. The pin reads <b>low</b>, around 90.'],
+      ], head: ['Light', 'What the pin reads'] },
+      { code: `const int SENSOR_PIN = A0;
+const int LAMP_PIN = 9;
+
+void setup() {
+  pinMode(LAMP_PIN, OUTPUT);
+}
+
+void loop() {
+  int light = analogRead(SENSOR_PIN);
+  if (light < 300) {
+    digitalWrite(LAMP_PIN, HIGH);   // dark: lamp on
+  } else {
+    digitalWrite(LAMP_PIN, LOW);    // bright: lamp off
+  }
+  delay(50);
+}` },
+      { p: 'A single limit has a problem. At dusk the light hovers around it, and the lamp flickers. Use <b>two limits</b> and a variable that remembers what the lamp is doing. Between the limits, change nothing:' },
+      { code: `if (light < 250) {
+  lampOn = true;            // properly dark
+} else if (light > 450) {
+  lampOn = false;           // properly bright
+}                           // in between: leave it as it is` },
+      { tip: 'Swap the LDR and the fixed resistor and the numbers flip: the pin then reads <b>high in the dark</b>. Either way works, as long as the sketch knows which it is.' },
+    ],
+  },
+  {
+    id: 'temp', group: 'parts', title: 'Temperature sensor (TMP36)', lede: 'A three-legged sensor that gives a voltage for each degree.',
+    blocks: [
+      { p: 'The TMP36 looks like a small black half-cylinder with three legs. Facing the flat side:' },
+      { table: [['Left', 'Power: 5V on the Uno, 3V3 on the ESP32. Anything from 2.7 V up works.'], ['Middle', 'The output. Wire it to an analog pin.'], ['Right', 'GND']], head: ['Leg', 'Goes to'] },
+      { p: 'Its output is <b>0.5 V at 0 °C</b>, and <b>10 mV (0.01 V) more for each degree</b>. So 25 °C gives 0.75 V and 40 °C gives 0.9 V. To get the temperature, turn the reading into volts, then volts into degrees:' },
+      { code: `void setup() {
+  Serial.begin(9600);
+}
+
+void loop() {
+  int raw = analogRead(A0);                 // 0 to 1023 on the Uno
+  float volts = raw * 5.0 / 1023.0;         // 0 to 5 V
+  float celsius = (volts - 0.5) * 100.0;    // 0.5 V is 0 degrees, 10 mV per degree
+  Serial.println(celsius);
+  delay(500);
+}` },
+      { list: [
+        'Write the numbers as <code>5.0</code> and <code>100.0</code>. With <code>5</code> and <code>100</code> the sum is done in whole numbers and throws the decimals away.',
+        'On the ESP32 the reading counts to 4095 and the supply is 3.3 V, so the first sum is <code>raw * 3.3 / 4095.0</code>.',
+        'The sensor is small and its voltage is small, so the reading jumps around by about half a degree. That is normal.',
+      ] },
+      { tip: 'Wire it backwards, with GND on the left leg and power on the right, and a real TMP36 gets hot enough to burn a finger. Check the flat side before you power it up.' },
     ],
   },
   {

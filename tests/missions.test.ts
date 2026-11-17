@@ -1,7 +1,7 @@
 /* Every mission: the structure holds together, the intended solution passes its checks, and wrong solutions do not. */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BASE_PARTS, isAvailable, lockedBy, missionKey, MISSIONS, partIdOf, PARTS, unlockedParts, type Mission } from '../src/data/missions';
+import { BASE_PARTS, isAvailable, lockedBy, missionKey, MISSIONS, partIdOf, PARTS, STUDIO_PARTS, trayParts, unlockedParts, type Mission } from '../src/data/missions';
 import { observe, runChecks } from '../src/sim/check';
 import type { BoardId, Item } from '../src/types';
 
@@ -32,8 +32,11 @@ test('every mission is complete and refers only to missions that come before it'
         assert.deepEqual(m.unlocks, [], `${where} unlocks no parts, so it never stands in the way of a build`);
       } else {
         assert.ok(m.checks.length >= 2, `${where} has checks`);
-        assert.ok(m.predict, `${where} asks for a prediction`);
-        assert.ok(m.predict!.options.some(o => o.id === m.predict!.works), `${where} names the option that means it works`);
+        if (m.repair) assert.equal(m.predict, undefined, `${where} is a repair job, which has nothing to predict: the student runs the broken build and sees`);
+        else {
+          assert.ok(m.predict, `${where} asks for a prediction`);
+          assert.ok(m.predict!.options.some(o => o.id === m.predict!.works), `${where} names the option that means it works`);
+        }
       }
       seen.add(m.id);
     }
@@ -63,18 +66,30 @@ test('passing missions unlocks their parts, one mission at a time', () => {
   assert.ok(after.size > BASE_PARTS.length);
   assert.equal(lockedBy('knob')?.mission.id, 'beacon');
   assert.equal(lockedBy('wire'), null, 'a part that starts unlocked is not locked by anything');
-  for (const id of Object.keys(PARTS)) assert.ok(BASE_PARTS.includes(id as never) || lockedBy(id as never), `${id} is unlocked by some mission`);
+  for (const id of Object.keys(PARTS)) assert.ok(BASE_PARTS.includes(id as never) || STUDIO_PARTS.includes(id as never) || lockedBy(id as never), `${id} is unlocked by some mission, or is one only the studio has`);
 });
 
-test('a mission opens when the ones before it are passed, and the workshop opens after the first pass', () => {
+test('a mission opens when the ones before it are passed', () => {
   const nothing = new Set<string>();
   assert.equal(isAvailable('uno', get('uno', 'tour'), nothing), true);
   assert.equal(isAvailable('uno', get('uno', 'beacon'), nothing), true);
   assert.equal(isAvailable('uno', get('uno', 'nightlight'), nothing), false);
   assert.equal(isAvailable('uno', get('uno', 'nightlight'), new Set([missionKey('uno', 'beacon')])), true);
-  assert.equal(isAvailable('uno', get('uno', 'workshop'), nothing), false);
-  assert.equal(isAvailable('uno', get('uno', 'workshop'), new Set([missionKey('uno', 'beacon')])), true);
   assert.equal(isAvailable('esp32', get('esp32', 'touchlamp'), new Set([missionKey('uno', 'beacon')])), false, 'progress on one board does not open the other');
+});
+
+test('the studio is open from the start with every part, and the missions still lock theirs', () => {
+  for (const board of BOARD_IDS) {
+    const studio = MISSIONS[board].filter(m => m.sandbox);
+    assert.equal(studio.length, 1, `${board} has one studio`);
+    assert.equal(isAvailable(board, studio[0], new Set()), true, `${board}: the studio needs no mission passed`);
+    assert.deepEqual([...trayParts(studio[0], [])].sort(), Object.keys(PARTS).sort(), `${board}: the studio has every part before anything is passed`);
+    for (const m of MISSIONS[board].filter(x => !x.sandbox)) {
+      assert.deepEqual([...trayParts(m, [])].sort(), [...BASE_PARTS].sort(), `${board}/${m.id} starts with only the base parts`);
+      const passed = [missionKey(board, 'beacon')];
+      assert.deepEqual([...trayParts(m, passed)].sort(), [...unlockedParts(passed)].sort(), `${board}/${m.id} has what the passed missions unlocked`);
+    }
+  }
 });
 
 for (const { board, m } of all.filter(x => !x.m.sandbox && !x.m.choice)) {
@@ -96,7 +111,8 @@ for (const { board, m } of all.filter(x => !x.m.sandbox && !x.m.choice)) {
   });
 
   test(`${board}/${m.id}: the prediction question tells a working build from a broken one`, async () => {
-    const p = m.predict!;
+    const p = m.predict;
+    if (!p) return;   // a repair job
     const good = await observe(board, m.circuit, m.answer, p.demo, p.run);
     assert.equal(p.classify(good), p.works, 'the intended build is classified as working');
     const broken = await observe(board, m.circuit, m.starter, p.demo, p.run);
@@ -129,6 +145,13 @@ const wrong: [BoardId, string, string, string, string][] = [
   ['uno', 'barrier', 'barrier.write(90);', 'barrier.write(180);', 'lifts the arm too far'],
   ['esp32', 'weather', 'map(wind, 0, 4095, 0, 180)', 'map(wind, 0, 4095, 180, 0)', 'points backwards'],
   ['esp32', 'weather', 'map(wind, 0, 4095, 0, 180)', 'map(wind, 0, 1023, 0, 180)', 'uses the Uno\'s 0 to 1023 range'],
+  ['uno', 'streetlamp', 'light < DARK_BELOW', 'light > DARK_BELOW', 'works backwards'],
+  ['uno', 'streetlamp', 'else if (light > BRIGHT_ABOVE)', 'else if (light > DARK_BELOW)', 'uses one limit, so it flickers at dusk'],
+  ['uno', 'heatwarn', '(volts - 0.5) * 100.0', 'volts * 100.0', 'forgets the sensor\'s 0.5 V offset'],
+  ['uno', 'heatwarn', 'raw * 5.0 / 1023.0', 'raw * 5 / 1023', 'does the sum in whole numbers'],
+  ['uno', 'heatwarn', 'celsius > 30', 'celsius < 30', 'warns when it is cool'],
+  ['esp32', 'fridge', 'raw * 3.3 / 4095.0', 'raw * 5.0 / 1023.0', 'uses the Uno\'s numbers'],
+  ['esp32', 'fridge', 'celsius > 8', 'celsius > 30', 'waits until the fridge is far too warm'],
 ];
 
 test('uno/crossing: a sketch that still blinks with delay() misses taps', async () => {
@@ -155,6 +178,11 @@ const wrongWiring: [BoardId, string, string, (it: Item) => Item | null][] = [
   ['uno', 'barrier', 'has the servo signal on the wrong pin', it => (it.t === 'wire' && it.b === 'U:9' ? { ...it, b: 'U:10' } : it)],
   ['uno', 'crossing', 'has the red and green LEDs swapped', it => (it.t === 'led' ? { ...it, color: it.color === 0xff3b30 ? 0x2ecc40 : 0xff3b30 } : it)],
   ['esp32', 'weather', 'powers the servo from 3V3', it => (it.t === 'wire' && it.a === 'E:VIN' ? { ...it, a: 'E:3V3' } : it)],
+  ['uno', 'streetlamp', 'has no 10 kΩ resistor in the divider', it => (it.t === 'res' && it.ohms === 10000 ? null : it)],
+  ['uno', 'streetlamp', 'has the sensor on the wrong pin', it => (it.t === 'wire' && it.b === 'U:A0' ? { ...it, b: 'U:A1' } : it)],
+  ['uno', 'heatwarn', 'has the temperature sensor backwards', it => (it.t === 'wire' && (it.a === 'a24' || it.a === 'a26') ? { ...it, a: it.a === 'a24' ? 'a26' : 'a24' } : it)],
+  ['uno', 'heatwarn', 'has the sensor without power', it => (it.t === 'wire' && it.a === 'a24' ? null : it)],
+  ['esp32', 'fridge', 'has the sensor without power', it => (it.t === 'wire' && it.a === 'j28' ? null : it)],
 ];
 for (const [board, id, why, f] of wrongWiring) {
   test(`${board}/${id}: a bench that ${why} does not pass`, async () => {
@@ -171,3 +199,23 @@ test('the same sketch passes on a bench built with different pins when the code 
   const mismatch = await runChecks('uno', moved, m.answer, m.checks);
   assert.ok(failures(mismatch).length > 0, 'the wire is on pin 12 but the sketch uses pin 13');
 });
+
+/* --- repair jobs --- */
+const repairs = all.filter(x => x.m.repair);
+test('there are repair jobs on both boards', () => {
+  for (const board of BOARD_IDS) assert.ok(repairs.some(r => r.board === board), `${board} has a repair job`);
+});
+for (const { board, m } of repairs) {
+  test(`${board}/${m.id}: it starts on a faulty bench that is not the reference build`, () => {
+    assert.ok(m.start && m.start.length > 0, 'it starts with a bench');
+    assert.notDeepEqual(m.start, m.circuit, 'the bench has a fault in it');
+  });
+  test(`${board}/${m.id}: the faulty bench fails even with the right sketch`, async () => {
+    const r = await runChecks(board, m.start!, m.answer, m.checks);
+    assert.ok(failures(r).length > 0, 'the bench alone is enough to pass, so there is no wiring fault to find');
+  });
+  test(`${board}/${m.id}: the faulty sketch fails even on the right bench`, async () => {
+    const r = await runChecks(board, m.circuit, m.starter, m.checks);
+    assert.ok(failures(r).length > 0, 'the sketch alone is enough to pass, so there is no code fault to find');
+  });
+}

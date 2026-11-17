@@ -8,22 +8,23 @@ import { GuidePage } from './components/GuidePage';
 import { HelpDialog } from './components/HelpDialog';
 import { Home } from './components/Home';
 import { Icon, type IconName } from './components/Icons';
+import { PartsPanel } from './components/PartsPanel';
 import { PredictDialog } from './components/PredictDialog';
-import { Stage } from './components/Stage';
+import { RunBar, Stage } from './components/Stage';
 import { SupplyShelf } from './components/SupplyShelf';
 import { ThemeToggle } from './components/ThemeToggle';
 import { BOARDS } from './data/boards';
 import { chapterOf } from './data/guide';
 import { MISSIONS, missionKey } from './data/missions';
 import { closePanel, goTo, panelRoom, resizePanel, togglePanel } from './state/actions';
-import { isOpen, MIN_WIDTH, type Panel, type Side } from './state/panels';
+import { isOpen, MIN_WIDTH, sideOf, type Panel, type Side } from './state/panels';
 import { guideHash } from './state/route';
 import { boardOf, keyOf, missionOf, useLab } from './state/store';
 
 const ALL_BOARDS = Object.values(BOARDS);
-const GRADED = Object.entries(MISSIONS).flatMap(([board, list]) => list.filter(m => !m.sandbox).map(m => `${board}-${m.id}`));
+const GRADED = Object.entries(MISSIONS).flatMap(([board, list]) => list.filter(m => !m.sandbox && !m.repair).map(m => `${board}-${m.id}`));   // the main quest; side quests are extra
 
-const PANELS: [Panel, string, IconName, string][] = [['map', 'Map', 'map', 'M'], ['brief', 'Brief', 'brief', 'B'], ['code', 'Code', 'code', 'C']];
+const PANELS: [Panel, string, IconName, string][] = [['map', 'Map', 'map', 'M'], ['brief', 'Brief', 'brief', 'B'], ['parts', 'Parts', 'parts', 'P'], ['code', 'Code', 'code', 'C']];
 const HOME_TITLE = 'Embedly · Learn to build IoT devices, machines and robots';
 
 /** The buttons that open the panels, and the link to the guide (a page of its own): in the top bar on a wide screen, along the bottom on a phone. */
@@ -31,7 +32,7 @@ function PanelToggles({ nav = false }: { nav?: boolean }) {
   const panels = useLab(s => s.panels), guide = useLab(s => s.guide), choosing = useLab(s => !!missionOf(s).choice);
   return (
     <div className={nav ? 'toggles nav' : 'toggles'} role="group" aria-label="Panels">
-      {PANELS.filter(([name]) => !(choosing && name === 'code')).map(([name, label, icon, key]) => (
+      {PANELS.filter(([name]) => !(choosing && (name === 'code' || name === 'parts'))).map(([name, label, icon, key]) => (
         <button key={name} type="button" className="toggle" data-toggle={name} aria-pressed={isOpen(panels, name)} aria-keyshortcuts={key} title={`${label} (${key})`} onClick={() => togglePanel(name)}>
           <Icon name={icon} /><span>{label}</span>{!nav && <kbd aria-hidden="true">{key}</kbd>}
         </button>
@@ -51,16 +52,16 @@ function TopBar() {
     <header className="bar">
       <a className="brand" href="#" aria-label="Embedly. Back to the home page"><Icon name="chip" className="mark" /><h1>Embed<span>ly</span></h1></a>
       <div className="crumb"><span>{mission.place}</span><Icon name="chevron" /><b>{mission.title}</b>{done && <><Icon name="check" className="tick" /><span className="sr-only">passed</span></>}</div>
+      {!mission.choice && <RunBar />}
       <div className="seg" role="tablist" aria-label="Choose a board">
         {ALL_BOARDS.map(b => (
           <button key={b.id} type="button" role="tab" aria-selected={b.id === board.id} onClick={() => goTo(b.id, MISSIONS[b.id][0].id)}>{b.name}</button>
         ))}
       </div>
       <div className="progress" title={`${count} of ${GRADED.length} missions passed`}>
-        <span>{count} of {GRADED.length} missions passed</span>
+        <span>{count} / {GRADED.length}<span className="sr-only"> missions passed</span></span>
         <div className="meter" role="progressbar" aria-label="Missions passed" aria-valuemin={0} aria-valuemax={GRADED.length} aria-valuenow={count}><i style={{ width: `${(100 * count) / GRADED.length}%` }} /></div>
       </div>
-      <PanelToggles />
       <ThemeToggle />
     </header>
   );
@@ -97,6 +98,25 @@ function Grip({ side, title }: { side: Side; title: string }) {
   );
 }
 
+const RAILS: Record<Side, [Panel, string, IconName, string][]> = {
+  left: [['map', 'Map', 'map', 'M'], ['brief', 'Brief', 'brief', 'B']],
+  right: [['parts', 'Parts', 'parts', 'P'], ['code', 'Code', 'code', 'C']],
+};
+/** A rail of panel buttons down one edge of the bench. The left one is for reading (map, brief, guide) and the right one for building (parts, code). */
+function Rail({ side }: { side: Side }) {
+  const panels = useLab(s => s.panels), guide = useLab(s => s.guide);
+  return (
+    <nav className={`rail ${side}`} aria-label={side === 'left' ? 'Read: map, brief and guide' : 'Build: parts and code'}>
+      {RAILS[side].map(([name, label, icon, key]) => (
+        <button key={name} type="button" className="rail-btn" data-toggle={name} aria-pressed={isOpen(panels, name)} aria-keyshortcuts={key} title={`${label} (${key})`} onClick={() => togglePanel(name)}>
+          <Icon name={icon} /><span>{label}</span>
+        </button>
+      ))}
+      {side === 'left' && <a className="rail-btn rail-end" data-toggle="guide" href={guideHash(guide)} aria-keyshortcuts="G" title="Guide, on its own page (G)"><Icon name="book" /><span>Guide</span></a>}
+    </nav>
+  );
+}
+
 /** A panel that opens over the bench. Asking for it with a button or a key moves the keyboard focus into it, and closing it puts the focus back on its button. */
 function Drawer({ name, title, icon, className = '', children }: { name: Panel; title: string; icon: IconName; className?: string; children: ReactNode }) {
   const open = useLab(s => isOpen(s.panels, name)), asked = useLab(s => s.focusPanel), mission = useLab(keyOf);
@@ -107,7 +127,7 @@ function Drawer({ name, title, icon, className = '', children }: { name: Panel; 
   if (!open) return null;
   const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); closePanel(name); } };
   return (
-    <aside ref={ref} className={`drawer ${name === 'code' ? 'right' : 'left'}`} aria-label={title} tabIndex={-1} onKeyDown={key}>
+    <aside ref={ref} className={`drawer ${sideOf(name)} panel-${name}`} aria-label={title} tabIndex={-1} onKeyDown={key}>
       <div className="drawer-head">
         <h2><Icon name={icon} />{title}</h2>
         <button type="button" aria-label={`Close ${title}`} title="Close (Esc)" onClick={() => closePanel(name)}><Icon name="close" /></button>
@@ -115,7 +135,7 @@ function Drawer({ name, title, icon, className = '', children }: { name: Panel; 
       <div className={`drawer-body ${className}`}>
         <Boundary resetKey={mission} fallback={(_e, retry) => <PanelCrash what={title.toLowerCase()} retry={retry} />}>{children}</Boundary>
       </div>
-      <Grip side={name === 'code' ? 'right' : 'left'} title={title} />
+      <Grip side={sideOf(name)} title={title} />
     </aside>
   );
 }
@@ -134,11 +154,14 @@ export function App() {
     <div className="app">
       <a className="skip" href="#bench" onClick={e => { e.preventDefault(); document.getElementById('bench')?.focus(); }}>Skip to the bench</a>
       <TopBar />
-      <main id="bench" className="bench" tabIndex={-1} aria-label="The bench" data-left={panels.left ?? undefined} data-right={panels.right ?? undefined} style={chosen}>
+      <main id="bench" className="bench" tabIndex={-1} aria-label="The bench" data-left={panels.left ?? undefined} data-right={panels.right ?? undefined} data-rails={mission.choice ? 'left' : undefined} style={chosen}>
         {mission.choice ? <SupplyShelf /> : <Stage />}
         <Drawer name="map" title="Mission map" icon="map" className="mapbody"><CampusMap /></Drawer>
         <Drawer name="brief" title="Mission brief" icon="brief"><DocPanel /></Drawer>
+        {!mission.choice && <Drawer name="parts" title="Parts" icon="parts"><PartsPanel /></Drawer>}
         {!mission.choice && <Drawer name="code" title="Code" icon="code"><CodePanel /></Drawer>}
+        <Rail side="left" />
+        {!mission.choice && <Rail side="right" />}
       </main>
       <PanelToggles nav />
       <PredictDialog />

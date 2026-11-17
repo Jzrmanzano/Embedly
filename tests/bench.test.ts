@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { analyze } from '../src/sim/circuit';
-import { allTerminals, makeItem, parseTerminal, placementError } from '../src/state/bench';
+import { allTerminals, holesOf, makeItem, parseTerminal, placementError } from '../src/state/bench';
 import type { Item } from '../src/types';
 
 const led = (items: Item[], a: string, b: string) => makeItem({ kind: 'led' }, items, a, b);
@@ -114,4 +114,20 @@ test('a moved wire takes the colour of what it now carries', () => {
 
 test('only wires can be moved', () => {
   assert.match((movedWire('uno', BLINK, 'led', 'a', 'e12') as { error: string }).error, /not a wire/);
+});
+
+test('a push button covers three columns, so another cannot be squeezed in beside it', () => {
+  const first = makeItem({ kind: 'button' }, [], 'e13');
+  assert.deepEqual(holesOf(first).sort(), ['e13', 'e14', 'e15', 'f13', 'f14', 'f15']);
+  for (const col of [11, 12, 13, 14, 15]) {
+    const second = makeItem({ kind: 'button' }, [first], `e${col}`);
+    assert.match(placementError('uno', [first], second) ?? '', /already taken/, `column ${col} overlaps the first button`);
+  }
+  for (const col of [10, 16]) assert.equal(placementError('uno', [first], makeItem({ kind: 'button' }, [first], `e${col}`)), null, `column ${col} is clear`);
+});
+
+test('a wire cannot be pushed into the middle column under a button', () => {
+  const button = makeItem({ kind: 'button' }, [], 'e13');
+  assert.match(placementError('uno', [button], { t: 'wire', a: 'a14', b: 'T+3', c: 'red' }) ?? 'ok', /ok/, 'the top rows above the button are free');
+  assert.match(placementError('uno', [button], { t: 'wire', a: 'e14', b: 'T+3', c: 'red' }) ?? '', /already taken/);
 });

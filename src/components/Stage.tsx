@@ -1,14 +1,15 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from 'react';
 import { ITEM_INFO } from '../data/boards';
-import { lockedBy, PARTS, unlockedParts, type PartId } from '../data/missions';
+import { ohmsLabel } from '../data/resistor';
 import { view } from '../scene/view';
 import { analyze } from '../sim/circuit';
-import { cancelTool, currentReadout, dismissNotice, escapePanel, flipItem, moveWireTyped, pickTool, placeTyped, redo, removeItem, requestRun, resetBench, resumeRun, selectHot, setHelp, setInput, setNav, showGuide, stepOnce, stopRun, toggleLabels, togglePanel, toggleSound, undo } from '../state/actions';
-import { TWO_POINT, type Tool, type ToolKind } from '../state/bench';
-import { benchOf, boardOf, keyOf, missionOf, useLab } from '../state/store';
-import { itemId, type Item } from '../types';
+import { cancelTool, currentReadout, dismissNotice, escapePanel, flipItem, moveWireTyped, placeTyped, removeItem, requestRun, resumeRun, selectHot, setHelp, setInput, setNav, showGuide, stepOnce, stopRun, toggleLabels, togglePanel, toggleSound, redo, undo } from '../state/actions';
+import { TWO_POINT, type ToolKind } from '../state/bench';
+import { benchOf, boardOf, missionOf, useLab } from '../state/store';
+import { itemId, kindOf, type Item, type PartKind } from '../types';
 import { Boundary, isLoadError } from './Boundary';
 import { Icon } from './Icons';
+import { Pinout } from './Pinout';
 
 /** The 3D view and three.js come in their own file, fetched when the bench first shows. */
 const loadScene = () => import('../scene/Scene');
@@ -38,8 +39,7 @@ function Scene3D({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | null> 
   );
 }
 
-/* --- the parts tray --- */
-const same = (a: Tool | null, b: Tool) => !!a && a.kind === b.kind && a.color === b.color && a.ohms === b.ohms;
+/* --- placing a part: what to click next --- */
 
 const STEPS: Record<ToolKind, [string, string?]> = {
   led: ['Click the hole for the LED\'s long leg (+).', 'Now click the hole for its short leg (−).'],
@@ -51,34 +51,14 @@ const STEPS: Record<ToolKind, [string, string?]> = {
   sonar: ['Click the hole for the sensor\'s VCC leg. It uses four columns in a row.'],
   pad: ['The touch pad sits on the table. Connect it with a wire to PAD.'],
   servo: ['Click the hole for the servo\'s brown GND leg. Its lead uses three columns in a row: GND, + and signal.'],
+  ldr: ['Click the hole for one leg of the light sensor.', 'Now click the hole for its other leg. It has no front or back.'],
+  temp: ['Click the hole for the sensor\'s left leg (+). It uses three columns in a row: + , OUT and GND.'],
+  rgb: ['Click the hole for the RGB LED\'s left leg (red). It uses four columns in a row: red, the long − leg, green and blue.'],
+  slide: ['Click the hole for the switch\'s left leg. It uses three columns in a row, with the shared leg in the middle.'],
+  contact: ['Click the hole for one leg of the switch.', 'Now click the hole for its other leg. It has no front or back.'],
+  module: ['Click the hole for the sensor\'s left pin (+). It uses three columns in a row: +, OUT and GND.'],
+  joy: ['Click the hole for the joystick\'s left pin (GND). It uses five columns in a row: GND, +, VRx, VRy and SW.'],
 };
-
-function Tray() {
-  const board = useLab(s => s.board), tool = useLab(s => s.tool);
-  const canUndo = useLab(s => !!s.undo[keyOf(s)]?.length), canRedo = useLab(s => !!s.redo[keyOf(s)]?.length);
-  const passed = useLab(s => s.passed), have = useMemo(() => unlockedParts(Object.keys(passed)), [passed]);
-  const hasParts = useLab(s => benchOf(s).length > 0);
-  return (
-    <section className="tray" aria-label="Parts tray">
-      <b className="tray-title">Parts</b>
-      {(Object.keys(PARTS) as PartId[]).filter(id => !PARTS[id].only || PARTS[id].only === board).map(id => {
-        const p = PARTS[id], locked = !have.has(id), by = lockedBy(id);
-        return (
-          <button
-            key={id} type="button" className={locked ? 'part locked' : 'part'} aria-pressed={locked ? undefined : same(tool, p.tool)} aria-disabled={locked || undefined}
-            title={locked && by ? `Locked. Pass “${by.mission.title}” to unlock it.` : undefined} onClick={() => pickTool(p.tool)}
-          >
-            {p.swatch && <i className="sw" style={{ background: p.swatch }} />}{p.label}{locked && <><Icon name="lock" /><span className="sr-only"> (locked)</span></>}
-          </button>
-        );
-      })}
-      <span className="tray-gap" />
-      <button type="button" onClick={undo} disabled={!canUndo} aria-label="Undo" title="Undo (Ctrl+Z)"><Icon name="undo" /><span className="lbl">Undo</span></button>
-      <button type="button" onClick={redo} disabled={!canRedo} aria-label="Redo" title="Redo (Ctrl+Y)"><Icon name="redo" /><span className="lbl">Redo</span></button>
-      <button type="button" onClick={resetBench} disabled={!hasParts} aria-label="Reset bench" title="Clear the bench. Undo brings it back."><Icon name="trash" /><span className="lbl">Reset bench</span></button>
-    </section>
-  );
-}
 
 /** What to do next with the chosen part. It floats over the 3D view, so showing it never moves the bench under the pointer. */
 function Help() {
@@ -139,13 +119,14 @@ function PartCard() {
   const hot = useLab(s => s.hot), board = useLab(boardOf), bench = useLab(benchOf);
   if (!hot) return null;
   const at = bench.findIndex((it, k) => itemId(it, k) === hot), item = at >= 0 ? bench[at] : null;
-  const info = board.parts[hot] ?? (item && ITEM_INFO[item.t]);
+  const info = board.parts[hot] ?? (item && ITEM_INFO[kindOf(item)]);
   if (!info) return null;
   return (
     <div className="card">
       <button type="button" className="x" aria-label="Close" onClick={() => selectHot(null)}>×</button>
-      <b>{info[0]}</b>
+      <b>{item?.t === 'res' ? `${ohmsLabel(item.ohms ?? 220)} resistor` : info[0]}</b>
       <p>{info[1]}</p>
+      {item && <details className="pinout-more"><summary><span className="i-badge" aria-hidden="true">i</span>Pinout</summary><Pinout kind={kindOf(item)} ohms={item.t === 'res' ? item.ohms ?? 220 : undefined} /></details>}
       {item?.t === 'wire' && <WireEnds id={hot} a={item.a} b={item.b} />}
       {item && (
         <div className="card-actions">
@@ -227,14 +208,24 @@ function Hold({ id, label }: { id: string; label: string }) {
   );
 }
 
-function Slider({ it, id, label }: { it: Control; id: string; label: string }) {
-  const value = useLab(s => s.inputs[id] ?? 0), sonar = it.t === 'sonar';
-  const shown = sonar ? value : Math.round(value * 100);   // the wall is stored in cm, the knob as 0 to 1
+/** A switch that stays where it is put: each press turns it over, and it says which way it is now. */
+function Flip({ id, label, states }: { id: string; label: string; states: [off: string, on: string] }) {
+  const on = useLab(s => !!s.inputs[id]);
+  return <button type="button" className={on ? 'flip on' : 'flip'} aria-pressed={on} onClick={() => setInput(id, on ? 0 : 1)}>{label}: <b>{states[on ? 1 : 0]}</b></button>;
+}
+/** What the two positions of each part with a Flip are called. */
+const STATES: Partial<Record<PartKind, [off: string, on: string]>> = { slide: ['left', 'right'], tilt: ['upright', 'tilted'], reed: ['away', 'near'], pir: ['all still', 'someone moving'], ir: ['clear', 'blocked'] };
+
+/** A slider. Most parts keep a value from 0 to 1 and show it as a percentage; with `unit` the value is kept as it is shown (the wall in cm, the temperature in °C). */
+function Slider({ id, label, range = [0, 100], unit }: { id: string; label: string; range?: [number, number]; unit?: string }) {
+  const value = useLab(s => s.inputs[id] ?? 0), raw = unit != null;
+  const shown = raw ? value : Math.round(value * 100);
+  const [lo, hi] = range;
   return (
     <label>
       {label}
-      <input type="range" min={sonar ? 2 : 0} max={100} value={shown} onChange={e => setInput(id, sonar ? +e.target.value : +e.target.value / 100)} />
-      <output>{sonar ? `${shown} cm` : `${shown}%`}</output>
+      <input type="range" min={lo} max={hi} value={shown} onChange={e => setInput(id, raw ? +e.target.value : +e.target.value / 100)} />
+      <output>{`${shown}${unit ?? '%'}`}</output>
     </label>
   );
 }
@@ -245,7 +236,19 @@ function Controls() {
   if (!items.length) return null;
   return (
     <div className="controls">
-      {items.map(([it, id]) => (it.t === 'button' || it.t === 'pad' ? <Hold key={id} id={id} label={names?.[it.t] ?? it.ctl} /> : <Slider key={id} it={it} id={id} label={names?.[it.t] ?? it.ctl} />))}
+      {items.map(([it, id]) => {
+        const label = (names as Record<string, string | undefined> | undefined)?.[it.t] ?? it.ctl, states = STATES[kindOf(it)];
+        if (it.t === 'button' || it.t === 'pad') return <Hold key={id} id={id} label={label} />;
+        if (it.t === 'joy') return (   // a joystick is two knobs and a button under one stick
+          <span key={id} className="stick" role="group" aria-label={label}>
+            <Slider id={id} label="Stick left–right" /><Slider id={`${id}:y`} label="down–up" /><Hold id={`${id}:sw`} label="Press the stick" />
+          </span>
+        );
+        if (states) return <Flip key={id} id={id} label={label} states={states} />;
+        if (it.t === 'sonar') return <Slider key={id} id={id} label={label} range={[2, 100]} unit=" cm" />;
+        if (it.t === 'temp') return <Slider key={id} id={id} label={label} range={[-10, 50]} unit=" °C" />;
+        return <Slider key={id} id={id} label={label} />;
+      })}
     </div>
   );
 }
@@ -273,6 +276,7 @@ function useHotkeys() {
         if (letter === 'm') togglePanel('map');
         else if (letter === 'b') togglePanel('brief');
         else if (letter === 'g') showGuide();
+        else if (letter === 'p') togglePanel('parts');
         else if (letter === 'c') togglePanel('code');
         else if (letter === 't') view.top();
         else if (k === '0') view.fit();
@@ -283,8 +287,8 @@ function useHotkeys() {
   }, []);
 }
 
-/** Run, step and stop stay on the bench, so the sketch can be run without opening the code. */
-function RunBar() {
+/** Run, step and stop live in the top bar, so the sketch can be run without opening the code. */
+export function RunBar() {
   const running = useLab(s => s.running), paused = useLab(s => s.paused), line = useLab(s => s.line), looking = useLab(s => s.cursor != null);
   const status = looking ? 'Looking back' : paused && line ? `Held · line ${line}` : running ? 'Running' : 'Stopped';
   return (
@@ -333,7 +337,6 @@ export function Stage() {
       <Scene3D labelLayer={labelLayer} />
       <div className="hotlayer" ref={labelLayer} hidden={!labels} />
       <Probe />
-      <RunBar />
       <Tools />
       <div className="base">
         <div className="dock">
@@ -345,7 +348,6 @@ export function Stage() {
           <Controls />
           <Help />
         </div>
-        <Tray />
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import { BOARDS } from '../data/boards';
-import { isAvailable, lockedBy, MISSIONS, PARTS, unlockedParts, type PartId } from '../data/missions';
+import { isAvailable, lockedBy, MISSIONS, PARTS, trayParts, unlockedParts, type PartId } from '../data/missions';
 import { ensureAudio } from '../sim/audio';
 import { observe, runChecks } from '../sim/check';
 import { analyze } from '../sim/circuit';
@@ -8,10 +8,11 @@ import { run as runSketch, SimError, type RunControl } from '../sim/interpreter'
 import { pushFrame, type Frame } from '../sim/timeline';
 import { itemId, type BoardId, type Item } from '../types';
 import { clampWidth, closePanel as closePanelIn, closeTop, isOpen, openPanel as openPanelIn, widestPanel, type Panel, type Side } from './panels';
-import { defaultInput, flipped, holesOf, makeItem, movedWire, parseTerminal, placementError, TWO_POINT, type Tool } from './bench';
+import { flipped, holesOf, inputsOf, makeItem, movedWire, parseTerminal, placementError, sameTool, TWO_POINT, type Tool } from './bench';
 import { guideHash, parseHash } from './route';
 import { cardOf, fitsAll, type CardId } from '../data/boardchoice';
-import { benchOf, burntOf, codeOf, keyOf, missionOf, saveBenches, saveProgress, saveWidths, useLab, type Tab } from './store';
+import { benchOf, burntOf, codeOf, keyOf, missionOf, saveBenches, saveProgress, saveSketches, saveWidths, useLab, type Tab } from './store';
+import { emptyProgress, makeBackup, parseBackup, describe, type Progress } from './progress';
 
 const set = useLab.setState, get = useLab.getState;
 
@@ -184,7 +185,7 @@ export function openFromHash() {
   const choosing = !home && !!MISSIONS[board][mission].choice;
   set(s => {
     const open = home || isPhone() ? s.panels : openPanelIn(s.panels, 'brief', isNarrow());   // a new mission opens its brief, except on a phone where it would cover the bench
-    return { page: home ? 'home' : 'lab', labSeen: s.labSeen || !home, board, mission, hot: null, serial: '', errLine: null, tool: null, pending: null, point: null, notice: null, results: null, asking: null, checking: false, drag: null, panels: choosing ? closePanelIn(open, 'code') : open };   // choosing a board needs no code
+    return { page: home ? 'home' : 'lab', labSeen: s.labSeen || !home, board, mission, hot: null, serial: '', errLine: null, tool: null, pending: null, point: null, notice: null, results: null, asking: null, checking: false, drag: null, panels: choosing ? closePanelIn(closePanelIn(open, 'code'), 'parts') : home || isNarrow() || open.right ? open : openPanelIn(open, 'parts', false) };   // choosing a board needs no code or parts, and on a wide screen the parts are at hand
   });
   syncInputs();
 }
@@ -192,7 +193,7 @@ export function openFromHash() {
 /** Gives every part with an on-screen control a value, and drops the values of parts that are gone. */
 function syncInputs() {
   const s = get(), inputs: Record<string, number> = {};
-  benchOf(s).forEach((it, k) => { if ('ctl' in it) inputs[itemId(it, k)] = s.inputs[itemId(it, k)] ?? defaultInput(it); });
+  benchOf(s).forEach((it, k) => { for (const [name, rest] of Object.entries(inputsOf(it, itemId(it, k)))) inputs[name] = s.inputs[name] ?? rest; });
   set({ inputs });
 }
 export const goTo = (board: BoardId, missionId: string) => { location.hash = `${board}-${missionId}`; };
@@ -293,18 +294,22 @@ export function moveWireTyped(id: string, aText: string, bText: string): string 
 /* --- choosing and placing parts --- */
 /** The tray part a tool belongs to. */
 const partOf = (tool: Tool): PartId | undefined =>
-  (Object.keys(PARTS) as PartId[]).find(id => { const t = PARTS[id].tool; return t.kind === tool.kind && t.color === tool.color && t.ohms === tool.ohms; });
+  (Object.keys(PARTS) as PartId[]).find(id => sameTool(tool, PARTS[id].tool));   // a resistor of any value is the resistor
 
+/** Picks the resistor value to place. A resistor that is already in hand changes value at once. */
+export function setOhms(ohms: number) {
+  set(s => ({ ohms, tool: s.tool?.kind === 'res' ? { ...s.tool, ohms } : s.tool }));
+}
 export function pickTool(tool: Tool | null) {
   const part = tool && partOf(tool);
-  if (part && !unlockedParts(Object.keys(get().passed)).has(part)) {   // a part that no mission has unlocked yet
+  if (part && !trayParts(missionOf(get()), Object.keys(get().passed)).has(part)) {   // a part that no mission has unlocked yet. The studio has them all.
     const by = lockedBy(part);
-    say('info', `The ${PARTS[part].label} is locked.${by ? ` Pass the mission “${by.mission.title}” to unlock it.` : ''}`, 6000);
+    say('info', `The ${PARTS[part].label} is locked here.${by ? ` Pass the mission “${by.mission.title}” to unlock it, or use it in the Open Studio, where every part is open.` : ''}`, 7000);
     return;
   }
-  const same = tool && get().tool?.kind === tool.kind && get().tool?.color === tool.color && get().tool?.ohms === tool.ohms;
+  const same = tool && get().tool?.kind === tool.kind && get().tool?.color === tool.color && get().tool?.ohms === tool.ohms && get().tool?.sub === tool.sub;
   if (!tool || same) { set({ tool: null, pending: null, point: null }); return; }
-  set({ tool, pending: null, hot: null });
+  set(s => ({ tool, pending: null, hot: null, panels: isPhone() ? closePanelIn(s.panels, 'parts') : s.panels }));   // on a phone the drawer would cover the bench
   if (tool.kind === 'pad') {
     const it = makeItem(tool, benchOf(get()), 'PAD');
     const err = placementError(get().board, benchOf(get()), it);
@@ -372,10 +377,14 @@ export const setTab = (tab: Tab) => set({ tab });
 /** Selects a part, or clears the selection when it is already selected or id is null. */
 export const selectHot = (id: string | null) => set(s => ({ hot: id && id !== s.hot ? id : null }));
 export const setInput = (id: string, value: number) => set(s => ({ inputs: { ...s.inputs, [id]: value } }));
-export const editCode = (code: string) => set(s => ({ edits: { ...s.edits, [keyOf(s)]: code }, errLine: null, results: null }));
+export function editCode(code: string) {
+  set(s => ({ edits: { ...s.edits, [keyOf(s)]: code }, errLine: null, results: null }));
+  saveSketches(get().edits);
+}
 export function resetCode() {
   stopRun();
   set(s => { const edits = { ...s.edits }; delete edits[keyOf(s)]; return { edits, errLine: null, results: null }; });
+  saveSketches(get().edits, 0);
 }
 export const setNav = (nav: 'pan' | 'rotate') => set({ nav });
 export const toggleLabels = () => set(s => ({ labels: !s.labels }));
@@ -457,7 +466,29 @@ export function revealHint() {
 /** Puts the mission's reference sketch in the editor. Only offered with the last hint. */
 export function fillAnswerCode() {
   set(s => ({ edits: { ...s.edits, [keyOf(s)]: missionOf(s).answer }, errLine: null, results: null }));
+  saveSketches(get().edits, 0);
 }
+
+/* --- everything the browser remembers: backing it up, restoring it, starting again --- */
+const everything = (): Progress => { const { passed, hintsUsed, predictions, picks, benches, burnt, edits } = get(); return { passed, hintsUsed, predictions, picks, benches, burnt, edits }; };
+/** The text of a backup file holding all the work done so far. */
+export const progressBackup = () => makeBackup(everything());
+/** Replaces everything the browser remembers with this progress, and saves it. */
+function adopt(p: Progress) {
+  stopRun(); forgetRun();
+  set({ ...p, undo: {}, redo: {}, results: null, asking: null, hot: null, tool: null, pending: null, notice: null, errLine: null, serial: '' });
+  saveProgress(p); saveBenches(p.benches, p.burnt); saveSketches(p.edits, 0);
+  syncInputs();
+}
+/** Puts back a backup file's work in place of what is there now. Gives back what was restored, or why it could not be. */
+export function restoreProgress(text: string): { ok: true; summary: string } | { ok: false; error: string } {
+  const r = parseBackup(text);
+  if (!r.ok) return r;
+  adopt(r.progress);
+  return { ok: true, summary: describe(r.progress) };
+}
+/** Forgets every passed mission, bench and sketch. */
+export const resetProgress = () => adopt(emptyProgress());
 
 /* --- panels over the bench --- */
 /** Narrow screens show one panel at a time. */
@@ -488,14 +519,16 @@ export function escapePanel(): boolean {
   focusToggle(name);
   return true;
 }
+/** The width of the bench between its two rails, which the drawers share. */
+const benchRoom = () => (document.getElementById('bench')?.clientWidth ?? innerWidth) - [...document.querySelectorAll<HTMLElement>('.rail')].reduce((n, r) => n + r.offsetWidth, 0);
 /** The room there is for the panel on one side: the widest it may be right now. */
 export function panelRoom(side: Side): number {
-  const across = document.getElementById('bench')?.clientWidth ?? innerWidth;
+  const across = benchRoom();
   return widestPanel(across, document.querySelector<HTMLElement>(`.drawer.${side === 'left' ? 'right' : 'left'}`)?.offsetWidth ?? 0);
 }
 /** Makes the panel on one side this wide (kept within what fits), or gives it its usual width back with null. */
 export function resizePanel(side: Side, width: number | null) {
-  const across = document.getElementById('bench')?.clientWidth ?? innerWidth;
+  const across = benchRoom();
   const other = document.querySelector<HTMLElement>(`.drawer.${side === 'left' ? 'right' : 'left'}`)?.offsetWidth ?? 0;
   const widths = { ...get().widths, [side]: width == null ? null : clampWidth(width, across, other) };
   set({ widths });

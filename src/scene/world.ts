@@ -2,7 +2,8 @@
    Everything is modelled in millimetres from toon-shaded solids with an ink outline. */
 import * as T from 'three';
 import { ESP_FAR, ESP_HOLES, ESP_NEAR } from '../data/boards';
-import { itemId, type BoardId, type Info, type Item } from '../types';
+import { bands, ohmsLabel } from '../data/resistor';
+import { itemId, kindOf, type BoardId, type Info, type Item } from '../types';
 
 export interface WorldSpec {
   board: BoardId;
@@ -10,7 +11,8 @@ export interface WorldSpec {
   parts: Record<string, Info> | null;
   info: Record<string, Info>;
 }
-export interface Hot { id: string; title: string; pos: T.Vector3 }
+/** A label over a part. A `sign` makes it a polarity badge on one leg of a part (an LED's long leg is +, its short leg is −) instead of the part's name. */
+export interface Hot { id: string; title: string; pos: T.Vector3; sign?: '+' | '-' }
 export interface World {
   group: T.Group;
   hots: Hot[];
@@ -44,7 +46,8 @@ interface BuiltBoard {
   group: T.Group; parts: Record<string, T.Group>; hot: Record<string, Vec>; anchors: Record<string, Vec>;
   W: number; D: number; setLed(v: number): void; usbAt: Vec; plug: Vec;
 }
-interface Made { g: T.Group; set?: (v: number) => void; top?: T.Vector3; burn?: () => void }
+/** A part as built. `more` holds the setters of a part with more than one on-screen value, by what follows its id (":y", ":sw"). */
+interface Made { g: T.Group; set?: (v: number) => void; more?: Record<string, (v: number) => void>; top?: T.Vector3; burn?: () => void }
 
 const INK = 0x1b2430, HILITE = 0xe2572b, METAL = 0xc9ced3, GOLD = 0xd9b24a, DARK = 0x23272e;
 const WIRE: Record<string, number> = { red: 0xd6453d, black: 0x2f353d, orange: 0xf08a24, yellow: 0xe8c22e, green: 0x3aa655, blue: 0x3577d4, white: 0xe9ecef, purple: 0x8d5bd1 };
@@ -279,7 +282,9 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
   function mkLed(it: Of<'led'>): Made {
     const g = new T.Group(), a = anchor(it.a), k = anchor(it.k), mx = (a.x + k.x) / 2, mz = (a.z + k.z) / 2, y = a.y;
     const dim = new T.Color(it.color).multiplyScalar(0.5).getHex();
-    leg(g, a, 7); leg(g, k, 7); lead(g, a.clone().setY(y + 7), k.clone().setY(y + 7), y + 7);
+    leg(g, a, 7.6, 0xd6453d); leg(g, k, 6.4, 0x39414c); lead(g, a.clone().setY(y + 7), k.clone().setY(y + 7), y + 7);   // the long leg (+) is red, the short leg (−) is dark
+    const flat = new T.Vector3(k.x - a.x, 0, k.z - a.z);
+    if (flat.length()) { flat.normalize(); box(g, mx + flat.x * 2.9, y + 7, mz + flat.z * 2.9, 1.5, 1.3, 1.5, 0x20252b, { nh: 1 }); }   // the flat side of the rim is the cathode side
     const ms = [cyl(g, mx, y + 6.5, mz, 3, 1, dim), cyl(g, mx, y + 7.5, mz, 2.5, 4.6, dim), ball(g, mx, y + 12.1, mz, 2.5, dim)];
     const halo = new T.Mesh(new T.SphereGeometry(8, 20, 14), new T.MeshBasicMaterial({ color: it.color, transparent: true, opacity: 0, depthWrite: false }));
     halo.position.set(mx, y + 11, mz); halo.raycast = () => {}; g.add(halo);
@@ -288,14 +293,13 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
     const burn = () => { burnt = true; set(0); ms.forEach(m => m.material.color.setHex(0x2a2522)); };
     return { g, set, burn, top: new T.Vector3(mx, y + 15, mz) };
   }
-  const BAND = [0x1b1e23, 0x7a4a21, 0xc0392b, 0xe8821e, 0xe8c22e, 0x3aa655, 0x3577d4, 0x8d5bd1, 0x888f96, 0xeeeeee];
   function mkRes(it: Of<'res'>): Made {
     const g = new T.Group(), a = anchor(it.a), b = anchor(it.b), y = a.y + 3.2, dx = b.x - a.x, dz = b.z - a.z;
-    const ohms = it.ohms ?? 220, exp = Math.max(0, Math.floor(Math.log10(ohms)) - 1), mant = Math.round(ohms / 10 ** exp);
+    const colors = bands(it.ohms ?? 220).map(c => parseInt(c.slice(1), 16)), n = colors.length;   // four bands, or five for a value with three digits
     leg(g, a, 3.4); leg(g, b, 3.4); lead(g, a, b, y);
     const body = new T.Group(); body.position.set((a.x + b.x) / 2, 0, (a.z + b.z) / 2); body.rotation.y = -Math.atan2(dz, dx); g.add(body);
     cyl(body, 0, y, 0, 1.25, 6.4, 0xdcbd8e, { ax: 'x' });
-    [[-2.1, BAND[Math.floor(mant / 10) % 10]], [-1, BAND[mant % 10]], [0.1, BAND[Math.min(9, exp)]], [2, 0xc9a227]].forEach(([dxb, c]) => cyl(body, dxb, y, 0, 1.32, 0.65, c, { ax: 'x', nh: 1 }));
+    colors.forEach((c, i) => cyl(body, i === n - 1 ? 2.3 : -2.5 + i * 0.95, y, 0, 1.32, 0.6, c, { ax: 'x', nh: 1 }));   // the digits and the multiplier on the left, the tolerance on its own at the end
     return { g, top: new T.Vector3((a.x + b.x) / 2, y + 2, (a.z + b.z) / 2) };
   }
   function mkButton(it: Of<'button'>): Made {
@@ -318,7 +322,10 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
   function mkBuzzer(it: Of<'buzzer'>): Made {
     const g = new T.Group(), a = anchor(it.a), b = anchor(it.b), cx = (a.x + b.x) / 2, cz = (a.z + b.z) / 2, y = a.y;
     let freq = 0;
-    leg(g, a, 0.8); leg(g, b, 0.8); lead(g, a.clone().setY(y + 0.8), b.clone().setY(y + 0.8), y + 0.8);
+    leg(g, a, 0.8, 0xd6453d); leg(g, b, 0.8, 0x39414c); lead(g, a.clone().setY(y + 0.8), b.clone().setY(y + 0.8), y + 0.8);   // red + leg, dark − leg
+    const toward = new T.Vector3(a.x - b.x, 0, a.z - b.z); toward.length() ? toward.normalize() : toward.set(1, 0, 0);
+    const mx = cx + toward.x * 3.4, mz = cz + toward.z * 3.4;   // a red + printed on the top, on the positive side, as on a real buzzer
+    box(g, mx, y + 9.4, mz, 2.6, 0.25, 0.7, 0xd6453d, { nh: 1 }); box(g, mx, y + 9.4, mz, 0.7, 0.25, 2.6, 0xd6453d, { nh: 1 });
     const body = cyl(g, cx, y + 0.7, cz, 6, 8.6, 0x2b3038); cyl(g, cx, y + 9.3, cz, 1.2, 0.08, 0x8d97a1, { nh: 1 });
     itemAnim.push(t => { const s = freq ? 1 + 0.04 * Math.sin(t / 16) : 1; body.scale.set(s, 1, s); body.userData.hull.scale.set(s, 1, s); });
     return { g, set: f => { freq = f; }, top: new T.Vector3(cx, y + 11, cz) };
@@ -362,6 +369,131 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
     itemAnim.push(() => { if (Math.abs(target - shown) < 0.3) return; shown += (target - shown) * 0.18; turn(); });   // a real servo takes a moment to get there
     return { g, set: angle => { if (angle >= 0) target = angle; }, top: new T.Vector3(bodyX, topY + 8, bodyZ) };
   }
+  /** A light-dependent resistor: a small round disc with a zigzag track, standing on two thin legs. It glows when there is light on it. */
+  function mkLdr(it: Of<'ldr'>): Made {
+    const g = new T.Group(), a = anchor(it.a), b = anchor(it.b), cx = (a.x + b.x) / 2, cz = (a.z + b.z) / 2, y = a.y;
+    leg(g, a, 5); leg(g, b, 5); lead(g, a.clone().setY(y + 5), b.clone().setY(y + 5), y + 5);
+    const disc = cyl(g, cx, y + 4.6, cz, 4.4, 1.3, 0xc9a35b);
+    for (let i = -2; i <= 2; i++) box(g, cx, y + 5.9, cz + i * 1.4, 6.4, 0.12, 0.55, 0x5a3b1a, { nh: 1 });
+    const set = (light: number) => { disc.material.emissive.setHex(0xffe08a); disc.material.emissiveIntensity = Math.min(1, Math.max(0, light)) * 0.55; };
+    set(0.5);
+    return { g, set, top: new T.Vector3(cx, y + 9, cz) };
+  }
+  /** A TMP36 in its TO-92 case: a black half-round body on three legs. It warms to red as the temperature rises. */
+  function mkTemp(it: Of<'temp'>): Made {
+    const g = new T.Group(), legs = [0, 1, 2].map(i => anchor(`${it.row}${it.col + i}`)), mid = legs[1], y = mid.y;
+    legs.forEach((p, i) => box(g, p.x, y, p.z, 0.55, 5, 0.55, i === 0 ? 0xd6453d : i === 2 ? 0x39414c : 0xaab2ba, { nh: 1 }));   // red + leg, dark − leg, bare output leg
+    const body = cyl(g, mid.x, y + 4.5, mid.z, 2.9, 5.6, 0x2b3038, { seg: 18 });
+    box(g, mid.x, y + 4.5, mid.z + 1.2, 5.6, 5.6, 1.5, 0x2b3038);   // the flat face
+    const set = (c: number) => { const warm = Math.min(1, Math.max(0, (c - 20) / 30)); body.material.emissive.setHex(0xff5a1f); body.material.emissiveIntensity = warm * 0.8; };
+    set(25);
+    return { g, set, top: new T.Vector3(mid.x, y + 12, mid.z) };
+  }
+  /** An RGB LED: a clear dome on four legs. It takes the colour its three LEDs mix, given as their brightnesses packed into one number (red, green, blue, 0 to 255 each). */
+  function mkRgb(it: Of<'rgb'>): Made {
+    const g = new T.Group(), legs = [0, 1, 2, 3].map(i => anchor(`${it.row}${it.col + i}`)), mx = (legs[0].x + legs[3].x) / 2, z = legs[0].z, y = legs[0].y;
+    const LEG = [0xd6453d, 0x39414c, 0x3aa655, 0x3577d4];   // red, the shared − leg (the long one), green, blue
+    legs.forEach((p, i) => leg(g, p, i === 1 ? 7.4 : 6.2, LEG[i]));
+    box(g, mx, y + 6, z, 9, 0.7, 1.3, 0x8d97a1, { nh: 1 });
+    const ms = [cyl(g, mx, y + 6.5, z, 3.4, 1, 0xdfe4e8), cyl(g, mx, y + 7.5, z, 2.9, 5, 0xdfe4e8), ball(g, mx, y + 12.5, z, 2.9, 0xdfe4e8)];
+    const halo = new T.Mesh(new T.SphereGeometry(8.5, 20, 14), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }));
+    halo.position.set(mx, y + 11.5, z); halo.raycast = () => {}; g.add(halo);
+    const mix = new T.Color();
+    let burnt = false;
+    const set = (packed: number) => {
+      if (burnt) packed = 0;
+      const r = (packed >> 16 & 255) / 255, gr = (packed >> 8 & 255) / 255, b = (packed & 255) / 255, top = Math.max(r, gr, b);
+      if (top > 0) mix.setRGB(r / top, gr / top, b / top);
+      ms.forEach(m => { m.material.emissive.copy(mix); m.material.emissiveIntensity = top * 0.9; });
+      halo.material.color.copy(mix); halo.material.opacity = top * 0.3;
+    };
+    const burn = () => { burnt = true; set(0); ms.forEach(m => m.material.color.setHex(0x2a2522)); };
+    return { g, set, burn, top: new T.Vector3(mx, y + 16, z) };
+  }
+  /** A slide switch: a small black body on three legs, with a lever that sits to the left or to the right. */
+  function mkSlide(it: Of<'slide'>): Made {
+    const g = new T.Group(), legs = [0, 1, 2].map(i => anchor(`${it.row}${it.col + i}`)), mid = legs[1], y = mid.y;
+    legs.forEach(p => box(g, p.x, y, p.z, 0.7, 1.2, 0.5, 0xaab2ba, { nh: 1 }));
+    box(g, mid.x, y + 0.6, mid.z, 8.8, 3.6, 4.4, 0x2b3038); box(g, mid.x, y + 4.2, mid.z, 8.8, 0.3, 4.4, METAL, { nh: 1 });
+    const lever = box(g, mid.x, y + 4.4, mid.z, 2.3, 2.6, 2.2, 0xe6e9ec);
+    const set = (v: number) => { lever.position.x = lever.userData.hull.position.x = mid.x + (v > 0.5 ? 1.8 : -1.8); };
+    set(0);
+    return { g, set, top: new T.Vector3(mid.x, y + 9, mid.z) };
+  }
+  /** A tilt switch is a small brass can that leans over when tilted. A reed switch is a glass tube, and a magnet appears beside it when one is near. */
+  function mkContact(it: Of<'contact'>): Made {
+    const g = new T.Group(), a = anchor(it.a), b = anchor(it.b), cx = (a.x + b.x) / 2, cz = (a.z + b.z) / 2, y = a.y;
+    const body = new T.Group(); body.userData.hm = shell(g); g.add(body);
+    if (it.kind === 'tilt') {
+      leg(g, a, 4); leg(g, b, 4); lead(g, a.clone().setY(y + 4), b.clone().setY(y + 4), y + 4);
+      body.position.set(cx, y + 4, cz);
+      cyl(body, 0, 0, 0, 2.7, 8.5, 0xd9b24a); cyl(body, 0, 8.5, 0, 1.6, 0.25, 0x8a6d1f, { nh: 1 });
+      return { g, set: v => { body.rotation.z = v > 0.5 ? -1.05 : 0; }, top: new T.Vector3(cx, y + 15, cz) };
+    }
+    const h = y + 3.2;
+    leg(g, a, 3.4); leg(g, b, 3.4); lead(g, a, b, h);
+    body.position.set(cx, 0, cz); body.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
+    cyl(body, 0, h, 0, 1.4, 8.6, 0xcfe8dc, { ax: 'x' });
+    const magnet = new T.Group(); magnet.userData.hm = shell(g); body.add(magnet);
+    box(magnet, -2, h + 2.4, 0, 4, 2.6, 3, 0xd6453d); box(magnet, 2, h + 2.4, 0, 4, 2.6, 3, 0x3577d4);   // a bar magnet, red for north and blue for south
+    magnet.visible = false;
+    return { g, set: v => { magnet.visible = v > 0.5; }, top: new T.Vector3(cx, y + 10, cz) };
+  }
+  /** A sensor module: a small board standing on its three pins (+, OUT, GND), with what it senses with on the side that faces you. */
+  function mkModule(it: Of<'module'>): Made {
+    const g = new T.Group(), legs = [0, 1, 2].map(i => anchor(`${it.row}${it.col + i}`)), mid = legs[1], x = mid.x, z = mid.z, y = mid.y, face = z + 0.75;
+    const PCB = { pir: 0x2e8b57, ir: 0x2a62b8, soil: 0x23272e, water: 0xb83a32, gas: 0x2a62b8, flame: 0xb83a32 }[it.kind];
+    legs.forEach(p => box(g, p.x, y, p.z, 0.6, 3.4, 0.6, GOLD, { nh: 1 }));
+    box(g, x, y + 3, z, 13, 17, 1.5, PCB);
+    const glow = (m: Solid, color: number, v: number) => { m.material.emissive.setHex(color); m.material.emissiveIntensity = v; };
+    const shown = (o: T.Object3D, on: boolean) => { o.visible = on; };
+    let set: (v: number) => void;
+    if (it.kind === 'pir') {
+      const dome = ball(g, x, y + 12, face + 0.6, 5.4, 0xf2f2ee);
+      set = v => glow(dome, 0xff5a3c, v > 0.5 ? 0.7 : 0);
+    } else if (it.kind === 'ir') {
+      cyl(g, x - 3.2, y + 18, face + 2.6, 1.5, 5.2, 0xe9ecef, { ax: 'z' }); cyl(g, x + 3.2, y + 18, face + 2.6, 1.5, 5.2, 0x1b1e23, { ax: 'z' });
+      box(g, x, y + 6, face, 4, 4, 1.4, 0x3aa7b3);
+      const wall = new T.Group(); wall.userData.hm = shell(g); g.add(wall);
+      box(wall, x, y, face + 11, 13, 15, 2, 0xe2572b);   // something in the way
+      set = v => shown(wall, v > 0.5);
+    } else if (it.kind === 'soil') {
+      const prongs = [-3.6, 3.6].map(dx => box(g, x + dx, y + 5, face, 2.8, 13.5, 0.4, GOLD, { nh: 1 }));
+      set = v => prongs.forEach(p => glow(p, 0x2a8cff, Math.min(1, Math.max(0, v)) * 0.9));
+    } else if (it.kind === 'water') {
+      for (let i = -2; i <= 2; i++) box(g, x + i * 2.3, y + 4.5, face, 0.8, 13, 0.3, METAL, { nh: 1 });
+      const water = box(g, x, y + 4, face + 0.5, 12.4, 14, 0.5, 0x3a8fe0, { nh: 1, glow: 0x1c5fb8, gi: 0.5 });
+      set = v => { const lv = Math.min(1, Math.max(0, v)); shown(water, lv > 0.01); water.scale.y = Math.max(0.01, lv); water.position.y = y + 4 + 7 * lv; };
+    } else if (it.kind === 'gas') {
+      const can = cyl(g, x, y + 12, face + 3.4, 5, 6.8, 0xb9c0c7, { ax: 'z' });
+      cyl(g, x, y + 12, face + 7, 3.4, 0.3, 0x6d737b, { ax: 'z', nh: 1 });
+      set = v => glow(can, 0xff7a2a, Math.min(1, Math.max(0, v)) * 0.8);
+    } else {
+      cyl(g, x, y + 17, face + 2.8, 1.6, 5.6, 0x1b1e23, { ax: 'z' });
+      box(g, x, y + 6, face, 4, 4, 1.4, 0x3aa7b3);
+      const fire = new T.Group(); fire.position.set(x, y + 15, face + 14); g.add(fire);
+      ball(fire, 0, 0, 0, 3, 0xff9a2a, { nh: 1, glow: 0xff6a00 }); ball(fire, 0, 3, 0, 1.8, 0xffc23a, { nh: 1, glow: 0xffa000 });
+      fire.children.forEach(c => { c.raycast = () => {}; });
+      set = v => { const f = Math.min(1, Math.max(0, v)); shown(fire, f > 0.02); fire.scale.setScalar(0.45 + f); };
+    }
+    set(it.kind === 'soil' ? 0.5 : 0);
+    return { g, set, top: new T.Vector3(x, y + 25, z) };
+  }
+  /** A thumb joystick: a board standing on its five pins with the stick facing you. The stick leans the way it is pushed and sinks when it is pressed. */
+  function mkJoy(it: Of<'joy'>): Made {
+    const g = new T.Group(), legs = [0, 1, 2, 3, 4].map(i => anchor(`${it.row}${it.col + i}`)), mid = legs[2], x = mid.x, z = mid.z, y = mid.y, face = z + 0.75;
+    legs.forEach(p => box(g, p.x, y, p.z, 0.6, 3.4, 0.6, GOLD, { nh: 1 }));
+    box(g, x, y + 3, z, 18, 20, 1.5, 0x23272e);
+    cyl(g, x, y + 13, face + 1.6, 6.4, 3.2, 0x3b424c, { ax: 'z' });
+    const stick = new T.Group(); stick.userData.hm = shell(g); stick.position.set(x, y + 13, face + 3); g.add(stick);
+    cyl(stick, 0, 0, 3, 1.7, 6, 0x23272e, { ax: 'z' }); cyl(stick, 0, 0, 7, 4.8, 2.4, 0x4a515a, { ax: 'z' });
+    const rest = stick.position.z;
+    return {
+      g, top: new T.Vector3(x, y + 28, z),
+      set: v => { stick.rotation.y = (v - 0.5) * 0.9; },            // left and right
+      more: { ':y': v => { stick.rotation.x = -(v - 0.5) * 0.9; }, ':sw': v => { stick.position.z = rest - (v > 0.5 ? 1.2 : 0); } },   // down and up, and the press
+    };
+  }
   function mkPad(): Made {
     const at = padPos!, g = new T.Group(), m = box(g, at.x, 0, at.z, 18, 0.8, 18, 0xc98a4b);
     const set = (on: number) => { m.material.emissive.setHex(0xffc27a); m.material.emissiveIntensity = on ? 0.7 : 0; };
@@ -378,6 +510,13 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
       case 'sonar': return mkSonar(it);
       case 'pad': return mkPad();
       case 'servo': return mkServo(it);
+      case 'ldr': return mkLdr(it);
+      case 'temp': return mkTemp(it);
+      case 'rgb': return mkRgb(it);
+      case 'slide': return mkSlide(it);
+      case 'contact': return mkContact(it);
+      case 'module': return mkModule(it);
+      case 'joy': return mkJoy(it);
     }
   }
 
@@ -412,7 +551,7 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
   }
 
   /* --- assembly --- */
-  const addHot = (id: string, title: string, pos: T.Vector3) => hots.push({ id, title, pos });
+  const addHot = (id: string, title: string, pos: T.Vector3, sign?: '+' | '-') => hots.push({ id, title, pos, ...(sign ? { sign } : {}) });
   const isUno = spec.board === 'uno';
   bb = buildBB(); bb.position.set(isUno ? 50 : 0, 0, 0); world.add(bb);
   const b = isUno ? (uno = buildUno()) : buildEsp();
@@ -439,9 +578,21 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
       made.g.userData.pick = id;
       world.add(made.g); groups[id] = made.g; placed.push(made.g); placedIds.push(id);
       if (made.set) devs[id] = made.set;
+      if (made.more) for (const [tail, f] of Object.entries(made.more)) { devs[id + tail] = f; placedIds.push(id + tail); }
       if (made.top) tops[id] = made.top;
       if (made.burn) { burners[id] = made.burn; if (burntSet.has(id)) made.burn(); }
-      if (made.top && spec.info[it.t]) addHot(id, spec.info[it.t][0], made.top);
+      if (made.top && spec.info[kindOf(it)]) addHot(id, it.t === 'res' ? `${ohmsLabel(it.ohms ?? 220)} resistor` : spec.info[kindOf(it)][0], made.top);   // a resistor's label says its value
+      /* Which leg is which, readable from any angle: every part with a + and a − gets a badge just outside each of them. */
+      const flat = (from: T.Vector3, to: T.Vector3) => { const u = new T.Vector3(to.x - from.x, 0, to.z - from.z); return u.length() ? u.normalize() : u.set(1, 0, 0); };
+      const pole = (title: string, sign: '+' | '-', at: T.Vector3, u: T.Vector3, out: number, lift = 13) => addHot(id, title, at.clone().addScaledVector(u, out).setY(at.y + lift), sign);
+      if (it.t === 'led') { const p = anchor(it.a), n = anchor(it.k), u = flat(p, n); pole('LED long leg (+)', '+', p, u, -4.5); pole('LED short leg (−)', '-', n, u, 4.5); }
+      else if (it.t === 'buzzer') { const p = anchor(it.a), n = anchor(it.b), u = flat(p, n); pole('Buzzer positive leg (+)', '+', p, u, -4.5); pole('Buzzer negative leg (−)', '-', n, u, 4.5); }
+      else if (it.t === 'temp') { const p = anchor(`${it.row}${it.col}`), n = anchor(`${it.row}${it.col + 2}`), u = flat(p, n); pole('Sensor power leg (+)', '+', p, u, -4.5, 9); pole('Sensor ground leg (−)', '-', n, u, 4.5, 9); }
+      else if (it.t === 'module') { const p = anchor(`${it.row}${it.col}`), n = anchor(`${it.row}${it.col + 2}`), u = flat(p, n); pole('Sensor power pin (+)', '+', p, u, -6.5, 6); pole('Sensor ground pin (−)', '-', n, u, 6.5, 6); }
+      else if (it.t === 'joy') { const n = anchor(`${it.row}${it.col}`), p = anchor(`${it.row}${it.col + 1}`), u = flat(n, p); pole('Joystick ground pin (−)', '-', n, u, -6.5, 6); pole('Joystick power pin (+)', '+', p, u, -4, 28); }
+      else if (it.t === 'rgb') { const n = anchor(`${it.row}${it.col + 1}`), u = flat(anchor(`${it.row}${it.col}`), n); pole('RGB LED long leg (−)', '-', n, u, 0, 20); }
+      else if (it.t === 'sonar') { const p = anchor(`${it.row}${it.col}`), n = anchor(`${it.row}${it.col + 3}`), u = flat(p, n); pole('Sensor power pin VCC (+)', '+', p, u, -4.5, 9); pole('Sensor ground pin GND (−)', '-', n, u, 4.5, 9); }
+      else if (it.t === 'servo') { const n = anchor(`${it.row}${it.col}`), p = anchor(`${it.row}${it.col + 1}`), u = flat(n, anchor(`${it.row}${it.col + 2}`)); pole('Servo ground wire (−)', '-', n, u, -4.5, 12); pole('Servo power wire (+)', '+', p, u, 0, 20); }
     });
   }
   const safeAnchor = (name: string): T.Vector3 | null => { try { return anchor(name); } catch { return null; } };

@@ -81,6 +81,8 @@ export interface LabState {
   /** The prediction question is open, and whether the run that follows is a step run. */
   asking: { step: boolean } | null;
   sound: boolean;
+  /** The resistor value picked in the Parts drawer, which the next resistor placed will have. */
+  ohms: number;
   /** What a left-button drag on the bench does: slide the view sideways and up or down, or turn it. */
   nav: 'pan' | 'rotate';
   labels: boolean;
@@ -110,6 +112,22 @@ export function saveBenches(benches: Record<string, Item[]>, burnt: Record<strin
   try { localStorage.setItem(BENCH_KEY, JSON.stringify({ benches, burnt })); } catch { /* the bench just is not remembered */ }
 }
 
+const SKETCH_KEY = 'boardlab-sketches';
+/** The sketches the student has changed, by mission key. */
+function loadSketches(): Record<string, string> {
+  try {
+    const v = JSON.parse(localStorage.getItem(SKETCH_KEY) || '{}');
+    return Object.fromEntries(Object.entries(record(v)).filter(([, code]) => typeof code === 'string')) as Record<string, string>;
+  } catch { return {}; }
+}
+let sketchTimer: ReturnType<typeof setTimeout> | undefined;
+/** Saves the changed sketches a moment after the last keystroke, so typing does not write to storage on every key. */
+export function saveSketches(edits: Record<string, string>, at = 400) {
+  clearTimeout(sketchTimer);
+  const write = () => { try { localStorage.setItem(SKETCH_KEY, JSON.stringify(edits)); } catch { /* the sketch is just not remembered */ } };
+  if (at > 0) sketchTimer = setTimeout(write, at); else write();
+}
+
 const WIDTH_KEY = 'boardlab-panel-widths';
 function loadWidths(): Widths {
   const px = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
@@ -121,10 +139,10 @@ export function saveWidths(widths: Widths) {
 
 const saved = loadBenches();
 export const useLab = create<LabState>(() => ({
-  page: 'home', labSeen: false, board: 'uno', mission: 0, tab: 'mission', panels: NO_PANELS, focusPanel: null, widths: loadWidths(), help: false, guide: null, hot: null, edits: {}, ...saved, undo: {}, redo: {},
+  page: 'home', labSeen: false, board: 'uno', mission: 0, tab: 'mission', panels: NO_PANELS, focusPanel: null, widths: loadWidths(), help: false, guide: null, hot: null, edits: loadSketches(), ...saved, undo: {}, redo: {},
   tool: null, pending: null, point: null, notice: null, drag: null, sparks: 0, paused: false, line: null, cursor: null, frameTick: 0, probe: null,
   inputs: {}, ...loadProgress(), results: null, checking: false, asking: null,
-  sound: false, nav: 'pan', labels: true, running: false, errLine: null, serial: '',
+  sound: false, ohms: 220, nav: 'pan', labels: true, running: false, errLine: null, serial: '',
 }));
 
 const NONE: Item[] = [], NONE_IDS: string[] = [];
@@ -133,5 +151,5 @@ export const missionOf = (s: LabState) => MISSIONS[s.board][s.mission];
 export const keyOf = (s: LabState) => missionKey(s.board, missionOf(s).id);
 export const codeOf = (s: LabState) => s.edits[keyOf(s)] ?? missionOf(s).starter;
 /** The parts and wires the student has placed for the open lesson. */
-export const benchOf = (s: LabState) => s.benches[keyOf(s)] ?? NONE;
+export const benchOf = (s: LabState) => s.benches[keyOf(s)] ?? missionOf(s).start ?? NONE;
 export const burntOf = (s: LabState) => s.burnt[keyOf(s)] ?? NONE_IDS;

@@ -1,7 +1,7 @@
 /* Which panels are open over the bench. The map and the brief share the left side, the code has the right side, and on a phone only one sheet can be open. */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { clampWidth, closePanel, closeTop, isOpen, MIN_BENCH, MIN_WIDTH, NONE, openPanel, SHARE, togglePanel, widestPanel } from '../src/state/panels';
+import { clampWidth, closePanel, closeTop, isOpen, MIN_BENCH, MIN_WIDTH, NONE, openPanel, SHARE, sideOf, togglePanel, widestPanel } from '../src/state/panels';
 
 test('nothing is open to begin with', () => {
   for (const p of ['map', 'brief', 'code'] as const) assert.equal(isOpen(NONE, p), false);
@@ -84,4 +84,18 @@ test('with a panel on each side, neither takes more than its share of the screen
 
 test('on a window with no room to spare a panel keeps its smallest width', () => {
   assert.equal(clampWidth(900, 700, 400), MIN_WIDTH);
+});
+
+test('the parts drawer and the code share the right side, and the parts sit beside the brief', () => {
+  const both = openPanel(openPanel(NONE, 'brief', false), 'parts', false);
+  assert.deepEqual([isOpen(both, 'brief'), isOpen(both, 'parts'), isOpen(both, 'code')], [true, true, false]);
+  const swapped = openPanel(both, 'code', false);
+  assert.deepEqual([isOpen(swapped, 'brief'), isOpen(swapped, 'parts'), isOpen(swapped, 'code')], [true, false, true]);
+  assert.equal(isOpen(openPanel(swapped, 'parts', false), 'code'), false);
+});
+
+test('each panel knows its side, and closing the parts drawer leaves the brief open', () => {
+  assert.deepEqual((['map', 'brief', 'parts', 'code'] as const).map(sideOf), ['left', 'left', 'right', 'right']);
+  const s = closePanel(openPanel(openPanel(NONE, 'brief', false), 'parts', false), 'parts');
+  assert.deepEqual([isOpen(s, 'brief'), isOpen(s, 'parts')], [true, false]);
 });

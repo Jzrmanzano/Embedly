@@ -10,14 +10,27 @@ ESP_FAR.forEach((n, i) => { ESP_HOLES[n] = 'a' + (4 + i); });
 
 export const ITEM_INFO: Record<string, Info> = {
   led: ['LED', 'Lights up when current flows through it. The long leg is the + side and must face the pin.'],
-  res: ['220 Ω resistor', 'Limits the current. Without it the LED would draw too much and burn out.'],
+  res: ['Resistor', 'Limits the current. Without one in series, an LED would draw too much and burn out. The coloured bands spell out its value.'],
   button: ['Push button', 'Joins its two sides only while it is held down.'],
   pot: ['Potentiometer', 'A knob that outputs any voltage between ground and the supply voltage.'],
-  buzzer: ['Piezo buzzer', 'Turns a signal that switches on and off very fast into a sound.'],
+  buzzer: ['Buzzer', 'Turns a signal that switches on and off very fast into a sound. It has a + leg (red, with a + printed on top) and a − leg (dark). Put the + leg towards the pin and the − leg towards GND.'],
   sonar: ['HC-SR04 distance sensor', 'Sends out an ultrasonic ping and times how long the echo takes to come back.'],
+  ldr: ['Light sensor (LDR)', 'A resistor that lets less current through in the dark: about 1 kΩ in bright light and 100 kΩ in darkness. Pair it with a fixed resistor to turn the light level into a voltage the board can read.'],
+  temp: ['TMP36 temperature sensor', 'Gives 0.5 V at 0 °C plus 10 mV for every degree. Facing the flat side, the left leg is + (power, red), the middle leg is the output and the right leg is − (GND, dark). Wire it backwards and a real one gets hot.'],
   wire: ['Jumper wire', 'Carries current between two points with no resistance. Drag either end to a new hole or pin, or type new places below.'],
   pad: ['Touch pad', 'A bare piece of metal on a wire. A finger near it changes its electrical capacitance.'],
-  servo: ['Servo motor', 'Turns its arm to the angle the sketch asks for, from 0° to 180°, and holds it there. Brown is GND, red is + (5 V), orange is the signal from a pin.']
+  servo: ['Servo motor', 'Turns its arm to the angle the sketch asks for, from 0° to 180°, and holds it there. Brown is GND, red is + (5 V), orange is the signal from a pin.'],
+  rgb: ['RGB LED', 'A red, a green and a blue LED in one case, sharing one − leg: the long one, second from the left. Give each colour leg its own resistor and a PWM pin, and analogWrite() mixes any colour.'],
+  slide: ['Slide switch', 'Joins its middle leg to the left leg or to the right one, and stays where you put it. Use two legs for on and off, or all three to choose between two things.'],
+  tilt: ['Tilt switch', 'A small can with a metal ball inside. Standing upright, the ball joins the two legs. Tilted over, it rolls away and the circuit opens. Read it like a button, with INPUT_PULLUP.'],
+  reed: ['Reed switch', 'Two thin metal reeds in a glass tube. A magnet nearby pulls them together and joins the two legs: this is how a door sensor knows the door is shut. Read it like a button, with INPUT_PULLUP.'],
+  joy: ['Joystick', 'Two knobs and a button under one stick. VRx follows left and right, VRy follows down and up, each a voltage for an analog pin. Pressing the stick joins SW to GND, so read SW with INPUT_PULLUP.'],
+  pir: ['Motion sensor (PIR)', 'Notices the warmth of a person or animal moving in front of it. OUT goes HIGH while it sees movement and LOW when all is still. It needs 5 V (VIN on the ESP32).'],
+  ir: ['Obstacle sensor (IR)', 'Shines invisible infrared light and watches for it bouncing back. OUT is HIGH while the way is clear and goes LOW when something is in front of it.'],
+  soil: ['Soil moisture sensor', 'Two prongs that go in the soil. The wetter the soil, the higher the voltage on OUT: read it with analogRead() and water the plant when it gets low.'],
+  water: ['Water level sensor', 'Bare tracks that the water joins together. The deeper it stands in water, the higher the voltage on OUT. Read it with analogRead().'],
+  gas: ['Gas sensor (MQ-2)', 'Smells smoke and burnable gas. OUT is about 0.1 V in clean air and rises towards 3.3 V as the air fills with gas. Its little heater needs 5 V (VIN on the ESP32).'],
+  flame: ['Flame sensor', 'A dark LED that reacts to the infrared light of a flame. The brighter the flame in front of it, the higher the voltage on OUT. Read it with analogRead().'],
 };
 
 export const BOARDS: Record<BoardId, Board> = {

@@ -3,7 +3,7 @@
    reports the mistakes a student can make, and `solve` finds the voltage of every net and the current in every part
    for a given state of the board's pins. All numbers are simple DC values: enough to teach, small enough to explain. */
 import { ESP_HOLES } from '../data/boards';
-import { itemId, type BoardId, type Item } from '../types';
+import { itemId, type BoardId, type Item, type ModuleKind } from '../types';
 
 /** What a pin is doing right now. `level` runs from 0 to 1 (a PWM duty cycle for analogWrite). */
 export interface Drive { mode: 'out' | 'in' | 'pullup'; level: number }
@@ -73,10 +73,41 @@ export function boardPins(board: BoardId): BoardPin[] {
 
 /** The connection points of a servo's three legs. */
 export const servoLegs = (it: { row: string; col: number }) => ({ gnd: `${it.row}${it.col}`, vcc: `${it.row}${it.col + 1}`, sig: `${it.row}${it.col + 2}` });
+/** The connection points of an RGB LED's four legs: red, the shared − leg, green and blue. */
+export const rgbLegs = (it: { row: string; col: number }) => ({ r: `${it.row}${it.col}`, com: `${it.row}${it.col + 1}`, g: `${it.row}${it.col + 2}`, b: `${it.row}${it.col + 3}` });
+/** The three LEDs inside an RGB LED, in the order of its legs, with the voltage each one drops. */
+export const RGB_CHANNELS = [['r', 'red', 1.9], ['g', 'green', 2.2], ['b', 'blue', 3]] as const;
+/** The connection points of a joystick's five pins. */
+export const joyLegs = (it: { row: string; col: number }) => ({ gnd: `${it.row}${it.col}`, vcc: `${it.row}${it.col + 1}`, x: `${it.row}${it.col + 2}`, y: `${it.row}${it.col + 3}`, sw: `${it.row}${it.col + 4}` });
+/** The least voltage each sensor module works from. The motion sensor and the gas sensor need 5 V. */
+export const MODULE_MIN_VOLTS: Record<ModuleKind, number> = { pir: 4.5, gas: 4.5, ir: 3, soil: 3, water: 3, flame: 3 };
+/** What a sensor module puts on its OUT pin. `value` is its on-screen control: 0 or 1 for the motion and obstacle sensors, 0 to 1 for the others.
+    The motion sensor gives 3.3 V while it sees movement. The obstacle sensor goes LOW when something is in front of it. The gas sensor gives
+    0.1 V in clean air and up to 3.3 V in thick smoke. The soil, water and flame sensors give a share of their supply. */
+export function moduleVolts(kind: ModuleKind, value: number, supply: number): number {
+  const v = Math.min(1, Math.max(0, value));
+  switch (kind) {
+    case 'pir': return v > 0.5 ? 3.3 : 0;
+    case 'ir': return v > 0.5 ? 0 : supply;
+    case 'gas': return Math.min(3.3, 0.1 + 3.2 * v);
+    case 'soil': case 'water': case 'flame': return supply * v;
+  }
+}
+/** What each module draws from its supply, as a resistance. The gas sensor's heater takes about 150 mA. */
+const MODULE_OHMS: Record<ModuleKind, number> = { pir: 50000, ir: 250, soil: 1000, water: 250, gas: 33, flame: 330 };
+const MODULE_NAME: Record<ModuleKind, string> = { pir: 'motion sensor', ir: 'obstacle sensor', soil: 'soil moisture sensor', water: 'water level sensor', gas: 'gas sensor', flame: 'flame sensor' };
+const R_MODULE_OUT = 100;
 /** A servo needs about 5 V to turn. */
 export const SERVO_MIN_VOLTS = 4.5;
 
 export const LED_BURN_AMPS = 0.03, PIN_MAX_AMPS = 0.04;
+/** A light-dependent resistor: about 1 kΩ in bright light, 10 kΩ at half light and 100 kΩ in the dark. `light` runs from 0 (dark) to 1 (bright). */
+export const ldrOhms = (light: number) => 1000 * 100 ** (1 - Math.min(1, Math.max(0, light)));
+/** A TMP36 gives 0.5 V at 0 °C and 10 mV more for each degree. */
+export const tempVolts = (celsius: number) => 0.5 + 0.01 * Math.min(125, Math.max(-40, celsius));
+/** A TMP36 works from 2.7 V up. */
+export const TEMP_MIN_VOLTS = 2.7;
+const R_TEMP_OUT = 100, R_TEMP_Q = 100000;
 const R_PIN = 25, R_PULLUP = 30000, R_LED = 10, R_BUZZER = 1000, R_POT = 10000, R_SONAR = 333, R_SERVO = 500, R_SWITCH = 0.05, G_MIN = 1e-9;
 
 class Sets {
@@ -99,7 +130,15 @@ const holeNode = (n: string): string | null => {
 };
 const ledDrop = (color: number) => { const r = color >> 16 & 255, g = color >> 8 & 255, b = color & 255; return b > r ? 3 : g > r ? 2.2 : 1.9; };
 
-interface El { kind: 'R' | 'D' | 'SW' | 'POT' | 'LOAD'; id: string; a: string; b: string; w?: string; ohms: number; vf: number; it: Item }
+interface El {
+  kind: 'R' | 'D' | 'SW' | 'POT' | 'LOAD' | 'TEMP' | 'MOD'; id: string; a: string; b: string; w?: string; ohms: number; vf: number; it: Item;
+  /** The on-screen value that moves it, when that is not kept under its own id. */
+  src?: string;
+  /** A switch that is closed while its value is off: a tilt switch standing upright, the left side of a slide switch. */
+  inv?: boolean;
+  /** The part it belongs to, when a part is made of several elements (the three LEDs of an RGB LED, the two knobs and the button of a joystick). */
+  own?: string;
+}
 const POWER: Record<string, number> = { GND: 0, V3: 3.3, V5: 5, V9: 9 };
 
 export function analyze(board: BoardId, items: Item[]): Analysis {
@@ -145,6 +184,11 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
       case 'res': needsRoot.push([mk('R', it.a, it.b, { ohms: it.ohms ?? 220 }), [it.a, it.b]]); break;
       case 'led': needsRoot.push([mk('D', it.a, it.k, { vf: ledDrop(it.color) }), [it.a, it.k]]); break;
       case 'buzzer': { const e = mk('R', it.a, it.b, { ohms: R_BUZZER }); buzzers.push(e); needsRoot.push([e, [it.a, it.b]]); break; }
+      case 'ldr': needsRoot.push([mk('R', it.a, it.b, { ohms: ldrOhms(0.5) }), [it.a, it.b]]); break;
+      case 'temp': {
+        const [vcc, out, gnd] = [0, 1, 2].map(i => `${it.row}${it.col + i}`);
+        needsRoot.push([mk('TEMP', vcc, gnd, { w: out, ohms: R_TEMP_Q }), [vcc, out, gnd]]); break;
+      }
       case 'button': {
         const c = it.col, [e0, e1, f0, f1] = [`e${c}`, `e${c + 2}`, `f${c}`, `f${c + 2}`];
         join(term(e0), term(f0)); join(term(e1), term(f1));
@@ -160,6 +204,27 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
         sonars.push({ id, vcc, trig, echo, gnd }); break;
       }
       case 'pad': pads.push({ id, at: 'PAD' }); break;
+      case 'contact': needsRoot.push([mk('SW', it.a, it.b, { inv: it.kind === 'tilt' }), [it.a, it.b]]); break;
+      case 'slide': {
+        const [l, c, r] = [0, 1, 2].map(i => `${it.row}${it.col + i}`);
+        needsRoot.push([mk('SW', c, l, { id: `${id}:l`, src: id, inv: true, own: id }), [l, c, r]]);
+        needsRoot.push([mk('SW', c, r, { id: `${id}:r`, src: id, own: id }), []]); break;
+      }
+      case 'module': {
+        const [vcc, out, gnd] = [0, 1, 2].map(i => `${it.row}${it.col + i}`);
+        needsRoot.push([mk('MOD', vcc, gnd, { w: out, ohms: MODULE_OHMS[it.kind] }), [vcc, out, gnd]]); break;
+      }
+      case 'rgb': {
+        const l = rgbLegs(it);
+        RGB_CHANNELS.forEach(([ch, , vf], i) => needsRoot.push([mk('D', l[ch], l.com, { id: `${id}:${ch}`, vf, own: id }), i ? [l[ch]] : [l[ch], l.com]]));
+        break;
+      }
+      case 'joy': {
+        const l = joyLegs(it);
+        needsRoot.push([mk('POT', l.vcc, l.gnd, { id: `${id}:x`, w: l.x, ohms: R_POT, src: id, own: id }), [l.gnd, l.vcc, l.x, l.y, l.sw]]);
+        needsRoot.push([mk('POT', l.vcc, l.gnd, { id: `${id}:y`, w: l.y, ohms: R_POT, src: `${id}:y`, own: id }), []]);
+        needsRoot.push([mk('SW', l.sw, l.gnd, { id: `${id}:sw`, src: `${id}:sw`, own: id }), []]); break;
+      }
       case 'servo': {
         const { gnd, vcc, sig } = servoLegs(it), e = mk('LOAD', vcc, gnd, { ohms: R_SERVO });
         servos.push({ id, el: e, sig });
@@ -197,7 +262,9 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
     issues.push({ kind: 'short', severity: 'error', title: 'Short circuit',
       plain: 'A wire or part joins power (5V or 3V3) straight to GND. Nothing limits the current, so on a real board the USB port would cut the power to protect itself. Look for a wire that links a + row to a - row, and remove it.' });
   } else {
-    const g = links(() => true);
+    const g = links(e => !(e.it.t === 'slide' && e.inv));   // every switch closed, and a slide switch pushed to one side
+    /** Every switch in its other position, so that an LED behind a switch is judged with the switch on. */
+    const switched = Object.fromEntries(els.filter(e => e.kind === 'SW').map(e => [e.src ?? e.id, 1]));
     for (const [p, pr] of pinRoots) {
       const v = volts(pr);
       if (v != null && v > logic + 0.3) issues.push({ kind: 'overvoltage', severity: 'error', title: `${v} V on a pin`,
@@ -205,23 +272,33 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
     }
     els.forEach(e => {
       const ra = sets.find(term(e.a)), rb = sets.find(term(e.b));
-      const what = e.kind === 'D' ? 'LED' : e.kind === 'R' && e.it.t === 'buzzer' ? 'buzzer' : e.kind === 'R' ? 'resistor' : '';
-      if (what && ra === rb) { issues.push({ kind: 'part-bypassed', severity: 'warn', part: e.id, title: `The ${what} is bypassed`,
+      const rgb = e.it.t === 'rgb', colour = rgb ? RGB_CHANNELS.find(c => e.id.endsWith(`:${c[0]}`))![1] : '', part = e.own ?? e.id;
+      const what = e.kind === 'D' ? (rgb ? 'RGB LED' : 'LED') : e.kind === 'R' && e.it.t === 'buzzer' ? 'buzzer' : e.kind === 'R' && e.it.t === 'ldr' ? 'light sensor' : e.kind === 'R' ? 'resistor' : '';
+      if (what && ra === rb) { issues.push({ kind: 'part-bypassed', severity: 'warn', part, title: `The ${what} is bypassed`,
         plain: `Both legs of the ${what} are in the same group of connected holes (${e.a} and ${e.b}), so current goes around it and it does nothing. Put each leg in a different column.` }); return; }
       if (e.kind === 'D') {
         const sourceA = pinsIn(g, ra).length > 0 || supplyIn(g, ra), sourceK = pinsIn(g, rb).length > 0 || supplyIn(g, rb);
-        if (gndIn(g, ra) && sourceK) { issues.push({ kind: 'led-backwards', severity: 'error', part: e.id, title: 'LED is in backwards',
-          plain: 'An LED only lets current through one way: the long leg (+) must face the pin or power, the short leg (-) must face GND. This one is the wrong way round, so it stays dark. Select it and press Flip.' }); return; }
+        if (gndIn(g, ra) && sourceK) {
+          if (!rgb) issues.push({ kind: 'led-backwards', severity: 'error', part, title: 'LED is in backwards',
+            plain: 'An LED only lets current through one way: the long leg (+) must face the pin or power, the short leg (-) must face GND. This one is the wrong way round, so it stays dark. Select it and press Flip.' });
+          else if (!issues.some(i => i.part === part && i.kind === 'led-backwards')) issues.push({ kind: 'led-backwards', severity: 'error', part, title: 'RGB LED is wired backwards',
+            plain: 'This RGB LED has a shared − leg: the long one, second from the left. It must go to GND, and the three colour legs must each face a pin through a resistor. Here the long leg is on a pin or on power and a colour leg is on GND, so it stays dark.' });
+          return;
+        }
         const drive: Record<number, Drive> = {};
         for (const p of pinsIn(g, ra)) drive[p] = { mode: 'out', level: 1 };
         for (const p of pinsIn(g, rb)) drive[p] = { mode: 'out', level: 0 };
-        const amps = solveAll(drive, {}, []).ledAmps(e.id);
-        if (amps > LED_BURN_AMPS) issues.push({ kind: 'led-no-resistor', severity: 'error', part: e.id, title: 'LED has no resistor',
-          plain: `With nothing to limit it, about ${Math.round(amps * 1000)} mA would flow through the LED. It can only take about 20 mA, so it burns out. Put a resistor in series with it.` });
+        const amps = Math.max(solveAll(drive, {}, []).ledAmps(e.id), Object.keys(switched).length ? solveAll(drive, switched, []).ledAmps(e.id) : 0);
+        if (amps > LED_BURN_AMPS) issues.push({ kind: 'led-no-resistor', severity: 'error', part, title: rgb ? `RGB LED: the ${colour} leg has no resistor` : 'LED has no resistor',
+          plain: `With nothing to limit it, about ${Math.round(amps * 1000)} mA would flow through the ${rgb ? `${colour} LED inside` : 'LED'}. It can only take about 20 mA, so it burns out. Put a resistor in series with ${rgb ? 'that leg' : 'it'}.` });
+        else if (rgb) {   // a colour leg left unwired is a colour not used, which is fine; the shared leg must reach GND
+          if (e.id.endsWith(':r') && !gndIn(g, rb)) issues.push({ kind: 'unpowered', severity: 'warn', part, title: 'RGB LED has no ground',
+            plain: 'The RGB LED\'s long leg (−), second from the left, is not connected to GND, so none of its colours can light. Wire it to GND, and give each colour leg its own resistor.' });
+        }
         else if (amps < 0.0002) {
           const lonely = (r: string) => (uses.get(r) ?? 0) <= 1 && !fixed.has(r) && !pinRoots.some(([, pr]) => pr === r);
           const dangling = lonely(ra) ? e.a : lonely(rb) ? e.b : null;
-          issues.push({ kind: 'led-open', severity: 'warn', part: e.id, title: 'Open circuit at the LED',
+          issues.push({ kind: 'led-open', severity: 'warn', part, title: 'Open circuit at the LED',
             plain: dangling ? `The LED leg in ${dangling} is not connected to anything. Current needs a complete loop: pin or power, through the LED, and back to GND.`
               : !sourceA && !sourceK ? 'The LED is not connected to a pin or to power. Current needs a complete loop: pin or power, through the LED, and back to GND.'
               : 'The loop is not complete, so no current flows. Check that every part and wire in the chain is in the right column and that something leads back to GND.' });
@@ -231,10 +308,33 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
     const live = (r: string, minV: number) => (volts(r) ?? 0) >= minV;
     els.forEach(e => {
       const ra = sets.find(term(e.a)), rb = sets.find(term(e.b));
-      if (e.kind === 'POT') {
+      if (e.kind === 'POT' && e.it.t === 'joy') {   // the two knobs inside a joystick share its + and GND pins, so say it once
+        if (e.id.endsWith(':x') && !(live(ra, 3) && rb === gnd)) issues.push({ kind: 'unpowered', severity: 'warn', part: e.own, title: 'Joystick has no power',
+          plain: 'The joystick has a knob inside for each direction, and they divide a voltage. Wire its + pin to power (5V on the Uno, 3V3 on the ESP32) and its GND pin to GND, or VRx and VRy read nothing.' });
+      }
+      else if (e.kind === 'POT') {
         const ok = (live(ra, 3) && rb === gnd) || (live(rb, 3) && ra === gnd);
         if (!ok) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: 'Knob has no power',
           plain: 'A potentiometer divides a voltage, so its outer legs need power on one side and GND on the other. The middle leg then reads between them.' });
+      }
+      if (e.kind === 'MOD' && e.it.t === 'module') {
+        const name = MODULE_NAME[e.it.kind], Name = name[0].toUpperCase() + name.slice(1), min = MODULE_MIN_VOLTS[e.it.kind], out = sets.find(term(e.w!)), onPin = pinRoots.some(([, pr]) => pr === out);
+        if (live(rb, 2.7) && ra === gnd) issues.push({ kind: 'unpowered', severity: 'error', part: e.id, title: `${Name} is in backwards`,
+          plain: `The ${name}'s + pin is on GND and its GND pin is on power, the wrong way round. A real module can be damaged like this. Swap the two outer pins: + on the left, GND on the right.` });
+        else if (rb !== gnd) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: `${Name} has no ground`, plain: `The ${name}'s GND pin, on the right, is not connected to GND, so it cannot work.` });
+        else if (!live(ra, min)) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: `${Name} has no power`,
+          plain: (volts(ra) ?? 0) > 0 ? `The ${name} needs 5 V but its + pin only gets ${volts(ra)} V, so it gives no reading. Power it from 5V${board === 'esp32' ? ' (VIN on the ESP32)' : ''}.`
+            : `The ${name}'s + pin, on the left, is not connected to ${min > 4 ? (board === 'esp32' ? 'VIN (5 V)' : '5V') : (board === 'esp32' ? '3V3' : '5V')}, so it gives no reading.` });
+        else if (!onPin) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: `${Name} is not connected to a pin`, plain: `The ${name}'s middle (OUT) pin is not wired to a pin of the board, so the sketch cannot read it.` });
+      }
+      if (e.kind === 'TEMP') {
+        const out = sets.find(term(e.w!)), onPin = pinRoots.some(([, pr]) => pr === out);
+        if (live(rb, TEMP_MIN_VOLTS) && ra === gnd) issues.push({ kind: 'unpowered', severity: 'error', part: e.id, title: 'Temperature sensor is in backwards',
+          plain: 'The sensor\'s left leg is on GND and its right leg is on power, the wrong way round. A real TMP36 wired like this gets hot enough to burn a finger. Swap the two outer legs: + on the left, GND on the right.' });
+        else if (rb !== gnd) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: 'Temperature sensor has no ground', plain: 'The sensor\'s right leg is not connected to GND, so it cannot work.' });
+        else if (!live(ra, TEMP_MIN_VOLTS)) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: 'Temperature sensor has no power',
+          plain: 'The sensor\'s left leg is not connected to 5V or 3.3V, so it gives no reading. It needs at least 2.7 V.' });
+        else if (!onPin) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: 'Temperature sensor is not connected to a pin', plain: 'The sensor\'s middle (OUT) leg is not wired to an analog pin, so the sketch cannot read it.' });
       }
       if (e.kind === 'LOAD' && e.it.t === 'servo') {
         const sig = sets.find(term(servoLegs(e.it).sig)), onPin = (r: string) => pinRoots.some(([, pr]) => pr === r);
@@ -256,10 +356,16 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
   /* 4. Solve the circuit for the pins' present state. */
   function solveAll(driveIn: Record<number, Drive> | ((p: number) => Drive), inputs: Record<string, number> = {}, burnt: Iterable<string> = []): Solution {
     const drive = (p: number): Drive => (typeof driveIn === 'function' ? driveIn(p) : driveIn[p]) ?? { mode: 'in', level: 0 };
-    const dead = new Set(burnt), closed = (e: El) => (inputs[e.id] ?? 0) > 0.5;
+    const dead = new Set(burnt), isDead = (e: El) => dead.has(e.own ?? e.id), closed = (e: El) => ((inputs[e.src ?? e.id] ?? 0) > 0.5) !== !!e.inv;
     const blank: Solution = { shorted: true, volt: () => 0, ledAmps: () => 0, ledGlow: () => 0, ledDuty: () => 0, buzzVolts: () => 0, servoVolts: () => 0, pinsDriving: () => [], pinAmps: () => 0, pinVolt: () => 0, wireAmps: () => 0 };
     if (shorted) return blank;
 
+    /** What a part resists right now: a light sensor changes with the light on it. */
+    const ohmsOf = (e: El) => (e.it.t === 'ldr' ? ldrOhms(inputs[e.id] ?? 0.5) : e.ohms);
+    /** A temperature sensor gives its voltage only while it has power and ground. */
+    const tempOn = (a: string, bb: string) => (fixed.get(a) ?? 0) >= TEMP_MIN_VOLTS && bb === gnd;
+    /** The voltage a sensor module puts on its OUT pin, or null while it has no power or no ground. */
+    const moduleOut = (e: El, a: string, bb: string) => (e.it.t === 'module' && (fixed.get(a) ?? 0) >= MODULE_MIN_VOLTS[e.it.kind] && bb === gnd ? moduleVolts(e.it.kind, inputs[e.id] ?? 0, fixed.get(a)!) : null);
     const idx = new Map<string, number>();
     const node = (r: string) => { r = sets.find(r); if (!fixed.has(r) && !idx.has(r)) idx.set(r, idx.size); return r; };
     const ref = (n: string) => node(term(n));
@@ -284,12 +390,22 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
         void p;
       }
       for (const { e, a, b: bb, w } of parts) {
-        if (e.kind === 'R' || e.kind === 'LOAD') between(a, bb, 1 / e.ohms);
+        if (e.kind === 'R' || e.kind === 'LOAD') between(a, bb, 1 / ohmsOf(e));
+        else if (e.kind === 'TEMP') {
+          between(a, bb, 1 / e.ohms);
+          const i = idx.get(w);
+          if (i != null && tempOn(a, bb)) { G[i][i] += 1 / R_TEMP_OUT; b[i] += tempVolts(inputs[e.id] ?? 25) / R_TEMP_OUT; }
+        }
+        else if (e.kind === 'MOD') {
+          between(a, bb, 1 / e.ohms);
+          const i = idx.get(w), out = moduleOut(e, a, bb);
+          if (i != null && out != null) { G[i][i] += 1 / R_MODULE_OUT; b[i] += out / R_MODULE_OUT; }
+        }
         else if (e.kind === 'SW') { if (closed(e)) between(a, bb, 1 / R_SWITCH); }
         else if (e.kind === 'POT') {
-          const v = Math.min(1, Math.max(0, inputs[e.id] ?? 0.5));
+          const v = Math.min(1, Math.max(0, inputs[e.src ?? e.id] ?? 0.5));
           between(a, w, 1 / Math.max(1, e.ohms * (1 - v))); between(w, bb, 1 / Math.max(1, e.ohms * v));
-        } else if (e.kind === 'D' && on.get(e.id) && !dead.has(e.id)) {
+        } else if (e.kind === 'D' && on.get(e.id) && !isDead(e)) {
           between(a, bb, 1 / R_LED);
           const ia = idx.get(a), ib = idx.get(bb), c = e.vf / R_LED;
           if (ia != null) b[ia] += c;
@@ -299,7 +415,7 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
       x = gauss(G, b);
       let changed = false;
       for (const { e, a, b: bb } of parts) {
-        if (e.kind !== 'D' || dead.has(e.id)) continue;
+        if (e.kind !== 'D' || isDead(e)) continue;
         const vd = volt(a) - volt(bb), was = !!on.get(e.id), now = was ? (vd - e.vf) / R_LED >= 0 : vd > e.vf;
         if (now !== was) { on.set(e.id, now); changed = true; }
       }
@@ -309,7 +425,7 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
 
     const g = links(closed);
     const amps = (e: El, a: string, bb: string) => {   // below a microamp is only the leakage that keeps floating nets solvable
-      const i = e.kind === 'D' && on.get(e.id) && !dead.has(e.id) ? Math.max(0, (volt(a) - volt(bb) - e.vf) / R_LED) : 0;
+      const i = e.kind === 'D' && on.get(e.id) && !isDead(e) ? Math.max(0, (volt(a) - volt(bb) - e.vf) / R_LED) : 0;
       return i < 1e-6 ? 0 : i;
     };
     const part = (id: string) => parts.find(q => q.e.id === id);
@@ -326,11 +442,20 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
       for (const { e, a, b: bb, w } of parts) {
         const va = volt(a), vb = volt(bb);
         let i = 0;
-        if (e.kind === 'R' || e.kind === 'LOAD') i = (va - vb) / e.ohms;
+        if (e.kind === 'R' || e.kind === 'LOAD') i = (va - vb) / ohmsOf(e);
+        else if (e.kind === 'TEMP') {
+          i = (va - vb) / e.ohms;
+          if (tempOn(a, bb)) add(term(e.w!), (tempVolts(inputs[e.id] ?? 25) - volt(w)) / R_TEMP_OUT);
+        }
+        else if (e.kind === 'MOD') {
+          i = (va - vb) / e.ohms;
+          const out = moduleOut(e, a, bb);
+          if (out != null) add(term(e.w!), (out - volt(w)) / R_MODULE_OUT);
+        }
         else if (e.kind === 'SW') i = closed(e) ? (va - vb) / R_SWITCH : 0;
         else if (e.kind === 'D') i = amps(e, a, bb);
         else if (e.kind === 'POT') {
-          const v = Math.min(1, Math.max(0, inputs[e.id] ?? 0.5)), vw = volt(w), i12 = (va - vw) / Math.max(1, e.ohms * (1 - v)), i23 = (vw - vb) / Math.max(1, e.ohms * v);
+          const v = Math.min(1, Math.max(0, inputs[e.src ?? e.id] ?? 0.5)), vw = volt(w), i12 = (va - vw) / Math.max(1, e.ohms * (1 - v)), i23 = (vw - vb) / Math.max(1, e.ohms * v);
           add(term(e.a), -i12); add(term(e.w!), i12 - i23); add(term(e.b), i23);
           continue;
         }

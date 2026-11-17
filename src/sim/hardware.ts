@@ -1,5 +1,5 @@
 import type { Board, Item } from '../types';
-import { analyze, LED_BURN_AMPS, PIN_MAX_AMPS, SERVO_MIN_VOLTS, type Analysis, type Drive, type Solution } from './circuit';
+import { analyze, LED_BURN_AMPS, PIN_MAX_AMPS, RGB_CHANNELS, SERVO_MIN_VOLTS, type Analysis, type Drive, type Solution } from './circuit';
 import type { Hardware } from './interpreter';
 import type { Frame } from './timeline';
 
@@ -96,7 +96,9 @@ export function makeHW(board: Board, circuit: Item[], inputs: () => Record<strin
       sol = analysis.solve(drive, inputs(), burnt);
       let changed = false;
       for (const it of circuit) {
-        if (it.t !== 'led' || burnt.has(it.id) || sol.ledAmps(it.id) <= LED_BURN_AMPS) continue;
+        if ((it.t !== 'led' && it.t !== 'rgb') || burnt.has(it.id)) continue;
+        const amps = it.t === 'led' ? sol.ledAmps(it.id) : Math.max(...RGB_CHANNELS.map(c => sol.ledAmps(`${it.id}:${c[0]}`)));   // one colour of an RGB LED burning out takes the part with it
+        if (amps <= LED_BURN_AMPS) continue;
         burnt.add(it.id); changed = true; hooks.onBurn?.(it.id);
       }
       if (!changed) break;

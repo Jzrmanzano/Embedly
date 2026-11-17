@@ -34,6 +34,7 @@ npm run build    # type-check, then build the static site into dist/
 | `src/sim/timeline.ts` | The recording of pin states over time that the Timeline draws and replays. |
 | `src/sim/schematic.ts` | Lays out the circuit on the bench as a schematic for the Schematic tab. |
 | `src/data/symbols.ts` | The schematic symbols: tscircuit's (copied into `tscircuit-symbols.ts` by `scripts/vendor-symbols.mjs`) and our buzzer. |
+| `src/state/progress.ts` | Progress: how far along each board a student is, which mission to offer next, and reading and checking a backup file. |
 | `src/state/panels.ts` | Which panels are open over the bench, on a wide screen and on a phone. |
 | `src/state/route.ts` | Which page the address bar hash opens: the home page, the guide (`#guide`, `#guide/led`) or a mission (`#uno-beacon`). |
 | `src/state/bench.ts` | The rules for placing parts: which holes exist, which are taken, what each part needs. |
@@ -57,6 +58,18 @@ The **Schematic** tab of the mission brief draws the circuit on the bench as an 
 
 The layout is `src/sim/schematic.ts` (no React, and tested in `tests/schematic.test.ts`: every mission's reference circuit draws every part once with nothing overlapping). It reads the nets from `netOf` in `src/sim/circuit.ts`. The resistor, LED, push button, knob, ground and power symbols are tscircuit's [schematic-symbols](https://github.com/tscircuit/schematic-symbols) (MIT). The package is not a dependency: it asks for TypeScript 5 as a peer, which this project has moved past, and only six of its symbols are used, so `scripts/vendor-symbols.mjs` copies them, with tscircuit's licence, into `src/data/tscircuit-symbols.ts`. Its header says how to refresh them. tscircuit has no buzzer, so ours is drawn in the same form in `src/data/symbols.ts`. The boards and modules have no standard symbol anywhere, so they are drawn as labelled boxes with their pin names, as schematics usually show them.
 
+## Light and temperature sensors
+
+Two sensors join the tray. The **light sensor** (an LDR) is a two-leg resistor: `ldrOhms` in `src/sim/circuit.ts` gives about 1 kΩ in bright light, 10 kΩ at half light and 100 kΩ in the dark, so students build its voltage divider with a 10 kΩ resistor, and it reads high in the light and low in the dark. The **temperature sensor** (a TMP36) has three legs: + on the left, the output in the middle, GND on the right. `tempVolts` gives 0.5 V at 0 °C and 10 mV more per degree, whatever the supply (2.7 V and up), and the circuit check names a sensor that has no power, no ground, no pin, or is in backwards. Both have an on-screen slider (a percentage for light, °C for temperature) and are scripted by the checks as the `ldr` and `temp` inputs. The missions that use them are Street lamp and Heat warning on the Uno and Fridge alarm on the ESP32, and the guide has a chapter on each.
+
+## Repair jobs
+
+A repair job is a mission whose bench and sketch start with faults in them. In `src/data/missions.ts`, `repairOf` builds one from an existing mission: its reference circuit and answer, with a `fault` function that breaks the bench and a list of changes that break the sketch. `start` is the bench the student opens on, and `repair: true` swaps the prediction for a note about debugging. The checks are the base mission's, so the job is done when the mission would be passed. Each job has one fault in the wiring and one in the sketch, and `tests/missions.test.ts` proves that fixing only one of them is not enough. The guide chapter "Debugging" explains how to hunt for faults.
+
+## Saving progress
+
+The browser remembers passed missions, hints, predictions, the circuit built for each mission and the sketch written for each (sketches are saved a moment after the last key press). The home page shows how far along each board a student is and offers **Continue** at the next open mission. At the foot of the home page a student can **save a backup** to a file, **restore** one, or **reset** everything; both of those ask for a second press before replacing anything. A backup is read with `parseBackup` in `src/state/progress.ts`, which keeps only what makes sense: missions that exist, parts with every field they need, and sketches of a sensible size.
+
 ## The bench, the panels and the keyboard
 
 The 3D bench fills the screen. The mission map, the mission brief and the code open over it as panels (Map, Brief and Code in the top bar, or along the bottom on a phone, where a panel is a sheet and only one is open at a time). Guide, next to them, goes to the guide, which is a page of its own. Run, Step and Stop stay on the bench, so the sketch can run without the code open, and the circuit slides to stay centred in whatever the panels leave free. On a wide screen the inner edge of each panel can be dragged to make it wider for reading or narrower for building (double-click for the usual width; with the keyboard, Tab to the edge and use the arrow keys). The widths are remembered in the browser and the rules are in `src/state/panels.ts`.
@@ -73,7 +86,9 @@ A chapter is an object in `src/data/guide.ts`: a title, a one-line summary and a
 
 ## Missions
 
-Each location on the mission map is a mission: a small device to build. A mission is passed only when **Check my build** runs the student's own sketch on their own circuit and every check passes. Before the first run the student predicts what will happen, and the guess is compared with what the simulator does. Hints come in three steps (a nudge, the idea, the answer) and are counted. Passing a mission puts new parts in the tray and opens the missions after it; the first pass also opens the free-build Open Studio.
+Each location on the mission map is a mission: a small device to build. A mission is passed only when **Check my build** runs the student's own sketch on their own circuit and every check passes. Before the first run the student predicts what will happen, and the guess is compared with what the simulator does. Hints come in three steps (a nudge, the idea, the answer) and are counted. Passing a mission puts new parts in the tray and opens the missions after it.
+
+The **Open Studio** is free build: no goal and no checks. It is open from the start, with every part in the tray whether or not a mission has unlocked it, so a student can build and test a project of their own at any time (`trayParts()` in `src/data/missions.ts` decides what a mission's tray holds). The missions still unlock their parts one at a time. Each board has its own studio, reached from the bottom of the mission map or from the board's card on the home page.
 
 ## Choosing a board
 
