@@ -19,21 +19,25 @@ function rects(s: Schematic): [string, number, number, number, number][] {
 }
 const overlaps = (a: [string, number, number, number, number], b: [string, number, number, number, number]) => a[1] < b[3] && b[1] < a[3] && a[2] < b[4] && b[2] < a[4];
 
-for (const [board, list] of Object.entries(MISSIONS) as [BoardId, (typeof MISSIONS)[BoardId]][]) {
-  for (const m of list) {
-    if (!m.circuit.length) continue;
-    test(`${board}/${m.id}: every part is drawn once, and nothing overlaps`, () => {
-      const s = layoutSchematic(board, m.circuit);
-      const want = m.circuit.map((it, k) => [it, itemId(it, k)] as const).filter(([it]) => it.t !== 'wire').map(([, id]) => id).sort();
-      assert.deepEqual(ids(s).sort(), want);
-      const r = rects(s), clash: string[] = [];
-      for (let i = 0; i < r.length; i++) for (let j = i + 1; j < r.length; j++) if (overlaps(r[i], r[j])) clash.push(`${r[i][0]} and ${r[j][0]}`);
-      assert.deepEqual(clash, []);
-      assert.equal(s.shorted, false);
-      assert.ok(s.text.length > 0 && s.text.every(t => t.length > 3), 'every row is described in words');
-    });
+test('in every mission, every part is drawn once and nothing overlaps', () => {
+  const problems: string[] = [];
+  for (const [board, list] of Object.entries(MISSIONS) as [BoardId, (typeof MISSIONS)[BoardId]][]) {
+    for (const m of list) {
+      if (!m.circuit.length) continue;
+      try {
+        const s = layoutSchematic(board, m.circuit);
+        const want = m.circuit.map((it, k) => [it, itemId(it, k)] as const).filter(([it]) => it.t !== 'wire').map(([, id]) => id).sort();
+        assert.deepEqual(ids(s).sort(), want);
+        const r = rects(s), clash: string[] = [];
+        for (let i = 0; i < r.length; i++) for (let j = i + 1; j < r.length; j++) if (overlaps(r[i], r[j])) clash.push(`${r[i][0]} and ${r[j][0]}`);
+        assert.deepEqual(clash, []);
+        assert.equal(s.shorted, false);
+        assert.ok(s.text.length > 0 && s.text.every(t => t.length > 3), 'every row is described in words');
+      } catch (e) { problems.push(`${board}/${m.id}: ${(e as Error).message.split('\n')[0]}`); }
+    }
   }
-}
+  assert.deepEqual(problems, []);
+});
 
 const blink = MISSIONS.uno.find(m => m.circuit.some(it => it.t === 'led') && m.circuit.length === 4)!.circuit;
 

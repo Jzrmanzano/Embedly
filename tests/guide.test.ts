@@ -23,11 +23,9 @@ test('the chapters of a group sit together, so "next" never jumps between groups
   assert.deepEqual(order, GUIDE_GROUPS.map(g => g[0]));
 });
 
-for (const ex of examples) {
-  test(`guide example in ${ex.where} is code the simulator accepts`, () => {
-    assert.doesNotThrow(() => parse(asSketch(ex.code)));
-  });
-}
+test('every code example in the guide is code the simulator accepts', () => {
+  for (const ex of examples) assert.doesNotThrow(() => parse(asSketch(ex.code)), ex.where);
+});
 
 for (const ex of examples.filter(e => e.prints != null)) {
   test(`guide example in ${ex.where} prints what the guide says`, async () => {

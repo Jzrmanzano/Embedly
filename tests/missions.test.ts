@@ -205,11 +205,13 @@ const repairs = all.filter(x => x.m.repair);
 test('there are repair jobs on both boards', () => {
   for (const board of BOARD_IDS) assert.ok(repairs.some(r => r.board === board), `${board} has a repair job`);
 });
+test('every repair job starts on a faulty bench that is not the reference build', () => {
+  for (const { board, m } of repairs) {
+    assert.ok(m.start && m.start.length > 0, `${board}/${m.id} starts with a bench`);
+    assert.notDeepEqual(m.start, m.circuit, `${board}/${m.id}: the bench has a fault in it`);
+  }
+});
 for (const { board, m } of repairs) {
-  test(`${board}/${m.id}: it starts on a faulty bench that is not the reference build`, () => {
-    assert.ok(m.start && m.start.length > 0, 'it starts with a bench');
-    assert.notDeepEqual(m.start, m.circuit, 'the bench has a fault in it');
-  });
   test(`${board}/${m.id}: the faulty bench fails even with the right sketch`, async () => {
     const r = await runChecks(board, m.start!, m.answer, m.checks);
     assert.ok(failures(r).length > 0, 'the bench alone is enough to pass, so there is no wiring fault to find');
