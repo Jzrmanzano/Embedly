@@ -1,4 +1,4 @@
-/* Runs every lesson's starter sketch on the virtual board and checks what the pins do. */
+/* Runs every lesson\'s starter sketch on the virtual board and checks what the pins do. */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BOARDS } from '../src/data/boards';
@@ -18,15 +18,17 @@ async function play(boardId: BoardId, lessonId: string, inputs: Record<string, n
   return { hw, serial };
 }
 
-for (const board of Object.values(BOARDS)) {
-  for (const lesson of OLD_LESSONS[board.id]) {
-    test(`${board.id}/${lesson.id} starter sketch runs`, async () => {
+test('every lesson\'s starter sketch runs', async () => {
+  const problems: string[] = [];
+  for (const board of Object.values(BOARDS)) {
+    for (const lesson of OLD_LESSONS[board.id]) {
       const inputs: Record<string, number> = {};
       for (const it of lesson.circuit) if ('ctl' in it) inputs[it.id] = it.t === 'pot' ? 0.5 : it.t === 'sonar' ? 30 : 0;
-      await play(board.id, lesson.id, inputs);
-    });
+      try { await play(board.id, lesson.id, inputs); } catch (e) { problems.push(`${board.id}/${lesson.id}: ${(e as Error).message.split('\n')[0]}`); }
+    }
   }
-}
+  assert.deepEqual(problems, []);
+});
 
 test('blink ends each pass with the LED off', async () => {
   const seen: number[] = [];

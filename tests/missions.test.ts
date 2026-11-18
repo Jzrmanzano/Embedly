@@ -12,6 +12,14 @@ const get = (board: BoardId, id: string): Mission => {
   assert.ok(m, `${board}/${id} exists`);
   return m;
 };
+/** Runs a check over every case, and fails once at the end with every case that broke, named. */
+const forEvery = async <T>(cases: T[], name: (c: T) => string, check: (c: T) => Promise<void> | void) => {
+  const problems: string[] = [];
+  for (const c of cases) {
+    try { await check(c); } catch (e) { problems.push(`${name(c)}: ${(e as Error).message.split('\n')[0]}`); }
+  }
+  assert.deepEqual(problems, []);
+};
 const failures = (r: { label: string; pass: boolean; detail: string }[]) => r.filter(x => !x.pass).map(x => `${x.label}: ${x.detail}`);
 
 test('every mission is complete and refers only to missions that come before it', () => {
@@ -92,34 +100,33 @@ test('the studio is open from the start with every part, and the missions still 
   }
 });
 
-for (const { board, m } of all.filter(x => !x.m.sandbox && !x.m.choice)) {
-  test(`${board}/${m.id}: the intended build and sketch pass every check`, async () => {
-    const r = await runChecks(board, m.circuit, m.answer, m.checks);
-    assert.deepEqual(failures(r), [], `${r.length} results`);
-    assert.ok(r.length >= 3, 'a wiring check and at least two others');
-  });
+const graded = all.filter(x => !x.m.sandbox && !x.m.choice);
+const label = (x: { board: BoardId; m: Mission }) => `${x.board}/${x.m.id}`;
 
-  test(`${board}/${m.id}: the starter sketch is not enough`, async () => {
-    const r = await runChecks(board, m.circuit, m.starter, m.checks);
-    assert.ok(failures(r).length > 0, 'the starter sketch passes everything, so the student has nothing to do');
-  });
+test('every mission: the intended build and sketch pass every check', () => forEvery(graded, label, async ({ board, m }) => {
+  const r = await runChecks(board, m.circuit, m.answer, m.checks);
+  assert.deepEqual(failures(r), [], `${r.length} results`);
+  assert.ok(r.length >= 3, 'a wiring check and at least two others');
+}));
 
-  test(`${board}/${m.id}: an empty bench fails politely`, async () => {
-    if (m.circuit.length === 0) return;   // the tour needs no wiring
-    const r = await runChecks(board, [], m.answer, m.checks);
-    assert.ok(failures(r).length > 0);
-  });
+test('every mission: the starter sketch is not enough', () => forEvery(graded, label, async ({ board, m }) => {
+  const r = await runChecks(board, m.circuit, m.starter, m.checks);
+  assert.ok(failures(r).length > 0, 'the starter sketch passes everything, so the student has nothing to do');
+}));
 
-  test(`${board}/${m.id}: the prediction question tells a working build from a broken one`, async () => {
-    const p = m.predict;
-    if (!p) return;   // a repair job
-    const good = await observe(board, m.circuit, m.answer, p.demo, p.run);
-    assert.equal(p.classify(good), p.works, 'the intended build is classified as working');
-    const broken = await observe(board, m.circuit, m.starter, p.demo, p.run);
-    assert.notEqual(p.classify(broken), p.works, 'the starter sketch is not classified as working');
-    assert.ok(p.options.some(o => o.id === p.classify(broken)), 'every outcome has an option the student could have picked');
-  });
-}
+test('every mission: an empty bench fails politely', () => forEvery(graded.filter(x => x.m.circuit.length > 0), label, async ({ board, m }) => {   // the tour needs no wiring
+  const r = await runChecks(board, [], m.answer, m.checks);
+  assert.ok(failures(r).length > 0);
+}));
+
+test('every mission: the prediction question tells a working build from a broken one', () => forEvery(graded.filter(x => x.m.predict), label, async ({ board, m }) => {   // a repair job has none
+  const p = m.predict!;
+  const good = await observe(board, m.circuit, m.answer, p.demo, p.run);
+  assert.equal(p.classify(good), p.works, 'the intended build is classified as working');
+  const broken = await observe(board, m.circuit, m.starter, p.demo, p.run);
+  assert.notEqual(p.classify(broken), p.works, 'the starter sketch is not classified as working');
+  assert.ok(p.options.some(o => o.id === p.classify(broken)), 'every outcome has an option the student could have picked');
+}));
 
 /* --- wrong solutions that look plausible --- */
 const mutate = (code: string, from: string, to: string) => {
@@ -158,12 +165,10 @@ test('uno/crossing: a sketch that still blinks with delay() misses taps', async 
   const m = get('uno', 'crossing'), r = await runChecks('uno', m.circuit, m.starter, m.checks);
   assert.deepEqual(failures(r).map(f => f.split(':')[0]), ['The walk light answers every tap at once'], 'only the tap check fails: the blink itself is fine');
 });
-for (const [board, id, from, to, why] of wrong) {
-  test(`${board}/${id}: a sketch that ${why} does not pass`, async () => {
-    const m = get(board, id), r = await runChecks(board, m.circuit, mutate(m.answer, from, to), m.checks);
-    assert.ok(failures(r).length > 0, `passed, but the sketch ${why}`);
-  });
-}
+test('a sketch with any of the plausible mistakes does not pass', () => forEvery(wrong, ([board, id, , , why]) => `${board}/${id} ${why}`, async ([board, id, from, to, why]) => {
+  const m = get(board, id), r = await runChecks(board, m.circuit, mutate(m.answer, from, to), m.checks);
+  assert.ok(failures(r).length > 0, `passed, but the sketch ${why}`);
+}));
 
 /* --- wrong wiring --- */
 const rewire = (items: Item[], f: (it: Item) => Item | null) => items.flatMap(it => f(it) ?? []);
@@ -184,12 +189,10 @@ const wrongWiring: [BoardId, string, string, (it: Item) => Item | null][] = [
   ['uno', 'heatwarn', 'has the sensor without power', it => (it.t === 'wire' && it.a === 'a24' ? null : it)],
   ['esp32', 'fridge', 'has the sensor without power', it => (it.t === 'wire' && it.a === 'j28' ? null : it)],
 ];
-for (const [board, id, why, f] of wrongWiring) {
-  test(`${board}/${id}: a bench that ${why} does not pass`, async () => {
-    const m = get(board, id), r = await runChecks(board, rewire(m.circuit, f), m.answer, m.checks);
-    assert.ok(failures(r).length > 0, `passed, but the bench ${why}`);
-  });
-}
+test('a bench with any of the plausible wiring mistakes does not pass', () => forEvery(wrongWiring, ([board, id, why]) => `${board}/${id} ${why}`, async ([board, id, why, f]) => {
+  const m = get(board, id), r = await runChecks(board, rewire(m.circuit, f), m.answer, m.checks);
+  assert.ok(failures(r).length > 0, `passed, but the bench ${why}`);
+}));
 
 test('the same sketch passes on a bench built with different pins when the code matches', async () => {
   const m = get('uno', 'beacon');
@@ -211,13 +214,9 @@ test('every repair job starts on a faulty bench that is not the reference build'
     assert.notDeepEqual(m.start, m.circuit, `${board}/${m.id}: the bench has a fault in it`);
   }
 });
-for (const { board, m } of repairs) {
-  test(`${board}/${m.id}: the faulty bench fails even with the right sketch`, async () => {
-    const r = await runChecks(board, m.start!, m.answer, m.checks);
-    assert.ok(failures(r).length > 0, 'the bench alone is enough to pass, so there is no wiring fault to find');
-  });
-  test(`${board}/${m.id}: the faulty sketch fails even on the right bench`, async () => {
-    const r = await runChecks(board, m.circuit, m.starter, m.checks);
-    assert.ok(failures(r).length > 0, 'the sketch alone is enough to pass, so there is no code fault to find');
-  });
-}
+test('every repair job fails with either half of the fault left in', () => forEvery(repairs, label, async ({ board, m }) => {
+  const bench = await runChecks(board, m.start!, m.answer, m.checks);
+  assert.ok(failures(bench).length > 0, 'the bench alone is enough to pass, so there is no wiring fault to find');
+  const sketch = await runChecks(board, m.circuit, m.starter, m.checks);
+  assert.ok(failures(sketch).length > 0, 'the sketch alone is enough to pass, so there is no code fault to find');
+}));

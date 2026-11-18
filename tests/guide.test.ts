@@ -27,17 +27,17 @@ test('every code example in the guide is code the simulator accepts', () => {
   for (const ex of examples) assert.doesNotThrow(() => parse(asSketch(ex.code)), ex.where);
 });
 
-for (const ex of examples.filter(e => e.prints != null)) {
-  test(`guide example in ${ex.where} prints what the guide says`, async () => {
-    assert.ok(isWhole(ex.code), 'an example that prints is a whole sketch');
+test('every guide example that prints, prints what the guide says', async () => {
+  for (const ex of examples.filter(e => e.prints != null)) {
+    assert.ok(isWhole(ex.code), `${ex.where}: an example that prints is a whole sketch`);
     let serial = '';
     const hw = makeHW(BOARDS[ex.board], [], () => ({}), s => { serial += s; });
     hw.sleep = () => new Promise<void>(r => setTimeout(r, 0));
     const ctl = { stop: false, onLoop() { ctl.stop = true; } };
     await run(ex.code, hw, ctl);
-    assert.equal(serial, ex.prints);
-  });
-}
+    assert.equal(serial, ex.prints, ex.where);
+  }
+});
 
 test('whole sketches in the guide run a pass of loop() on a bare board without an error', async () => {
   for (const ex of examples.filter(e => isWhole(e.code))) {
