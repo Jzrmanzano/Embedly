@@ -23,7 +23,7 @@ No parts to buy, nothing to burn out (well, *almost* nothing, see below 🔥).
 
 ```
    ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
-   │  🔌 Wire  │ ──▶ │  ✍️ Code  │ ──▶ │  ▶ Run   │ ──▶ │ 👀 Watch │
+   │ 🔌Wire   │──▶ │  ✍️ Code │──▶│  ▶ Run   │ ──▶ │ 👀 Watch │
    │ the bench│     │the sketch│     │          │     │ it react │
    └──────────┘     └──────────┘     └──────────┘     └────┬─────┘
          ▲                                                 │
