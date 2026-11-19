@@ -24,7 +24,6 @@ const POWER: Item[] = [wire('U:5V', 'T+1'), wire('U:GND', 'T-1')];
 
 /* --- the tray --- */
 test('the studio-only parts are the ones no mission unlocks, and no mission needs one', () => {
-  assert.ok(STUDIO_PARTS.length >= 14);
   for (const id of ids) {
     const studio = STUDIO_PARTS.includes(id);
     assert.equal(!BASE_PARTS.includes(id) && lockedBy(id) === null, studio, `${id}: ${studio ? 'no mission unlocks it' : 'the tray starts with it or a mission unlocks it'}`);
@@ -210,8 +209,13 @@ test('a sketch reads the joystick with analogRead and INPUT_PULLUP', async () =>
 
 test('the checks leave a part they do not script at rest', () => {
   assert.deepEqual(inputsAt(JOY, [{ from: 0, set: { button: 1 } }], 100), { joy1: 0.5, 'joy1:y': 0.5, 'joy1:sw': 0 });
-  assert.deepEqual(inputsAt(module('soil'), [], 0), { m: 0.5 });
+  assert.deepEqual(inputsAt(module('water'), [{ from: 0, set: { soil: 1 } }], 100), { m: 0 }, 'a water sensor is not a soil sensor');
   assert.deepEqual(inputsOf(RGB[0], 'rgb1'), {}, 'an RGB LED has no on-screen control');
+});
+
+test('the checks script a soil sensor by its kind, and leave it damp until they do', () => {
+  assert.deepEqual(inputsAt(module('soil'), [], 0), { m: 0.5 });
+  assert.deepEqual(inputsAt(module('soil'), [{ from: 0, set: { soil: 0.7 } }, { from: 1000, set: { soil: 0.1 } }], 1500), { m: 0.1 });
 });
 
 /* --- the schematic --- */

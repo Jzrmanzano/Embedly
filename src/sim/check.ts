@@ -2,17 +2,18 @@
    on the sketch's own clock so that a run takes milliseconds and always comes out the same. Then it asks questions of what happened. */
 import { BOARDS } from '../data/boards';
 import { inputsOf } from '../state/bench';
-import { itemId, type BoardId, type Item } from '../types';
+import { itemId, kindOf, type BoardId, type Item } from '../types';
 import { analyze } from './circuit';
 import { makeHW, makeReadout, type VirtualHW } from './hardware';
 import { run, SimError, type RunControl } from './interpreter';
 import type { Frame } from './timeline';
 
 /* --- inputs --- */
-export type InputKind = 'button' | 'pot' | 'sonar' | 'pad' | 'ldr' | 'temp';
-/** From `from` milliseconds on, these inputs have these values. Parts of the same kind all take the same value. A knob or a light sensor is 0 to 1, the temperature is in °C, the wall is in cm, a button or pad is 0 or 1. */
+/** The parts a check can script, by kind: a sensor module goes by its own kind ("soil"), every other part by its type. */
+export type InputKind = 'button' | 'pot' | 'sonar' | 'pad' | 'ldr' | 'temp' | 'soil';
+/** From `from` milliseconds on, these inputs have these values. Parts of the same kind all take the same value. A knob, a light sensor or a soil sensor is 0 to 1, the temperature is in °C, the wall is in cm, a button or pad is 0 or 1. */
 export interface InputStep { from: number; set: Partial<Record<InputKind, number>> }
-const REST: Record<InputKind, number> = { button: 0, pad: 0, pot: 0.5, sonar: 100, ldr: 0.5, temp: 25 };
+const REST: Record<InputKind, number> = { button: 0, pad: 0, pot: 0.5, sonar: 100, ldr: 0.5, temp: 25, soil: 0.5 };
 
 export function inputsAt(items: Item[], plan: InputStep[], t: number): Record<string, number> {
   const value = { ...REST };
@@ -21,7 +22,8 @@ export function inputsAt(items: Item[], plan: InputStep[], t: number): Record<st
   items.forEach((it, k) => {
     const id = itemId(it, k);
     Object.assign(out, inputsOf(it, id));   // a part no check scripts keeps its resting value
-    if ('ctl' in it && it.t in value) out[id] = value[it.t as InputKind];
+    const kind = kindOf(it);
+    if ('ctl' in it && kind in value) out[id] = value[kind as InputKind];
   });
   return out;
 }

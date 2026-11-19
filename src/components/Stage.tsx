@@ -237,7 +237,7 @@ function Controls() {
   return (
     <div className="controls">
       {items.map(([it, id]) => {
-        const label = (names as Record<string, string | undefined> | undefined)?.[it.t] ?? it.ctl, states = STATES[kindOf(it)];
+        const label = (names as Record<string, string | undefined> | undefined)?.[kindOf(it)] ?? it.ctl, states = STATES[kindOf(it)];
         if (it.t === 'button' || it.t === 'pad') return <Hold key={id} id={id} label={label} />;
         if (it.t === 'joy') return (   // a joystick is two knobs and a button under one stick
           <span key={id} className="stick" role="group" aria-label={label}>

@@ -140,6 +140,8 @@ const wrong: [BoardId, string, string, string, string][] = [
   ['uno', 'chime', 'digitalRead(BUTTON_PIN) == LOW', '1 == 1', 'chimes without being pressed'],
   ['uno', 'parking', 'distance < 20', 'distance > 20', 'lights when far'],
   ['uno', 'greenhouse', 'tone(BUZZER_PIN, 440);', '', 'no sound'],
+  ['uno', 'greenhouse', 'moisture < 30', 'moisture > 30', 'warns when the soil is wet'],
+  ['uno', 'greenhouse', 'map(analogRead(MOISTURE_PIN), 0, 1023, 0, 100)', 'analogRead(MOISTURE_PIN)', 'compares the raw reading with 30'],
   ['esp32', 'beacon', 'digitalWrite(LED_PIN, LOW);', '', 'never turns off'],
   ['esp32', 'touchlamp', 'value < THRESHOLD', 'value > THRESHOLD', 'works backwards'],
   ['esp32', 'toggle', 'ledOn = !ledOn;', 'ledOn = true;', 'never turns off again'],
@@ -188,6 +190,9 @@ const wrongWiring: [BoardId, string, string, (it: Item) => Item | null][] = [
   ['uno', 'heatwarn', 'has the temperature sensor backwards', it => (it.t === 'wire' && (it.a === 'a24' || it.a === 'a26') ? { ...it, a: it.a === 'a24' ? 'a26' : 'a24' } : it)],
   ['uno', 'heatwarn', 'has the sensor without power', it => (it.t === 'wire' && it.a === 'a24' ? null : it)],
   ['esp32', 'fridge', 'has the sensor without power', it => (it.t === 'wire' && it.a === 'j28' ? null : it)],
+  ['uno', 'greenhouse', 'has the soil sensor without power', it => (it.t === 'wire' && it.a === 'a22' ? null : it)],
+  ['uno', 'greenhouse', 'has the soil sensor backwards', it => (it.t === 'wire' && (it.a === 'a22' || it.a === 'a24') ? { ...it, a: it.a === 'a22' ? 'a24' : 'a22' } : it)],
+  ['uno', 'greenhouse', 'has the soil sensor on the wrong pin', it => (it.t === 'wire' && it.b === 'U:A0' ? { ...it, b: 'U:A1' } : it)],
 ];
 test('a bench with any of the plausible wiring mistakes does not pass', () => forEvery(wrongWiring, ([board, id, why]) => `${board}/${id} ${why}`, async ([board, id, why, f]) => {
   const m = get(board, id), r = await runChecks(board, rewire(m.circuit, f), m.answer, m.checks);

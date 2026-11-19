@@ -586,7 +586,7 @@ void loop() {
       { p: 'A potentiometer is a resistor with a slider that moves along it. It has three legs in a row:' },
       { list: ['One outer leg to <b>+</b> (5 V on the Uno, <b>3V3</b> on the ESP32).', 'The other outer leg to <b>GND</b>.', 'The <b>middle</b> leg to an <b>analog input</b>, such as A0.'] },
       { p: 'Turning the knob moves the middle leg\'s voltage smoothly from 0 V up to the supply voltage, and <code>analogRead()</code> turns that into 0 to 1023 (or 0 to 4095 on the ESP32).' },
-      { p: 'In the missions a knob often stands in for a real sensor, such as a light sensor or a soil probe. Those work the same way: they give the board a voltage that rises and falls.' },
+      { p: 'In some missions a knob stands in for a sensor, such as the hallway\'s light level or the wind on the roof. Sensors like the light sensor and the soil moisture sensor work the same way: they give the board a voltage that rises and falls.' },
       { tip: 'On the ESP32, never feed a pin more than 3.3 V. Power a knob from <b>3V3</b>, not from VIN.' },
     ],
   },
@@ -648,6 +648,38 @@ void loop() {
         'The sensor is small and its voltage is small, so the reading jumps around by about half a degree. That is normal.',
       ] },
       { tip: 'Wire it backwards, with GND on the left leg and power on the right, and a real TMP36 gets hot enough to burn a finger. Check the flat side before you power it up.' },
+    ],
+  },
+  {
+    id: 'soil', group: 'parts', title: 'Soil moisture sensor', lede: 'Two prongs in the soil, and a voltage that rises as it gets wetter.',
+    blocks: [
+      { p: 'The sensor comes in two halves: a fork with two bare prongs that goes in the soil, and a small board that turns what the prongs feel into a voltage. Water carries electricity, so the wetter the soil, the more easily it flows between the prongs and the <b>higher</b> the voltage on OUT.' },
+      { table: [['+', 'Power: 5V on the Uno, 3V3 on the ESP32. Anything from 3 V up works.'], ['OUT', 'The middle pin. Wire it to an analog pin.'], ['GND', 'GND']], head: ['Pin', 'Goes to'] },
+      { table: [
+        ['Bone dry', 'Close to 0 V. The pin reads near <b>0</b>.'],
+        ['Drying out', 'About a quarter of the supply. The pin reads around 250 on the Uno.'],
+        ['Moist', 'About two thirds of the supply. The pin reads around 700.'],
+        ['Soaked', 'Close to the supply. The pin reads near <b>1023</b>.'],
+      ], head: ['Soil', 'What the pin reads'] },
+      { p: 'A percentage is easier to think about than a raw reading, so turn it into one with <code>map()</code>:' },
+      { code: `const int SENSOR_PIN = A0;
+
+void setup() {
+  Serial.begin(9600);
+}
+
+void loop() {
+  int raw = analogRead(SENSOR_PIN);           // 0 to 1023 on the Uno
+  int moisture = map(raw, 0, 1023, 0, 100);   // 0 is bone dry, 100 is soaked
+  Serial.print("Moisture: ");
+  Serial.println(moisture);
+  delay(1000);
+}` },
+      { list: [
+        'On the ESP32 the reading counts to 4095, so the sum is <code>map(raw, 0, 4095, 0, 100)</code>.',
+        'Soil does not dry out in a second. Reading it once a second, or even once a minute, is plenty.',
+      ] },
+      { tip: 'Not every probe reads the same way. Some, with no bare metal on them, read <b>lower</b> when the soil is wet. Before you trust the numbers, print a reading with the probe in dry soil and another in a glass of water.' },
     ],
   },
   {

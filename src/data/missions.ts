@@ -1,6 +1,6 @@
 /* Missions. Each mission is a small device to build, checked by running the student's own sketch on the student's own circuit.
    The reference build in each mission (`circuit` and `answer`) is what the tests run to prove the checks can be passed, and what the last hint offers. */
-import { blinks, colorOn, ledOn, phases, reaction, servoAt, soundOn, sweeps, type InputStep, type Sample, type Scenario, type Trace } from '../sim/check';
+import { blinks, colorOn, ledOn, phases, reaction, servoAt, soundOn, sweeps, type InputKind, type InputStep, type Sample, type Scenario, type Trace } from '../sim/check';
 import type { Tool } from '../state/bench';
 import type { Choice } from './boardchoice';
 import { LED_COLORS, ledColorName, type BoardId, type Item } from '../types';
@@ -32,7 +32,7 @@ export const PARTS: Record<PartId, { label: string; tool: Tool; swatch?: string;
   joystick: { label: 'Joystick', tool: { kind: 'joy' }, studio: true },
   pir: { label: 'Motion sensor', tool: { kind: 'module', sub: 'pir' }, studio: true },
   ir: { label: 'Obstacle sensor', tool: { kind: 'module', sub: 'ir' }, studio: true },
-  soil: { label: 'Soil moisture', tool: { kind: 'module', sub: 'soil' }, studio: true },
+  soil: { label: 'Soil moisture', tool: { kind: 'module', sub: 'soil' } },
   water: { label: 'Water level', tool: { kind: 'module', sub: 'water' }, studio: true },
   gas: { label: 'Gas sensor', tool: { kind: 'module', sub: 'gas' }, studio: true },
   flame: { label: 'Flame sensor', tool: { kind: 'module', sub: 'flame' }, studio: true },
@@ -91,7 +91,7 @@ export interface Mission {
   /** The chapters of the guide (ids from src/data/guide.ts) that explain what this mission uses, most useful first. */
   guide: string[];
   /** The on-screen controls, named for the story ("Hallway light level"). */
-  controls?: Partial<Record<'button' | 'pot' | 'sonar' | 'pad' | 'ldr' | 'temp', string>>;
+  controls?: Partial<Record<InputKind, string>>;
   starter: string;
   /** The reference build and sketch. */
   circuit: Item[];
@@ -591,7 +591,7 @@ void loop() {
         { when: 'it drives out again', set: { sonar: 60 }, expect: { led: false } },
       ]),
     ],
-    unlocks: ['led-green'],
+    unlocks: ['led-green', 'soil'],
   },
   choose({
     id: 'linebot', title: 'Line-follower robot', place: 'Robotics Club', hook: 'Choose a board small enough for the club\'s robot.', map: [75, 43], after: ['parking'], guide: ['boards', 'analog'],
@@ -608,11 +608,12 @@ void loop() {
     ],
   }),
   {
-    id: 'greenhouse', title: 'Plant alert', place: 'Greenhouse', hook: 'Warn the gardeners when the soil gets too dry.', map: [70, 33], after: ['parking'], guide: ['analog', 'ifelse', 'buzzer'],
-    story: 'The greenhouse dries out over the weekend and the tomato plants suffer. Build a <b>plant-watering alert</b>: when the soil moisture falls below <b>30%</b>, light the alert LED <em>and</em> sound the buzzer. When the soil is moist again, go quiet. The knob stands in for the moisture probe.',
+    id: 'greenhouse', title: 'Plant alert', place: 'Greenhouse', hook: 'Warn the gardeners when the soil gets too dry.', map: [70, 33], after: ['parking'], guide: ['soil', 'analog', 'ifelse', 'buzzer'],
+    story: 'The greenhouse dries out over the weekend and the tomato plants suffer. Push a <b>soil moisture sensor</b> into the pot and build a <b>plant-watering alert</b>: when the soil moisture falls below <b>30%</b>, light the alert LED <em>and</em> sound the buzzer. When the soil is moist again, go quiet.',
     goal: 'LED on and buzzer sounding when moisture is under 30%. Dark and silent otherwise.',
-    controls: { pot: 'Soil moisture' },
-    how: ['<code>map(value, 0, 1023, 0, 100)</code> turns a raw reading into a percentage, which is easier to think about.', 'One <code>if</code> can do several things: put them all between the braces.', 'Remember the <code>else</code> side too. An alert that never switches itself off is worse than none.'],
+    controls: { soil: 'Soil moisture' },
+    how: ['The soil sensor has three pins: <b>+</b> to 5V, <b>OUT</b> in the middle to A0, and <b>GND</b>. The wetter the soil, the higher the voltage on OUT.',
+      '<code>map(value, 0, 1023, 0, 100)</code> turns a raw reading into a percentage, which is easier to think about.', 'One <code>if</code> can do several things: put them all between the braces.', 'Remember the <code>else</code> side too. An alert that never switches itself off is worse than none.'],
     starter: `// Greenhouse alert
 const int MOISTURE_PIN = A0;
 const int LED_PIN = 13;
@@ -633,8 +634,8 @@ void loop() {
     circuit: [
       ...unoLed(13),
       { t: 'wire', a: 'a15', b: 'T-15', c: 'black' }, { t: 'wire', a: 'U:GND', b: 'T-2', c: 'black' }, { t: 'wire', a: 'U:5V', b: 'T+1', c: 'red' },
-      { t: 'pot', id: 'pot', row: 'd', col: 24, ctl: 'Knob position' },
-      { t: 'wire', a: 'a24', b: 'T+24', c: 'red' }, { t: 'wire', a: 'a26', b: 'T-26', c: 'black' }, { t: 'wire', a: 'a25', b: 'U:A0', c: 'green' },
+      { t: 'module', kind: 'soil', id: 'soil', row: 'd', col: 22, ctl: 'Soil moisture' },   // two columns left of where a knob would go, so the sensor's board clears the buzzer
+      { t: 'wire', a: 'a22', b: 'T+22', c: 'red' }, { t: 'wire', a: 'a24', b: 'T-24', c: 'black' }, { t: 'wire', a: 'a23', b: 'U:A0', c: 'green' },
       { t: 'buzzer', id: 'buzz', a: 'e28', b: 'e30' }, { t: 'wire', a: 'U:8', b: 'a28', c: 'purple' }, { t: 'wire', a: 'a30', b: 'T-30', c: 'black' },
     ],
     answer: `const int MOISTURE_PIN = A0;
@@ -663,26 +664,26 @@ void loop() {
         { id: 'dry', label: 'LED and buzzer come on when the soil gets dry' }, { id: 'moist', label: 'LED and buzzer come on when the soil gets moist' },
         { id: 'always', label: 'The alert is on the whole time' }, { id: 'never', label: 'The alert never comes on' },
       ],
-      demo: [{ from: 0, set: { pot: 0.7 } }, { from: 2000, set: { pot: 0.1 } }], run: 4000,
+      demo: [{ from: 0, set: { soil: 0.7 } }, { from: 2000, set: { soil: 0.1 } }], run: 4000,
       classify: reacts(s => ledOn(s) || soundOn(s), 1800, 3800, 'dry', 'moist'), works: 'dry',
       explain: reactExplain('dry', 'The alert came on when the soil dried out, which is what the gardeners need.', 'moist', 'The alert came on when the soil was moist: the comparison points the wrong way.'),
     },
     hints: [
-      'Turn the Soil moisture knob down and watch both the LED and the sound. Which one is not reacting?',
+      'Slide the Soil moisture control down and watch both the LED and the sound. Which one is not reacting?',
       'One <code>if (moisture &lt; 30)</code> can both light the LED and play a note. The <code>else</code> part must turn the LED off and call <code>noTone()</code> to stop the sound.',
       'In loop(): if (moisture < 30) { digitalWrite(LED_PIN, HIGH); tone(BUZZER_PIN, 440); } else { digitalWrite(LED_PIN, LOW); noTone(BUZZER_PIN); } then delay(100).',
     ],
     checks: [
-      phases('It is quiet while the soil is moist', [{ when: 'the soil is moist (70%)', set: { pot: 0.7 }, expect: { led: false, sound: false } }]),
-      phases('The alert comes on when the soil is dry', [{ when: 'the soil is dry (10%)', set: { pot: 0.1 }, expect: { led: true, sound: true } }]),
+      phases('It is quiet while the soil is moist', [{ when: 'the soil is moist (70%)', set: { soil: 0.7 }, expect: { led: false, sound: false } }]),
+      phases('The alert comes on when the soil is dry', [{ when: 'the soil is dry (10%)', set: { soil: 0.1 }, expect: { led: true, sound: true } }]),
       phases('The limit is about 30%', [
-        { when: 'the soil is at 25%', set: { pot: 0.25 }, expect: { led: true, sound: true } },
-        { when: 'the soil is at 35%', set: { pot: 0.35 }, expect: { led: false, sound: false } },
+        { when: 'the soil is at 25%', set: { soil: 0.25 }, expect: { led: true, sound: true } },
+        { when: 'the soil is at 35%', set: { soil: 0.35 }, expect: { led: false, sound: false } },
       ]),
       phases('It follows the soil as it dries and is watered', [
-        { when: 'the soil is moist', set: { pot: 0.7 }, expect: { led: false, sound: false } },
-        { when: 'it dries out', set: { pot: 0.1 }, expect: { led: true, sound: true } },
-        { when: 'the gardener waters it', set: { pot: 0.7 }, expect: { led: false, sound: false } },
+        { when: 'the soil is moist', set: { soil: 0.7 }, expect: { led: false, sound: false } },
+        { when: 'it dries out', set: { soil: 0.1 }, expect: { led: true, sound: true } },
+        { when: 'the gardener waters it', set: { soil: 0.7 }, expect: { led: false, sound: false } },
       ]),
     ],
     unlocks: [],
