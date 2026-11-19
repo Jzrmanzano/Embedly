@@ -683,6 +683,31 @@ void loop() {
     ],
   },
   {
+    id: 'pir', group: 'parts', title: 'Motion sensor (PIR)', lede: 'It notices something warm moving, and says HIGH while it does.',
+    blocks: [
+      { p: 'PIR stands for <b>passive infrared</b>. Everything warm gives off infrared light, which our eyes cannot see. The white dome is a lens that splits the room into zones, and when something warm moves from one zone to the next, the sensor notices the change. It cannot see something that stands still, and it cannot tell how far away it is.' },
+      { table: [['+', 'Power. It needs 5 V: 5V on the Uno, <b>VIN</b> on the ESP32.'], ['OUT', 'HIGH while it sees movement, LOW when all is still. Wire it to a digital pin.'], ['GND', 'GND']], head: ['Pin', 'Goes to'] },
+      { p: 'Its OUT pin gives <b>3.3 V</b>, even though it runs on 5 V. That still counts as HIGH on the Uno, and it is safe for the ESP32, whose pins must never get more than 3.3 V. So the same sensor works on both boards, as long as its + pin gets 5 V.' },
+      { code: `const int PIR_PIN = 18;
+const int LED_PIN = 5;
+
+void setup() {
+  pinMode(PIR_PIN, INPUT);
+  pinMode(LED_PIN, OUTPUT);
+}
+
+void loop() {
+  if (digitalRead(PIR_PIN) == HIGH) {
+    digitalWrite(LED_PIN, HIGH);   // something is moving
+  } else {
+    digitalWrite(LED_PIN, LOW);    // all still
+  }
+}` },
+      { p: 'A light that follows the sensor like this goes dark the moment someone stands still. To keep it on for a while after the <b>last</b> movement, remember when that was with <code>millis()</code>, and switch off only once enough time has gone by. Waiting with <code>delay()</code> does not work: while the board waits, it cannot see someone move again.' },
+      { tip: 'A real HC-SR501 has two small orange dials: one sets how far it sees, the other how long OUT stays HIGH after the movement stops. It also needs up to a minute to settle after it is powered up. In the simulator OUT simply follows the movement, so the sketch decides how long the light stays on.' },
+    ],
+  },
+  {
     id: 'buzzer', group: 'parts', title: 'Buzzers', lede: 'A pin switching on and off very fast becomes a sound.',
     blocks: [
       { p: 'A piezo buzzer has a thin disc that bends each time the voltage across it changes. Switch it hundreds of times a second and the disc pushes the air into a note. Wire one leg to a digital pin and the other to GND.' },

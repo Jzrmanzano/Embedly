@@ -10,10 +10,10 @@ import type { Frame } from './timeline';
 
 /* --- inputs --- */
 /** The parts a check can script, by kind: a sensor module goes by its own kind ("soil"), every other part by its type. */
-export type InputKind = 'button' | 'pot' | 'sonar' | 'pad' | 'ldr' | 'temp' | 'soil';
-/** From `from` milliseconds on, these inputs have these values. Parts of the same kind all take the same value. A knob, a light sensor or a soil sensor is 0 to 1, the temperature is in °C, the wall is in cm, a button or pad is 0 or 1. */
+export type InputKind = 'button' | 'pot' | 'sonar' | 'pad' | 'ldr' | 'temp' | 'soil' | 'pir';
+/** From `from` milliseconds on, these inputs have these values. Parts of the same kind all take the same value. A knob, a light sensor or a soil sensor is 0 to 1, the temperature is in °C, the wall is in cm, a button, pad or motion sensor is 0 or 1. */
 export interface InputStep { from: number; set: Partial<Record<InputKind, number>> }
-const REST: Record<InputKind, number> = { button: 0, pad: 0, pot: 0.5, sonar: 100, ldr: 0.5, temp: 25, soil: 0.5 };
+const REST: Record<InputKind, number> = { button: 0, pad: 0, pot: 0.5, sonar: 100, ldr: 0.5, temp: 25, soil: 0.5, pir: 0 };
 
 export function inputsAt(items: Item[], plan: InputStep[], t: number): Record<string, number> {
   const value = { ...REST };

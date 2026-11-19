@@ -30,7 +30,7 @@ export const PARTS: Record<PartId, { label: string; tool: Tool; swatch?: string;
   tilt: { label: 'Tilt switch', tool: { kind: 'contact', sub: 'tilt' }, studio: true },
   reed: { label: 'Reed switch', tool: { kind: 'contact', sub: 'reed' }, studio: true },
   joystick: { label: 'Joystick', tool: { kind: 'joy' }, studio: true },
-  pir: { label: 'Motion sensor', tool: { kind: 'module', sub: 'pir' }, studio: true },
+  pir: { label: 'Motion sensor', tool: { kind: 'module', sub: 'pir' } },
   ir: { label: 'Obstacle sensor', tool: { kind: 'module', sub: 'ir' }, studio: true },
   soil: { label: 'Soil moisture', tool: { kind: 'module', sub: 'soil' } },
   water: { label: 'Water level', tool: { kind: 'module', sub: 'water' }, studio: true },
@@ -1332,7 +1332,7 @@ void loop() {
         { when: 'the button is let go again (the LED should stay off)', set: { button: 0 }, ms: 600, expect: { led: false } },
       ]),
     ],
-    unlocks: ['led-green'],
+    unlocks: ['led-green', 'pir'],
   },
   choose({
     id: 'bagtag', title: 'Bag finder tag', place: 'Lost & Found', hook: 'Choose a board small enough to hide in a bag, that a phone can find.', map: [75, 54], after: ['toggle'], guide: ['boards'],
@@ -1347,6 +1347,106 @@ void loop() {
       'The <b>ESP32-C3 SuperMini</b>: 23 × 18 mm, with Bluetooth LE.',
     ],
   }),
+  {
+    id: 'stairs', title: 'Stairwell light', place: 'Back Stairwell', hook: 'Light the stairs when someone moves, and keep them lit until they are safely up.', map: [75, 47], after: ['toggle'], guide: ['pir', 'millis', 'digitalread', 'variables'],
+    story: 'The light in the back stairwell burns all night for nobody. Fit a <b>motion sensor</b> at the foot of the stairs: when it sees someone move, switch the light on. The sensor only says HIGH <em>while</em> something moves, though, and people stop on stairs: to catch their breath, to answer a phone. So keep the light on for <b>5 seconds after the last movement</b>, and start the 5 seconds again each time the sensor sees more. Nobody should be left in the dark halfway up.',
+    goal: 'The LED comes on as soon as the sensor sees movement and stays on until 5 seconds after the last movement. Off while all is still.',
+    controls: { pir: 'Someone on the stairs' },
+    how: [
+      'The motion sensor needs <b>5 V</b>, so power its + pin from <b>VIN</b>. Its OUT pin only ever gives 3.3 V, which is safe for an ESP32 pin.',
+      'Each time the sensor reads HIGH, remember the time with <code>lastMotion = millis();</code>. The light should go off once <code>millis() - lastMotion &gt;= HOLD_MS</code>.',
+      'Do not wait with <code>delay(5000)</code>. While the board waits it cannot see someone move again, so it cannot start the 5 seconds again.',
+    ],
+    starter: `// Stairwell light
+const int PIR_PIN = 18;    // HIGH while the sensor sees movement
+const int LED_PIN = 5;
+const unsigned long HOLD_MS = 5000;   // keep the light on this long after the last movement
+
+void setup() {
+  pinMode(PIR_PIN, INPUT);
+  pinMode(LED_PIN, OUTPUT);
+}
+
+void loop() {
+  // the light follows the sensor, so it goes off the moment someone stands still
+  if (digitalRead(PIR_PIN) == HIGH) {
+    digitalWrite(LED_PIN, HIGH);
+  } else {
+    digitalWrite(LED_PIN, LOW);
+  }
+}`,
+    circuit: [
+      ...espLed, { t: 'wire', a: 'E:VIN', b: 'B+34', c: 'red' },
+      { t: 'module', kind: 'pir', id: 'pir', row: 'g', col: 30, ctl: 'Movement' },
+      { t: 'wire', a: 'j30', b: 'B+30', c: 'red' }, { t: 'wire', a: 'j31', b: 'E:D18', c: 'yellow' }, { t: 'wire', a: 'j32', b: 'B-32', c: 'black' },
+    ],
+    answer: `const int PIR_PIN = 18;    // HIGH while the sensor sees movement
+const int LED_PIN = 5;
+const unsigned long HOLD_MS = 5000;   // keep the light on this long after the last movement
+
+unsigned long lastMotion = 0;   // when the sensor last saw movement
+bool lightOn = false;
+
+void setup() {
+  pinMode(PIR_PIN, INPUT);
+  pinMode(LED_PIN, OUTPUT);
+}
+
+void loop() {
+  if (digitalRead(PIR_PIN) == HIGH) {   // someone is moving: light on, and start the wait again
+    lightOn = true;
+    lastMotion = millis();
+  }
+  if (lightOn && millis() - lastMotion >= HOLD_MS) {   // all still for long enough
+    lightOn = false;
+  }
+  digitalWrite(LED_PIN, lightOn);
+}`,
+    predict: {
+      question: 'Someone walks past the sensor, then stands still on the stairs. What will the light do?',
+      options: [
+        { id: 'holds', label: 'It comes on, and stays on for a while after they stop' }, { id: 'follows', label: 'It comes on, and goes off the moment they stop moving' },
+        { id: 'always', label: 'It is on the whole time' }, { id: 'never', label: 'It never comes on' },
+      ],
+      demo: [{ from: 0, set: { pir: 0 } }, { from: 1000, set: { pir: 1 } }, { from: 1600, set: { pir: 0 } }], run: 4000,
+      classify: tr => {
+        const before = ledOn(tr.at(800)), during = ledOn(tr.at(1500)), after = ledOn(tr.at(3500));
+        return before ? 'always' : !during ? 'never' : after ? 'holds' : 'follows';
+      },
+      works: 'holds',
+      explain: {
+        holds: 'The light stayed on after they stopped moving, so nobody is left in the dark halfway up.',
+        follows: 'The light went off the moment they stood still. The sensor is only HIGH while something moves, so the sketch has to do the waiting: remember when it last saw movement.',
+        always: 'The light was on before anyone moved. Check that HIGH is what turns it on. And if the sketch only checks <code>millis() - lastMotion</code>, remember that lastMotion starts at 0, so the first 5 seconds look like "just after movement".',
+        never: 'The light did not come on while someone was moving. Check that the sensor\'s OUT pin is wired to the pin the sketch reads, and that its + pin has 5 V from VIN.',
+      },
+    },
+    hints: [
+      'Switch the sensor to "someone moving", then back to "all still", and watch the light. It goes off at once: the sensor is only HIGH while it sees movement, so the waiting has to happen in the sketch.',
+      'Keep <code>unsigned long lastMotion</code> and <code>bool lightOn</code> above setup(). When the sensor reads HIGH, set <code>lightOn = true</code> and <code>lastMotion = millis()</code>. When <code>millis() - lastMotion &gt;= HOLD_MS</code>, set <code>lightOn = false</code>. Then write <code>lightOn</code> to the LED. A <code>delay(5000)</code> will not do: while it waits, the board cannot see someone move again.',
+      'Above setup(): unsigned long lastMotion = 0; bool lightOn = false; In loop(): if (digitalRead(PIR_PIN) == HIGH) { lightOn = true; lastMotion = millis(); } if (lightOn && millis() - lastMotion >= HOLD_MS) { lightOn = false; } digitalWrite(LED_PIN, lightOn); with no delay() anywhere.',
+    ],
+    checks: [
+      phases('The light stays off while all is still', [{ when: 'nobody is on the stairs', set: { pir: 0 }, ms: 2500, mode: 'during', expect: { led: false } }]),
+      phases('The light comes on as soon as someone moves', [
+        { when: 'nobody is on the stairs', set: { pir: 0 }, ms: 1000, expect: { led: false } },
+        { when: 'someone starts up the stairs', set: { pir: 1 }, ms: 300, expect: { led: true } },
+      ]),
+      phases('It stays on for about 5 seconds after the last movement', [
+        { when: 'someone walks past', set: { pir: 1 }, ms: 500, expect: { led: true } },
+        { when: 'they have stood still for over 3 seconds', set: { pir: 0 }, ms: 3500, expect: { led: true } },
+        { when: 'they have stood still for over 6 seconds', set: { pir: 0 }, ms: 3000, expect: { led: false } },
+      ]),
+      phases('Each movement starts the 5 seconds again', [
+        { when: 'someone walks past', set: { pir: 1 }, ms: 300, expect: { led: true } },
+        { when: 'they stop for 3 seconds', set: { pir: 0 }, ms: 3000, expect: { led: true } },
+        { when: 'they move again', set: { pir: 1 }, ms: 300, expect: { led: true } },
+        { when: 'they have stood still for nearly 4 seconds since, over 7 seconds after they first moved', set: { pir: 0 }, ms: 4000, expect: { led: true } },
+        { when: 'they have stood still for nearly 7 seconds since', set: { pir: 0 }, ms: 3000, expect: { led: false } },
+      ]),
+    ],
+    unlocks: [],
+  },
   {
     id: 'siren', title: 'Sports-hall siren', place: 'Sports Hall', hook: 'Slide a buzzer up and down like an alarm.', map: [75, 41], after: ['toggle'], guide: ['buzzer', 'loops'],
     story: 'The sports hall needs an alarm that cuts through the noise of a basketball game. A steady beep is easy to ignore, but a <b>siren</b> that slides up and down in pitch is not. Build one with a buzzer and two loops that change the note a little at a time.',

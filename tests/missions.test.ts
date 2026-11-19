@@ -161,11 +161,29 @@ const wrong: [BoardId, string, string, string, string][] = [
   ['uno', 'heatwarn', 'celsius > 30', 'celsius < 30', 'warns when it is cool'],
   ['esp32', 'fridge', 'raw * 3.3 / 4095.0', 'raw * 5.0 / 1023.0', 'uses the Uno\'s numbers'],
   ['esp32', 'fridge', 'celsius > 8', 'celsius > 30', 'waits until the fridge is far too warm'],
+  ['esp32', 'stairs', 'HOLD_MS = 5000;', 'HOLD_MS = 0;', 'switches the light off the moment someone stands still'],
+  ['esp32', 'stairs', 'HOLD_MS = 5000;', 'HOLD_MS = 30000;', 'keeps the light on far too long'],
+  ['esp32', 'stairs', 'digitalRead(PIR_PIN) == HIGH', 'digitalRead(PIR_PIN) == LOW', 'lights the stairs while all is still'],
+  ['esp32', 'stairs', 'digitalRead(PIR_PIN) == HIGH)', 'digitalRead(PIR_PIN) == HIGH && !lightOn)', 'does not start the wait again when someone moves again'],
+  ['esp32', 'stairs', 'digitalWrite(LED_PIN, lightOn);', 'digitalWrite(LED_PIN, millis() - lastMotion < HOLD_MS);', 'is on for the first 5 seconds, before anyone moves'],
 ];
 
 test('uno/crossing: a sketch that still blinks with delay() misses taps', async () => {
   const m = get('uno', 'crossing'), r = await runChecks('uno', m.circuit, m.starter, m.checks);
   assert.deepEqual(failures(r).map(f => f.split(':')[0]), ['The walk light answers every tap at once'], 'only the tap check fails: the blink itself is fine');
+});
+test('esp32/stairs: a sketch that waits with delay() misses someone who moves again', async () => {
+  const m = get('esp32', 'stairs'), sketch = mutate(m.starter, `  if (digitalRead(PIR_PIN) == HIGH) {
+    digitalWrite(LED_PIN, HIGH);
+  } else {
+    digitalWrite(LED_PIN, LOW);
+  }`, `  if (digitalRead(PIR_PIN) == HIGH) {
+    digitalWrite(LED_PIN, HIGH);
+    delay(HOLD_MS);
+    digitalWrite(LED_PIN, LOW);
+  }`);
+  const r = await runChecks('esp32', m.circuit, sketch, m.checks);
+  assert.deepEqual(failures(r).map(f => f.split(':')[0]), ['Each movement starts the 5 seconds again'], 'only the restart check fails: the first wait itself is fine');
 });
 test('a sketch with any of the plausible mistakes does not pass', () => forEvery(wrong, ([board, id, , , why]) => `${board}/${id} ${why}`, async ([board, id, from, to, why]) => {
   const m = get(board, id), r = await runChecks(board, m.circuit, mutate(m.answer, from, to), m.checks);
@@ -193,6 +211,9 @@ const wrongWiring: [BoardId, string, string, (it: Item) => Item | null][] = [
   ['uno', 'greenhouse', 'has the soil sensor without power', it => (it.t === 'wire' && it.a === 'a22' ? null : it)],
   ['uno', 'greenhouse', 'has the soil sensor backwards', it => (it.t === 'wire' && (it.a === 'a22' || it.a === 'a24') ? { ...it, a: it.a === 'a22' ? 'a24' : 'a22' } : it)],
   ['uno', 'greenhouse', 'has the soil sensor on the wrong pin', it => (it.t === 'wire' && it.b === 'U:A0' ? { ...it, b: 'U:A1' } : it)],
+  ['esp32', 'stairs', 'powers the motion sensor from 3V3', it => (it.t === 'wire' && it.a === 'E:VIN' ? { ...it, a: 'E:3V3' } : it)],
+  ['esp32', 'stairs', 'has the motion sensor on the wrong pin', it => (it.t === 'wire' && it.b === 'E:D18' ? { ...it, b: 'E:D19' } : it)],
+  ['esp32', 'stairs', 'has no ground on the motion sensor', it => (it.t === 'wire' && it.a === 'j32' ? null : it)],
 ];
 test('a bench with any of the plausible wiring mistakes does not pass', () => forEvery(wrongWiring, ([board, id, why]) => `${board}/${id} ${why}`, async ([board, id, why, f]) => {
   const m = get(board, id), r = await runChecks(board, rewire(m.circuit, f), m.answer, m.checks);

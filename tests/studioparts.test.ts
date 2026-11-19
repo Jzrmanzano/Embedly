@@ -213,9 +213,12 @@ test('the checks leave a part they do not script at rest', () => {
   assert.deepEqual(inputsOf(RGB[0], 'rgb1'), {}, 'an RGB LED has no on-screen control');
 });
 
-test('the checks script a soil sensor by its kind, and leave it damp until they do', () => {
-  assert.deepEqual(inputsAt(module('soil'), [], 0), { m: 0.5 });
+test('the checks script a sensor module by its kind, and leave it at rest until they do', () => {
+  assert.deepEqual(inputsAt(module('soil'), [], 0), { m: 0.5 }, 'damp soil');
   assert.deepEqual(inputsAt(module('soil'), [{ from: 0, set: { soil: 0.7 } }, { from: 1000, set: { soil: 0.1 } }], 1500), { m: 0.1 });
+  assert.deepEqual(inputsAt(module('pir'), [], 0), { m: 0 }, 'all still');
+  assert.deepEqual(inputsAt(module('pir'), [{ from: 500, set: { pir: 1 } }], 800), { m: 1 });
+  assert.deepEqual(inputsAt(module('pir'), [{ from: 0, set: { soil: 1 } }], 100), { m: 0 }, 'a motion sensor is not a soil sensor');
 });
 
 /* --- the schematic --- */
