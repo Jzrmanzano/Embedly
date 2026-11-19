@@ -247,6 +247,8 @@ test('the checks script a sensor module by its kind, and leave it at rest until 
   assert.deepEqual(inputsAt(module('pir'), [], 0), { m: 0 }, 'all still');
   assert.deepEqual(inputsAt(module('pir'), [{ from: 500, set: { pir: 1 } }], 800), { m: 1 });
   assert.deepEqual(inputsAt(module('pir'), [{ from: 0, set: { soil: 1 } }], 100), { m: 0 }, 'a motion sensor is not a soil sensor');
+  assert.deepEqual(inputsAt(module('ir'), [], 0), { m: 0 }, 'the way is clear');
+  assert.deepEqual(inputsAt(module('ir'), [{ from: 0, set: { ir: 1 } }], 100), { m: 1 });
 });
 
 /* --- the schematic --- */

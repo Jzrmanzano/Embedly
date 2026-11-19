@@ -28,7 +28,7 @@ export const PARTS: Record<PartId, { label: string; tool: Tool; only?: BoardId; 
   reed: { label: 'Reed switch', tool: { kind: 'contact', sub: 'reed' } },
   joystick: { label: 'Joystick', tool: { kind: 'joy' }, studio: true },
   pir: { label: 'Motion sensor', tool: { kind: 'module', sub: 'pir' } },
-  ir: { label: 'Obstacle sensor', tool: { kind: 'module', sub: 'ir' }, studio: true },
+  ir: { label: 'Obstacle sensor', tool: { kind: 'module', sub: 'ir' } },
   soil: { label: 'Soil moisture', tool: { kind: 'module', sub: 'soil' } },
   water: { label: 'Water level', tool: { kind: 'module', sub: 'water' }, studio: true },
   gas: { label: 'Gas sensor', tool: { kind: 'module', sub: 'gas' }, studio: true },
@@ -165,6 +165,32 @@ const reactExplain = (laterId: string, laterText: string, earlierId: string, ear
 });
 
 const dark = 0.1, bright = 0.9;
+
+/** People walking past an obstacle sensor, after a quiet start: each one blocks it for a while, then the way is clear for a while. */
+const passing = (people: [blocked: number, gap: number][], lead = 800): InputStep[] => {
+  const plan: InputStep[] = [{ from: 0, set: { ir: 0 } }];
+  let t = lead;
+  for (const [blocked, gap] of people) { plan.push({ from: t, set: { ir: 1 } }, { from: t + blocked, set: { ir: 0 } }); t += blocked + gap; }
+  return plan;
+};
+/** The last whole number on the last line the sketch printed by then (the count, however it is worded), or null when it printed none. */
+const lastCount = (tr: Trace, t = tr.ms): number | null => {
+  const lines = tr.at(t).serial.trim().split('\n'), nums = lines[lines.length - 1].match(/-?\d+/g);
+  return nums ? +nums[nums.length - 1] : null;
+};
+/** People walk past, and the last count printed must be how many did. `what` says what happened, as the start of a sentence. */
+function counts(label: string, what: string, people: [blocked: number, gap: number][]): Scenario {
+  return {
+    label, plan: passing(people), run: 800 + people.reduce((sum, [b, g]) => sum + b + g, 0),
+    judge(tr) {
+      const n = lastCount(tr), want = people.length;
+      if (n === null) return `${what}, but the Serial Monitor showed no count. Print the total with Serial.println(count) each time it goes up.`;
+      if (n > want) return `${what}, but the last count printed was ${n}. Count each visitor once: add one only at the moment the way changes from clear to blocked.`;
+      if (n < want) return `${what}, but the last count printed was ${n}. Print the count every time it goes up, and look at the sensor on every pass of loop(), without long waits, so nobody slips past.`;
+      return null;
+    },
+  };
+}
 
 /** Three short taps of a button at uneven moments, so a sketch that only looks at the button now and then misses at least one. */
 const TAP_TIMES = [1000, 2250, 3600];
@@ -588,7 +614,7 @@ void loop() {
         { when: 'it drives out again', set: { sonar: 60 }, expect: { led: false } },
       ]),
     ],
-    unlocks: ['soil'],
+    unlocks: ['soil', 'ir'],
   },
   choose({
     id: 'linebot', title: 'Line-follower robot', place: 'Robotics Club', hook: 'Choose a board small enough for the club\'s robot.', map: [75, 43], after: ['parking'], guide: ['boards', 'analog'],
@@ -682,6 +708,86 @@ void loop() {
         { when: 'it dries out', set: { soil: 0.1 }, expect: { led: true, sound: true } },
         { when: 'the gardener waters it', set: { soil: 0.7 }, expect: { led: false, sound: false } },
       ]),
+    ],
+    unlocks: [],
+  },
+  {
+    id: 'counter', title: 'Visitor counter', place: 'Library Entrance', hook: 'Count the visitors coming through the library gate, each one once.', map: [70, 30], after: ['parking'], guide: ['ir', 'digitalread', 'variables', 'serial'],
+    story: 'The library has to report how many visitors come in each day, and the person on the desk has been counting them with a hand clicker. Fit an <b>obstacle sensor</b> beside the entrance gate, and print the total to the Serial Monitor every time it goes up. Some visitors hurry through, some dawdle, and some stop in the gateway to read the notices. Each of them must be <b>counted once</b>.',
+    goal: 'Each visitor who passes the sensor adds exactly one to the count, however long they stay in front of it. The total is printed every time it goes up.',
+    controls: { ir: 'The gateway' },
+    how: [
+      'The sensor\'s OUT pin is <b>HIGH</b> while the way is clear, and goes <b>LOW</b> while someone is in front of it. Power it from 5V.',
+      'A visitor blocks the sensor for many passes of <code>loop()</code>. Count only the moment it <em>changes</em>: LOW now, but HIGH on the last pass.',
+      'Keep the last reading in a variable, <code>lastState</code>, and set it to the new reading at the end of every pass.',
+    ],
+    starter: `// Library visitor counter
+const int SENSOR_PIN = 7;    // LOW while something is in front of the sensor
+int count = 0;
+
+void setup() {
+  pinMode(SENSOR_PIN, INPUT);
+  Serial.begin(9600);
+  Serial.println(count);
+}
+
+void loop() {
+  // this adds one on every pass while someone is in the way, not once per visitor
+  if (digitalRead(SENSOR_PIN) == LOW) {
+    count = count + 1;
+    Serial.println(count);
+  }
+  delay(100);
+}`,
+    circuit: [
+      { t: 'wire', a: 'U:GND', b: 'T-2', c: 'black' }, { t: 'wire', a: 'U:5V', b: 'T+1', c: 'red' },
+      { t: 'module', kind: 'ir', id: 'ir', row: 'd', col: 22, ctl: 'Path in front' },
+      { t: 'wire', a: 'a22', b: 'T+22', c: 'red' }, { t: 'wire', a: 'a23', b: 'U:7', c: 'yellow' }, { t: 'wire', a: 'a24', b: 'T-24', c: 'black' },
+    ],
+    answer: `const int SENSOR_PIN = 7;    // LOW while something is in front of the sensor
+int count = 0;
+int lastState = HIGH;        // the way was clear on the last pass
+
+void setup() {
+  pinMode(SENSOR_PIN, INPUT);
+  Serial.begin(9600);
+  Serial.println(count);
+}
+
+void loop() {
+  int state = digitalRead(SENSOR_PIN);
+  if (state == LOW && lastState == HIGH) {   // someone has just stepped in front
+    count = count + 1;
+    Serial.println(count);
+  }
+  lastState = state;
+  delay(10);
+}`,
+    predict: {
+      question: 'One visitor walks slowly through the gate, in front of the sensor for over a second. What will the count say afterwards?',
+      options: [{ id: 'one', label: '1' }, { id: 'many', label: 'A bigger number: it kept counting while they were in the way' }, { id: 'none', label: 'Still 0' }],
+      demo: passing([[1200, 1000]]), run: 3000,
+      classify: tr => { const n = lastCount(tr) ?? 0; return n === 1 ? 'one' : n > 1 ? 'many' : 'none'; },
+      works: 'one',
+      explain: {
+        one: 'One visitor, one count. The sketch counts only the moment the way changes from clear to blocked.',
+        many: 'The count kept climbing while the visitor was in the way, because the sketch adds one on every pass of loop() while the sensor reads LOW. Count the change, not the state.',
+        none: 'Nothing was counted. Check that OUT is wired to the pin the sketch reads, that the sensor has 5V and GND, and that the sketch counts when the pin reads LOW.',
+      },
+    },
+    hints: [
+      'Flip the gateway to "blocked", wait a second, and flip it back. Watch the Serial Monitor: the count climbs the whole time the way is blocked, not once.',
+      'Keep <code>int lastState = HIGH;</code> above setup(). In loop(), read the sensor into <code>state</code>. When <code>state == LOW &amp;&amp; lastState == HIGH</code>, someone has just stepped in front: add one and print it. Then set <code>lastState = state</code>, on every pass.',
+      'Above setup(): int lastState = HIGH; In loop(): int state = digitalRead(SENSOR_PIN); if (state == LOW && lastState == HIGH) { count = count + 1; Serial.println(count); } lastState = state; delay(10);',
+    ],
+    checks: [
+      {
+        label: 'Nobody is counted while the gateway is empty', plan: [{ from: 0, set: { ir: 0 } }], run: 2000,
+        judge: tr => { const n = lastCount(tr); return n !== null && n > 0 ? `Nobody came through the gate, but the count went up to ${n}. Check that the sketch counts when the pin reads LOW, and that the sensor is on the pin the sketch reads.` : null; },
+      },
+      counts('One visitor is counted once', 'One visitor walked past', [[500, 1000]]),
+      counts('Three visitors are counted as three', 'Three visitors walked past, one quick, one slow', [[300, 700], [900, 400], [500, 1000]]),
+      counts('A visitor who stops in the gateway still counts once', 'One visitor stopped in the gateway for 2.5 seconds', [[2500, 1000]]),
     ],
     unlocks: [],
   },

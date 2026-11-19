@@ -171,6 +171,10 @@ const wrong: [BoardId, string, string, string, string][] = [
   ['uno', 'colddoor', 'digitalRead(REED_PIN) == HIGH', 'digitalRead(REED_PIN) == LOW', 'treats the shut door as open'],
   ['uno', 'colddoor', 'INPUT_PULLUP', 'INPUT', 'has no pull-up, so the open switch floats'],
   ['uno', 'colddoor', 'LIMIT_MS = 5000;', 'LIMIT_MS = 0;', 'sounds on every visit'],
+  ['uno', 'counter', 'state == LOW && lastState == HIGH', 'state == LOW', 'counts on every pass while someone is in the way'],
+  ['uno', 'counter', '  lastState = state;\n', '', 'never remembers the last reading, so counts every pass'],
+  ['uno', 'counter', 'delay(10);', 'delay(1000);', 'looks at the sensor only once a second, so visitors slip past'],
+  ['uno', 'counter', '    count = count + 1;\n    Serial.println(count);', '    count = count + 1;', 'counts but never prints the new total'],
 ];
 
 test('uno/crossing: a sketch that still blinks with delay() misses taps', async () => {
@@ -198,6 +202,19 @@ test('uno/colddoor: a sketch that waits with delay() lags behind a door being sh
   const r = await runChecks('uno', m.circuit, sketch, m.checks);
   assert.deepEqual(failures(r).map(f => f.split(':')[0]), ['A quick visit does not sound the alarm', 'Shutting the door silences it, and the next opening counts from the start'],
     'the buzzer waits its 5 seconds, but the light stays on after the door is shut');
+});
+test('uno/counter: a sketch that waits after each count still counts a visitor who stops, and one that counts on leaving passes', async () => {
+  const m = get('uno', 'counter');
+  const waits = mutate(m.starter, `    Serial.println(count);
+  }
+  delay(100);`, `    Serial.println(count);
+    delay(1000);
+  }
+  delay(10);`);
+  const r = await runChecks('uno', m.circuit, waits, m.checks);
+  assert.ok(failures(r).some(f => f.startsWith('A visitor who stops in the gateway still counts once:')), 'a long wait only hides the problem: someone who stays longer than the wait is counted again');
+  const onLeaving = await runChecks('uno', m.circuit, mutate(m.answer, 'state == LOW && lastState == HIGH', 'state == HIGH && lastState == LOW'), m.checks);
+  assert.deepEqual(failures(onLeaving), [], 'counting the moment a visitor leaves counts each one once too');
 });
 test('a sketch with any of the plausible mistakes does not pass', () => forEvery(wrong, ([board, id, , , why]) => `${board}/${id} ${why}`, async ([board, id, from, to, why]) => {
   const m = get(board, id), r = await runChecks(board, m.circuit, mutate(m.answer, from, to), m.checks);
@@ -231,6 +248,9 @@ const wrongWiring: [BoardId, string, string, (it: Item) => Item | null][] = [
   ['uno', 'colddoor', 'leaves the reed switch\'s other leg unconnected', it => (it.t === 'wire' && it.a === 'a22' ? null : it)],
   ['uno', 'colddoor', 'wires the reed switch to 5V instead of GND', it => (it.t === 'wire' && it.a === 'a22' ? { ...it, b: 'T+22' } : it)],
   ['uno', 'colddoor', 'has the reed switch on the wrong pin', it => (it.t === 'wire' && it.a === 'U:2' ? { ...it, a: 'U:3' } : it)],
+  ['uno', 'counter', 'has the sensor on the wrong pin', it => (it.t === 'wire' && it.b === 'U:7' ? { ...it, b: 'U:6' } : it)],
+  ['uno', 'counter', 'has no ground on the sensor', it => (it.t === 'wire' && it.a === 'a24' ? null : it)],
+  ['uno', 'counter', 'has the sensor in backwards', it => (it.t === 'wire' && (it.a === 'a22' || it.a === 'a24') ? { ...it, a: it.a === 'a22' ? 'a24' : 'a22' } : it)],
 ];
 test('a bench with any of the plausible wiring mistakes does not pass', () => forEvery(wrongWiring, ([board, id, why]) => `${board}/${id} ${why}`, async ([board, id, why, f]) => {
   const m = get(board, id), r = await runChecks(board, rewire(m.circuit, f), m.answer, m.checks);

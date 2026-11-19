@@ -737,6 +737,36 @@ void loop() {
     ],
   },
   {
+    id: 'ir', group: 'parts', title: 'Obstacle sensor (IR)', lede: 'It sees something close in front of it, and says LOW while it does.',
+    blocks: [
+      { p: 'The module has two small bulbs side by side. The clear one is an LED that shines <b>infrared</b> light, which our eyes cannot see, and the dark one watches for that light bouncing back. When something is close in front, a few centimetres away, enough light comes back and the sensor says so.' },
+      { table: [['+', 'Power: 5V on the Uno, 3V3 on the ESP32. It works on either.'], ['OUT', 'HIGH while the way is clear, <b>LOW</b> while something is in front. Wire it to a digital pin.'], ['GND', 'GND']], head: ['Pin', 'Goes to'] },
+      { p: 'It is the other way round from what you might expect: <b>LOW means something is there</b>. Many sensors and switches work like this, so read the pinout before you write the <code>if</code>.' },
+      { code: `const int SENSOR_PIN = 7;
+
+void setup() {
+  pinMode(SENSOR_PIN, INPUT);
+  Serial.begin(9600);
+}
+
+void loop() {
+  if (digitalRead(SENSOR_PIN) == LOW) {
+    Serial.println("Something in the way");
+  } else {
+    Serial.println("All clear");
+  }
+  delay(500);
+}` },
+      { p: 'To <b>count</b> things going past, count the moment the reading changes from HIGH to LOW, not every pass that it reads LOW. Someone standing in front for a second is in front for hundreds of passes of <code>loop()</code>. Keep the last reading in a variable and compare:' },
+      { code: `int state = digitalRead(SENSOR_PIN);
+if (state == LOW && lastState == HIGH) {
+  count = count + 1;        // something has just arrived in front
+}
+lastState = state;` },
+      { tip: 'Sunlight is full of infrared, so a real sensor by a sunny window can be fooled. Black things reflect little infrared, so it may not see them at all. The small blue dial on the module sets how far it sees.' },
+    ],
+  },
+  {
     id: 'buzzer', group: 'parts', title: 'Buzzers', lede: 'A pin switching on and off very fast becomes a sound.',
     blocks: [
       { p: 'A piezo buzzer has a thin disc that bends each time the voltage across it changes. Switch it hundreds of times a second and the disc pushes the air into a note. Wire one leg to a digital pin and the other to GND.' },
