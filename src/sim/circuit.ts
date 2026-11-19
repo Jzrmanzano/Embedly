@@ -4,6 +4,7 @@
    for a given state of the board's pins. All numbers are simple DC values: enough to teach, small enough to explain. */
 import { ESP_HOLES } from '../data/boards';
 import { itemId, type BoardId, type Item, type ModuleKind } from '../types';
+import { LCD_MIN_VOLTS, LCD_PINS, lcdPoint } from './lcd';
 
 /** What a pin is doing right now. `level` runs from 0 to 1 (a PWM duty cycle for analogWrite). */
 export interface Drive { mode: 'out' | 'in' | 'pullup'; level: number }
@@ -56,7 +57,15 @@ export interface Analysis {
   servoPin(id: string): number | null;
   /** The net a connection point is on. */
   netOf(point: string): Net;
+  /** Whether an LCD has its 5 V and ground, and whether its SDA and SCL reach the board's I2C pins, so the sketch can talk to it. */
+  lcdBus(id: string): { powered: boolean; wired: boolean };
 }
+
+/** The pins a board talks I2C on: A4 and A5 on the Uno (also brought out as SDA and SCL by AREF), D21 and D22 on the ESP32. */
+export const I2C_PINS: Record<BoardId, { sda: number; scl: number; sdaName: string; sclName: string }> = {
+  uno: { sda: 18, scl: 19, sdaName: 'A4 (or the SDA pin by AREF)', sclName: 'A5 (or the SCL pin by AREF)' },
+  esp32: { sda: 21, scl: 22, sdaName: 'D21', sclName: 'D22' },
+};
 
 /** Everything joined by wires, rails and breadboard columns: an id shared by all of it, the board pins on it, and its voltage when it is GND (0) or a supply. */
 export interface Net { id: string; pins: number[]; volts: number | null }
@@ -109,6 +118,8 @@ export const tempVolts = (celsius: number) => 0.5 + 0.01 * Math.min(125, Math.ma
 export const TEMP_MIN_VOLTS = 2.7;
 const R_TEMP_OUT = 100, R_TEMP_Q = 100000;
 const R_PIN = 25, R_PULLUP = 30000, R_LED = 10, R_BUZZER = 1000, R_POT = 10000, R_SONAR = 333, R_SERVO = 500, R_SWITCH = 0.05, G_MIN = 1e-9;
+/** An LCD draws about 25 mA, most of it for the backlight. */
+const R_LCD = 200;
 
 class Sets {
   private p = new Map<string, string>();
@@ -165,6 +176,7 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
       if (x === '5V') return 'V5'; if (x === '3V3') return 'V3'; if (x === 'VIN') return 'V9';
       if (/^\d+$/.test(x) && +x <= 13) return 'P' + x;
       if ((m = /^A([0-5])$/.exec(x))) return 'P' + (14 + +m[1]);
+      if (x === 'SDA') return 'P18'; if (x === 'SCL') return 'P19';   // on the board they are joined to A4 and A5
       return name;
     }
     if ((m = /^E:(.+)$/.exec(name))) return holeNode(ESP_HOLES[m[1]] ?? '') ?? name;
@@ -174,7 +186,7 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
 
   /* 1. Everything wired together shares a net. */
   const els: El[] = [], uses = new Map<string, number>(), sonars: { id: string; vcc: string; trig: string; echo: string; gnd: string }[] = [];
-  const pads: { id: string; at: string }[] = [], buzzers: El[] = [], servos: { id: string; el: El; sig: string }[] = [];
+  const pads: { id: string; at: string }[] = [], buzzers: El[] = [], servos: { id: string; el: El; sig: string }[] = [], lcds: string[] = [];
   const touch = (n: string) => uses.set(sets.find(term(n)), (uses.get(sets.find(term(n))) ?? 0) + 1);
   const ids = items.map((it, k) => itemId(it, k));
   const needsRoot: [El, string[]][] = [];
@@ -231,6 +243,7 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
         servos.push({ id, el: e, sig });
         needsRoot.push([e, [gnd, vcc, sig]]); break;
       }
+      case 'lcd': lcds.push(id); needsRoot.push([mk('LOAD', lcdPoint('VCC'), lcdPoint('GND'), { ohms: R_LCD }), LCD_PINS.map(lcdPoint)]); break;
     }
   });
   for (const [el, terms] of needsRoot) { els.push(el); terms.forEach(touch); }
@@ -345,6 +358,21 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
             : (volts(ra) ?? 0) > 0 ? `The servo needs about 5 V but its red + leg only gets ${volts(ra)} V, so it cannot turn. Power it from 5V${board === 'esp32' ? ' (VIN on the ESP32)' : ''}.`
             : 'The servo\'s red + leg is not connected to a 5 V supply, so it cannot turn.' });
         else if (!onPin(sig)) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: 'Servo signal is not connected', plain: 'The servo\'s orange signal leg is not wired to a pin, so the sketch cannot tell it where to turn.' });
+      }
+      else if (e.kind === 'LOAD' && e.it.t === 'lcd') {
+        const i2c = I2C_PINS[board], sda = root(lcdPoint('SDA')), scl = root(lcdPoint('SCL')), pinRoot = (p: number) => sets.find(pinNode.get(p)!);
+        if (live(rb, 2.7) && ra === gnd) issues.push({ kind: 'unpowered', severity: 'error', part: e.id, title: 'LCD is wired backwards',
+          plain: 'The LCD\'s VCC pin is on GND and its GND pin is on power, the wrong way round. A real backpack can be damaged like this. Swap the two wires.' });
+        else if (rb !== gnd) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: 'LCD has no ground', plain: 'The LCD\'s GND pin is not connected to GND, so it stays dark.' });
+        else if (!live(ra, LCD_MIN_VOLTS)) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: 'LCD has no power',
+          plain: (volts(ra) ?? 0) > 0 ? `The LCD needs 5 V but its VCC pin only gets ${volts(ra)} V, so the text is too faint to see. Power it from 5V${board === 'esp32' ? ' (VIN on the ESP32)' : ''}.`
+            : `The LCD's VCC pin is not connected to ${board === 'esp32' ? 'VIN (5 V)' : '5V'}, so it stays dark.` });
+        else if (sda === pinRoot(i2c.scl) && scl === pinRoot(i2c.sda)) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: 'LCD\'s SDA and SCL are swapped',
+          plain: `The LCD's SDA pin goes to the board's SCL pin, and its SCL pin to SDA. Swap the two wires: SDA to ${i2c.sdaName}, SCL to ${i2c.sclName}.` });
+        else if (sda !== pinRoot(i2c.sda)) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: 'LCD\'s SDA is not on the I2C pin',
+          plain: `The LCD's SDA pin carries the data, and has to go to the board's SDA pin: ${i2c.sdaName}. Until it does, the sketch cannot reach the display.` });
+        else if (scl !== pinRoot(i2c.scl)) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: 'LCD\'s SCL is not on the I2C pin',
+          plain: `The LCD's SCL pin carries the clock, and has to go to the board's SCL pin: ${i2c.sclName}. Until it does, the sketch cannot reach the display.` });
       }
       else if (e.kind === 'LOAD') {
         if (rb !== gnd) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: 'Sensor has no ground', plain: 'The distance sensor\'s GND leg is not connected to GND, so it cannot work.' });
@@ -517,6 +545,14 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
     joined: (a, b) => root(a) === root(b),
     servoPin: id => { const s = servos.find(x => x.id === id); if (!s) return null; const r = root(s.sig); return pinRoots.find(([, pr]) => pr === r)?.[0] ?? null; },
     netOf: point => { const r = root(point); return { id: r, pins: pinRoots.filter(([, pr]) => pr === r).map(([p]) => p), volts: fixed.get(r) ?? null }; },
+    lcdBus: id => {
+      if (!lcds.includes(id) || shorted) return { powered: false, wired: false };
+      const i2c = I2C_PINS[board], at = (p: number) => sets.find(pinNode.get(p)!);
+      return {
+        powered: root(lcdPoint('GND')) === gnd && (fixed.get(root(lcdPoint('VCC'))) ?? 0) >= LCD_MIN_VOLTS,
+        wired: root(lcdPoint('SDA')) === at(i2c.sda) && root(lcdPoint('SCL')) === at(i2c.scl),
+      };
+    },
   };
 }
 

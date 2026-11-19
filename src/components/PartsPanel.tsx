@@ -14,7 +14,7 @@ import { PartSymbol } from './Symbols';
 /** The parts, sorted by what they do on the bench rather than by when they were unlocked. */
 const GROUPS: { name: string; ids: PartId[] }[] = [
   { name: 'Wiring', ids: ['wire', 'resistor'] },
-  { name: 'Lights, sound and motion', ids: ['led', 'rgb', 'buzzer', 'servo'] },
+  { name: 'Lights, sound and motion', ids: ['led', 'rgb', 'lcd', 'buzzer', 'servo'] },
   { name: 'Switches and controls', ids: ['button', 'slide', 'knob', 'joystick', 'tilt', 'reed', 'pad'] },
   { name: 'Sensors', ids: ['ldr', 'temp', 'sonar', 'pir', 'ir', 'soil', 'water', 'gas', 'flame'] },
 ];
@@ -23,7 +23,7 @@ const DRAWING: Record<PartId, string> = {
   wire: 'wire', resistor: 'resistor', led: 'led', buzzer: 'buzzer', servo: 'servo',
   button: 'button', knob: 'knob', ldr: 'ldr', temp: 'temp', sonar: 'sonar', pad: 'touch',
   rgb: 'rgb', slide: 'slide', tilt: 'tilt', reed: 'reed', joystick: 'joystick',
-  pir: 'pir', ir: 'ir', soil: 'soil', water: 'water', gas: 'gas', flame: 'flame',
+  pir: 'pir', ir: 'ir', soil: 'soil', water: 'water', gas: 'gas', flame: 'flame', lcd: 'lcd',
 };
 
 type LedName = keyof typeof LED_COLORS;

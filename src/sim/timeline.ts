@@ -1,5 +1,6 @@
 /* A record of what the board's pins were doing over time, so the student can scrub back through a run. */
 import type { Drive } from './circuit';
+import type { LcdState } from './lcd';
 
 /** The pins, the notes and the on-screen inputs at one moment, and the line of the sketch that was about to run. */
 export interface Frame {
@@ -11,12 +12,14 @@ export interface Frame {
   /** The angle sent on each pin that has a servo attached. Frames recorded before servos existed have none. */
   servos?: Record<number, number>;
   inputs: Record<string, number>;
+  /** What each LCD with power holds. Frames without an LCD on the bench have none. */
+  lcd?: Record<string, LcdState>;
 }
 
 export const MAX_FRAMES = 1500;
 
 const same = (a: Frame, b: Frame) =>
-  a.line === b.line && a.t === b.t && JSON.stringify(a.drive) === JSON.stringify(b.drive) && JSON.stringify(a.tones) === JSON.stringify(b.tones) && JSON.stringify(a.servos) === JSON.stringify(b.servos);
+  a.line === b.line && a.t === b.t && JSON.stringify(a.drive) === JSON.stringify(b.drive) && JSON.stringify(a.tones) === JSON.stringify(b.tones) && JSON.stringify(a.servos) === JSON.stringify(b.servos) && JSON.stringify(a.lcd) === JSON.stringify(b.lcd);
 
 /** Adds a frame unless it repeats the last one, and forgets the oldest frames beyond the ceiling. */
 export function pushFrame(frames: Frame[], f: Frame): void {

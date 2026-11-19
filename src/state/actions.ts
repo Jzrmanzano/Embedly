@@ -320,8 +320,8 @@ export function pickTool(tool: Tool | null) {
   const same = tool && get().tool?.kind === tool.kind && get().tool?.color === tool.color && get().tool?.ohms === tool.ohms && get().tool?.sub === tool.sub;
   if (!tool || same) { set({ tool: null, pending: null, point: null }); return; }
   set(s => ({ tool, pending: null, hot: null, panels: isPhone() ? closePanelIn(s.panels, 'parts') : s.panels }));   // on a phone the drawer would cover the bench
-  if (tool.kind === 'pad') {
-    const it = makeItem(tool, benchOf(get()), 'PAD');
+  if (tool.kind === 'pad' || tool.kind === 'lcd') {   // parts that lie at a place of their own on the table go there at once
+    const it = makeItem(tool, benchOf(get()), tool.kind === 'pad' ? 'PAD' : 'LCD');
     const err = placementError(get().board, benchOf(get()), it);
     if (err) say('warn', err, 6000); else addItem(it);
     set({ tool: null });
@@ -370,7 +370,7 @@ function firstPointError(name: string): string | null {
 export function placeTyped(text: string): string | null {
   const s = get(), tool = s.tool;
   if (!tool) return 'Choose a part first.';
-  const words = text.split(/[\s,]+/).filter(Boolean), want = TWO_POINT.includes(tool.kind) ? 2 : tool.kind === 'pad' ? 0 : 1;
+  const words = text.split(/[\s,]+/).filter(Boolean), want = TWO_POINT.includes(tool.kind) ? 2 : tool.kind === 'pad' || tool.kind === 'lcd' ? 0 : 1;
   if (words.length !== want) return want === 2 ? 'Type two points, such as e10 e11.' : 'Type one hole, such as d24.';
   const pts = words.map(w => parseTerminal(s.board, w, benchOf(s)));
   const bad = pts.findIndex(p => !p);

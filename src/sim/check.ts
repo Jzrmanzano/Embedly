@@ -44,6 +44,8 @@ export interface Sample {
   servos: number[];
   /** Everything the sketch has printed so far. */
   serial: string;
+  /** What the first LCD on the bench shows: its two lines, one under the other. Empty when there is no LCD. */
+  lcd: string;
 }
 export interface Trace {
   ms: number;
@@ -52,6 +54,7 @@ export interface Trace {
   ledColors: number[];
   buzzerCount: number;
   servoCount: number;
+  lcdCount: number;
   /** Why the sketch stopped early, in words for the student. */
   error: string | null;
   /** The sketch kept running without ever waiting. */
@@ -81,19 +84,20 @@ export async function observe(board: BoardId, items: Item[], code: string, plan:
   const frames: Frame[] = [], sigs: string[] = [], serial: { t: number; text: string }[] = [], burnt: string[] = [];
   const ledIds = items.flatMap((it, k) => (it.t === 'led' ? [itemId(it, k)] : [])), buzzIds = items.flatMap((it, k) => (it.t === 'buzzer' ? [itemId(it, k)] : []));
   const ledColors = items.flatMap(it => (it.t === 'led' ? [it.color] : [])), servoIds = items.flatMap((it, k) => (it.t === 'servo' ? [itemId(it, k)] : []));
+  const lcdIds = items.flatMap((it, k) => (it.t === 'lcd' ? [itemId(it, k)] : []));
   let hw!: VirtualHW, steps = 0, passes = 0, timedOut = false, error: string | null = null;
   hw = makeHW(b, items, () => inputsAt(items, plan, hw.elapsed()), text => serial.push({ t: hw.elapsed(), text }), {
     virtualClock: true,
     onBurn: id => burnt.push(id),
     onChange: () => {   // a frame only when the pins or notes are different from the last one
-      const f = hw.snapshot(), sig = JSON.stringify([f.drive, f.tones, f.servos]);
+      const f = hw.snapshot(), sig = JSON.stringify([f.drive, f.tones, f.servos, f.lcd]);
       if (sig !== sigs[sigs.length - 1] && frames.length < MAX_FRAMES) { frames.push(f); sigs.push(sig); }
     },
   });
   hw.skipDelays = true;
   let yields = 0;
   hw.pause = () => (++yields % 25 === 0 ? new Promise<void>(r => setTimeout(r, 0)) : Promise.resolve());   // let the page breathe now and then
-  frames.push(hw.snapshot()); sigs.push(JSON.stringify([frames[0].drive, frames[0].tones, frames[0].servos]));
+  frames.push(hw.snapshot()); sigs.push(JSON.stringify([frames[0].drive, frames[0].tones, frames[0].servos, frames[0].lcd]));
   const ctl: RunControl = {
     stop: false,
     onLoop() { hw.advance(5); passes++; if (hw.elapsed() >= ms) ctl.stop = true; },   // a pass of loop() takes a moment, so a sketch that only polls still lets time move on
@@ -128,7 +132,7 @@ export async function observe(board: BoardId, items: Item[], code: string, plan:
       const r = makeReadout(b, analysis, { ...frames[i], inputs }, []), sol = r.circuit;
       s = {
         leds: ledIds.map(id => r.ledGlow(id)), duties: ledIds.map(id => sol.ledDuty(id)), builtin: r.builtinGlow,
-        sound: Math.max(0, ...buzzIds.map(id => r.buzzFreq(id))), servos: servoIds.map(id => r.servoAngle(id)),
+        sound: Math.max(0, ...buzzIds.map(id => r.buzzFreq(id))), servos: servoIds.map(id => r.servoAngle(id)), lcd: lcdIds.length ? r.lcd(lcdIds[0]).lines.join('\n') : '',
       };
       cache.set(key, s);
     }
@@ -136,7 +140,7 @@ export async function observe(board: BoardId, items: Item[], code: string, plan:
   };
   const samples = frames.map(f => at(f.t));
   return {
-    ms, ledCount: ledIds.length, ledColors, buzzerCount: buzzIds.length, servoCount: servoIds.length, error, timedOut, burnt, shorted, samples, at,
+    ms, ledCount: ledIds.length, ledColors, buzzerCount: buzzIds.length, servoCount: servoIds.length, lcdCount: lcdIds.length, error, timedOut, burnt, shorted, samples, at,
     window: (from, to) => [at(from), ...frames.filter(f => f.t > from && f.t <= to).map(f => at(f.t))],
   };
 }
@@ -167,6 +171,8 @@ export interface Expect {
   green?: boolean;
   /** The servo points somewhere in this range of degrees. */
   servo?: [min: number, max: number];
+  /** What the LCD shows, its two lines one under the other. */
+  lcd?: RegExp;
 }
 export interface Phase {
   /** The situation, finishing the sentence "When …" in the messages. */
@@ -216,6 +222,10 @@ function judgePhase(tr: Trace, p: Phase, start: number, end: number): string | n
       if (e.sound && !seen) return `${when}, the buzzer should have sounded, but it stayed silent.`;
       if (!e.sound && seen) return `${when}, the buzzer should stay silent, but it sounded.`;
     } else if (soundOn(last) !== e.sound) return `${when}, the buzzer should be ${e.sound ? 'sounding' : 'silent'}, but it was ${e.sound ? 'silent' : 'sounding'}.`;
+  }
+  if (e.lcd) {
+    if (tr.lcdCount === 0) return 'I could not find an LCD on your bench.';
+    if (!e.lcd.test(last.lcd)) return `${when}, the LCD should show something like ${e.lcd}, but it showed "${last.lcd.split('\n').map(l => l.trimEnd()).join(' / ')}".`;
   }
   if (e.serial && !e.serial.test(last.serial)) return `${when}, the Serial Monitor should show something like ${e.serial}, but it did not.`;
   if (e.duty) {

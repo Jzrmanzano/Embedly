@@ -5,6 +5,7 @@ import * as T from 'three';
 import { BOARDS, ITEM_INFO } from '../data/boards';
 import { setTone } from '../sim/audio';
 import { RGB_CHANNELS } from '../sim/circuit';
+import { DARK_LCD } from '../sim/lcd';
 import { beginMove, currentReadout, finishMove, isWireEnd, moveTo, pressPoint, releasePoint, selectHot, setPoint, setProbe } from '../state/actions';
 import { allTerminals, movedWire } from '../state/bench';
 import { benchOf, burntOf, keyOf, missionOf, useLab } from '../state/store';
@@ -187,6 +188,7 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
       if (it.t === 'wire') world.set(id, now ? now.circuit.wireAmps(id) : 0);
       if (it.t === 'buzzer') { const f = now ? now.buzzFreq(id) : 0; world.set(id, f); freq ||= f; }
       if (it.t === 'servo' && now) world.set(id, now.servoAngle(id));   // an unpowered or stopped servo stays where it was
+      if (it.t === 'lcd') world.lcd(id, now ? now.lcd(id) : DARK_LCD);   // a stopped sketch leaves the board, and so the display, without power
     });
     for (const id in s.inputs) world.set(id, s.inputs[id]);
     setTone(s.sound && !s.paused && s.cursor == null ? freq : 0);

@@ -3,6 +3,7 @@ import { ITEM_INFO } from '../data/boards';
 import { ohmsLabel } from '../data/resistor';
 import { view } from '../scene/view';
 import { analyze } from '../sim/circuit';
+import { DARK_LCD, type LcdView } from '../sim/lcd';
 import { cancelTool, currentReadout, dismissNotice, escapePanel, flipItem, moveWireTyped, placeTyped, removeItem, requestRun, resumeRun, selectHot, setHelp, setInput, setNav, showGuide, stepOnce, stopRun, toggleLabels, togglePanel, toggleSound, redo, undo } from '../state/actions';
 import { TWO_POINT, type ToolKind } from '../state/bench';
 import { benchOf, boardOf, missionOf, useLab } from '../state/store';
@@ -58,6 +59,7 @@ const STEPS: Record<ToolKind, [string, string?]> = {
   contact: ['Click the hole for one leg of the switch.', 'Now click the hole for its other leg. It has no front or back.'],
   module: ['Click the hole for the sensor\'s left pin (+). It uses three columns in a row: +, OUT and GND.'],
   joy: ['Click the hole for the joystick\'s left pin (GND). It uses five columns in a row: GND, +, VRx, VRy and SW.'],
+  lcd: ['The LCD lies on the table in front of the bench. Wire its four pins: GND, VCC to 5V, SDA and SCL.'],
 };
 
 /** What to do next with the chosen part. It floats over the 3D view, so showing it never moves the bench under the pointer. */
@@ -166,6 +168,7 @@ function nameOf(point: string): string {
   if ((m = /^U:(\d+)$/.exec(point))) return `Pin ${m[1]}`;
   if ((m = /^[UE]:(.+)$/.exec(point))) return `Pin ${m[1].replace('GNDf', 'GND').replace(/GND[2b]/, 'GND')}`;
   if ((m = /^([TB])([+-])/.exec(point))) return `${m[2] === '+' ? 'Plus' : 'Minus'} rail, ${m[1] === 'T' ? 'far' : 'near'} side`;
+  if ((m = /^LCD:(.+)$/.exec(point))) return `LCD pin ${m[1]}`;
   return point === 'PAD' ? 'Touch pad' : `Hole ${point}`;
 }
 
@@ -227,6 +230,35 @@ function Slider({ id, label, range = [0, 100], unit }: { id: string; label: stri
       <input type="range" min={lo} max={hi} value={shown} onChange={e => setInput(id, raw ? +e.target.value : +e.target.value / 100)} />
       <output>{`${shown}${unit ?? '%'}`}</output>
     </label>
+  );
+}
+
+/** A flat copy of what each LCD on the bench shows: the 3D display is small at the usual zoom, and this one is text a screen reader can read. */
+function LcdScreens() {
+  const ids = useLab(s => benchOf(s).flatMap((it, k) => (it.t === 'lcd' ? [itemId(it, k)] : [])).join(' '));
+  return ids ? <>{ids.split(' ').map(id => <LcdScreen key={id} id={id} />)}</> : null;
+}
+function LcdScreen({ id }: { id: string }) {
+  const [v, setV] = useState<LcdView>(DARK_LCD);
+  useEffect(() => {   // the display changes with the running sketch, outside the store, so look each frame and redraw only on a change
+    let raf = 0, key = '';
+    const look = () => {
+      const now = currentReadout()?.lcd(id) ?? DARK_LCD, k = JSON.stringify(now);
+      if (k !== key) { key = k; setV(now); }
+      raf = requestAnimationFrame(look);
+    };
+    look();
+    return () => cancelAnimationFrame(raf);
+  }, [id]);
+  const said = !v.powered ? 'nothing: it has no power' : v.blocks ? 'a row of blocks: it has power, but the sketch has not reached it' : v.lines.map(l => l.trimEnd()).filter(Boolean).join(' / ') || 'nothing';
+  return (
+    <div className={`lcd-screen ${v.powered ? (v.light ? 'lit' : 'unlit') : 'off'}`} role="img" aria-label={`The LCD shows ${said}${v.powered && !v.light ? ', with the backlight off' : ''}`}>
+      {v.lines.map((line, r) => (
+        <div key={r} className="lcd-row" aria-hidden="true">
+          {Array.from(line, (ch, c) => <span key={c} className={v.cursor && v.cursor.row === r && v.cursor.col === c ? (v.cursor.blink ? 'cur blink' : 'cur') : undefined}>{ch === ' ' ? ' ' : ch}</span>)}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -346,6 +378,7 @@ export function Stage() {
             <Checks />
           </div>
           <Controls />
+          <LcdScreens />
           <Help />
         </div>
       </div>

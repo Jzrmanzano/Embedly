@@ -159,6 +159,16 @@ export const PINOUTS: Record<PartKind, Pinout> = {
     ],
     tip: 'At rest both readings sit near the middle (about 512 on the Uno, 2048 on the ESP32), never exactly, so leave a little room around it in your sketch.',
   },
+  lcd: {
+    title: 'LCD display (16×2, I2C backpack)',
+    legs: [
+      { name: 'GND', tone: 'minus', note: 'Ground. Wire it to GND.' },
+      { name: 'VCC', tone: 'plus', note: 'Power. It needs 5 V: 5V on the Uno, VIN on the ESP32.' },
+      { name: 'SDA', tone: 'signal', note: 'The data line. Wire it to the board\'s SDA pin: A4 on the Uno (or SDA by AREF), D21 on the ESP32.' },
+      { name: 'SCL', tone: 'signal', note: 'The clock line. Wire it to the board\'s SCL pin: A5 on the Uno (or SCL by AREF), D22 on the ESP32.' },
+    ],
+    tip: 'It answers at address 0x27, the number the sketch gives it. A display that lights up with only a row of blocks has power but has not heard from the sketch: check SDA, SCL and the address.',
+  },
   pir: {
     title: 'Motion sensor (PIR, HC-SR501)',
     legs: [

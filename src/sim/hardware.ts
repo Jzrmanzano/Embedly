@@ -2,6 +2,7 @@ import type { Board, Item } from '../types';
 import { analyze, LED_BURN_AMPS, PIN_MAX_AMPS, RGB_CHANNELS, SERVO_MIN_VOLTS, type Analysis, type Drive, type Solution } from './circuit';
 import type { Hardware } from './interpreter';
 import type { Frame } from './timeline';
+import { applyLcd, freshLcd, LCD_ADDRESS, lcdView, type LcdState, type LcdView } from './lcd';
 
 export interface HWHooks {
   /** LEDs that already burnt out on this bench. They stay open circuits. */
@@ -23,15 +24,18 @@ export interface Readout {
   builtinGlow: number;
   /** The angle a servo is being told to hold, or -1 when it gets no signal or no power. */
   servoAngle(id: string): number;
+  /** What an LCD shows. */
+  lcd(id: string): LcdView;
 }
 
 /** How much of each 20 ms frame a servo pulse is high: 0.5 ms for 0° up to 2.5 ms for 180°. */
 const servoDuty = (angle: number) => (0.5 + (angle / 180) * 2) / 20;
 
-function readoutOf(board: Board, analysis: Analysis, circuit: Solution, drive: (pin: number) => Drive, tones: Record<number, number>, servos: Record<number, number>): Readout {
+function readoutOf(board: Board, analysis: Analysis, circuit: Solution, drive: (pin: number) => Drive, tones: Record<number, number>, servos: Record<number, number>, lcds: Record<string, LcdState>): Readout {
   const d = drive(board.builtin);
   return {
     circuit,
+    lcd: id => lcdView(lcds[id] ?? null, analysis.lcdBus(id).powered),
     servoAngle: id => { const p = analysis.servoPin(id); return p != null && p in servos && circuit.servoVolts(id) >= SERVO_MIN_VOLTS ? servos[p] : -1; },
     ledGlow: id => circuit.ledGlow(id),
     buzzFreq: id => (circuit.buzzVolts(id) < 1 ? 0 : Math.max(0, ...circuit.pinsDriving(id).map(p => tones[p] || 0))),
@@ -42,7 +46,7 @@ function readoutOf(board: Board, analysis: Analysis, circuit: Solution, drive: (
 /** The board as it was at a recorded frame. */
 export function makeReadout(board: Board, analysis: Analysis, frame: Frame, burnt: Iterable<string> = []): Readout {
   const off: Drive = { mode: 'in', level: 0 }, drive = (p: number): Drive => (frame.tones[p] ? { mode: 'out', level: 1 } : frame.drive[p] ?? off);
-  return readoutOf(board, analysis, analysis.solve(drive, frame.inputs, burnt), drive, frame.tones, frame.servos ?? {});
+  return readoutOf(board, analysis, analysis.solve(drive, frame.inputs, burnt), drive, frame.tones, frame.servos ?? {}, frame.lcd ?? {});
 }
 
 export interface VirtualHW extends Hardware {
@@ -75,6 +79,7 @@ export interface VirtualHW extends Hardware {
   analysis: Analysis;
   /** What has been typed into the Serial Monitor and not read yet, one character code each. */
   serialIn: number[];
+  lcd(addr: number, op: string, args?: number[]): void;
 }
 
 /** The pins of a virtual board, connected through the student's wiring to the parts of one circuit. `inputs` reads the on-screen button, knob and wall. */
@@ -117,6 +122,9 @@ export function makeHW(board: Board, circuit: Item[], inputs: () => Record<strin
   const find = <T extends Item['t']>(t: T, test: (it: Extract<Item, { t: T }>) => boolean) =>
     circuit.find((it): it is Extract<Item, { t: T }> => it.t === t && test(it as Extract<Item, { t: T }>));
   const ledIds = circuit.filter(it => it.t === 'led').map(it => (it as Extract<Item, { t: 'led' }>).id);
+  /** The LCDs on the bench that have power, each as it shows now. One without power has no state: it starts afresh when it gets power. */
+  const lcds: Record<string, LcdState> = {};
+  for (const it of circuit) if (it.t === 'lcd' && analysis.lcdBus(it.id).powered) lcds[it.id] = freshLcd();
 
   const hw: VirtualHW = {
     consts: board.consts, tones, servos, print, analysis, line: 0, skipDelays: false, serialIn: [],
@@ -163,9 +171,14 @@ export function makeHW(board: Board, circuit: Item[], inputs: () => Record<strin
       return Math.max(0, ...now.pinsDriving(id).map(p => tones[p] || 0));
     },
     circuit: circuitNow,
-    readout: () => readoutOf(board, analysis, circuitNow(), drive, tones, servos),
+    readout: () => readoutOf(board, analysis, circuitNow(), drive, tones, servos, lcds),
+    lcd(addr, op, args = []) {   // only a display with power, on the I2C pins and at the address the sketch uses hears it
+      let heard = false;
+      for (const id of Object.keys(lcds)) if (addr === LCD_ADDRESS && analysis.lcdBus(id).wired) { applyLcd(lcds[id], op, args); heard = true; }
+      if (heard) hooks.onChange?.();
+    },
     snapshot: () => {
-      const pins = new Set([...Object.keys(mode), ...Object.keys(level), ...Object.keys(tones)].map(Number)), snap: Frame = { t: hw.now(), line: hw.line, drive: {}, tones: { ...tones }, servos: { ...servos }, inputs: { ...inputs() } };
+      const pins = new Set([...Object.keys(mode), ...Object.keys(level), ...Object.keys(tones)].map(Number)), snap: Frame = { t: hw.now(), line: hw.line, drive: {}, tones: { ...tones }, servos: { ...servos }, inputs: { ...inputs() }, ...(Object.keys(lcds).length ? { lcd: structuredClone(lcds) } : {}) };
       for (const p of pins) snap.drive[p] = raw(p);
       return snap;
     },

@@ -19,6 +19,8 @@ export interface Hardware {
   print(text: string): void;
   /** What has been typed into the Serial Monitor and not read yet, one character code each, oldest first. Serial.read() takes from the front. */
   serialIn?: number[];
+  /** Sends a LiquidCrystal_I2C command to whatever display answers at this address on the I2C pins. */
+  lcd?(addr: number, op: string, args?: number[]): void;
 }
 export interface RunControl {
   stop: boolean;
@@ -39,7 +41,7 @@ type Tok =
 type IdTok = { t: 'id'; v: string; line: number };
 
 /** `chr`: a plain char, which prints as the character it holds (an unsigned char or a byte prints as a number, as on a real board). */
-interface Ty { float: boolean; str: boolean; isVoid: boolean; obj?: 'Servo'; chr?: boolean }
+interface Ty { float: boolean; str: boolean; isVoid: boolean; obj?: 'Servo' | 'LCD'; chr?: boolean }
 type Expr =
   | { k: 'num'; v: number; f?: boolean }
   | { k: 'str'; v: string }
@@ -58,7 +60,7 @@ type Expr =
   | { k: 'mcall'; obj: Expr; name: string; args: Expr[]; line: number };
 type CallExpr = Extract<Expr, { k: 'call' }>;
 type McallExpr = Extract<Expr, { k: 'mcall' }>;
-interface VarDecl { name: string; line: number; arr?: boolean; size?: Expr; init?: Expr; list?: Expr[] }
+interface VarDecl { name: string; line: number; arr?: boolean; size?: Expr; init?: Expr; list?: Expr[]; ctor?: Expr[] }
 type Stmt =
   | { k: 'block'; body: Stmt[] }
   | { k: 'empty' } | { k: 'break' } | { k: 'continue' }
@@ -75,14 +77,17 @@ export interface Program { globals: DeclStmt[]; funcs: Map<string, Func> }
 
 /** A Servo object: the pin it is attached to (-1 when it is not) and the last angle written to it. */
 interface ServoObj { servo: true; pin: number; angle: number }
-type Val = number | string | Val[] | ServoObj;
+/** A LiquidCrystal_I2C display as the sketch knows it: the address it talks to, its size, and whether the sketch has asked for the backlight. */
+interface LcdObj { lcd: true; addr: number; cols: number; rows: number; light: boolean }
+type Val = number | string | Val[] | ServoObj | LcdObj;
 interface Rec { float: boolean; str: boolean; chr?: boolean; v: Val }
 const isServo = (v: unknown): v is ServoObj => typeof v === 'object' && v !== null && !Array.isArray(v) && (v as ServoObj).servo === true;
+const isLcd = (v: unknown): v is LcdObj => typeof v === 'object' && v !== null && !Array.isArray(v) && (v as LcdObj).lcd === true;
 /** Servo.write() takes degrees but, like the real library, treats big numbers as a pulse width in microseconds. */
 const SERVO_MIN_US = 544, SERVO_MAX_US = 2400;
 const usToDeg = (us: number) => Math.round(Math.min(180, Math.max(0, ((us - SERVO_MIN_US) * 180) / (SERVO_MAX_US - SERVO_MIN_US))));
 
-const TYPES = new Set('int long short float double bool boolean byte char void unsigned signed const static volatile String uint8_t uint16_t uint32_t int8_t int16_t int32_t size_t word Servo'.split(' '));
+const TYPES = new Set('int long short float double bool boolean byte char void unsigned signed const static volatile String uint8_t uint16_t uint32_t int8_t int16_t int32_t size_t word Servo LiquidCrystal_I2C LiquidCrystal'.split(' '));
 const FLOATS = new Set(['float', 'double']);
 const FLOAT_FN = new Set(['sqrt', 'pow', 'sin', 'cos', 'tan']);
 const MIXED_FN = new Set(['min', 'max', 'abs', 'constrain']);
@@ -127,9 +132,9 @@ function lex(src: string, line0 = 1): { toks: Tok[]; lastLine: number } {
   return { toks, lastLine: line };
 }
 
-/** "LiquidCrystal lcd;" and the like: a library object the simulator does not have. */
+/** "Adafruit_NeoPixel strip;" and the like: a library object the simulator does not have. */
 const unknownType = (name: string, line: number) =>
-  new SimError(`"${name}" is not a type this simulator knows. Check the spelling and capital letters. The only library object it has is Servo.`, line);
+  new SimError(`"${name}" is not a type this simulator knows. Check the spelling and capital letters. The library objects it has are Servo and LiquidCrystal_I2C.`, line);
 
 export function parse(src: string): Program {
   const { toks, lastLine } = lex(src);
@@ -159,6 +164,8 @@ export function parse(src: string): Program {
       const w = toks[i++].v as string;
       if (FLOATS.has(w)) ty.float = true; if (w === 'String') ty.str = true; if (w === 'void') ty.isVoid = true; if (w === 'Servo') ty.obj = 'Servo';
       if (w === 'char') ty.chr = true; if (w === 'unsigned') unsigned = true;
+      if (w === 'LiquidCrystal_I2C') ty.obj = 'LCD';
+      if (w === 'LiquidCrystal') throw new SimError('This simulator has the I2C display, with four wires: use #include <LiquidCrystal_I2C.h> and LiquidCrystal_I2C lcd(0x27, 16, 2);', toks[i - 1].line);
     }
     while (isOp('*') || isOp('&')) { i++; if (!ty.obj) ty.str = true; }   // a Servo& parameter is still the Servo itself
     if (unsigned || ty.str) ty.chr = false;   // an unsigned char is a small number, and a char* is text
@@ -172,6 +179,10 @@ export function parse(src: string): Program {
       if (eat('=')) {
         if (eat('{')) { v.list = []; while (!isOp('}')) { v.list.push(assign()); if (!eat(',')) break; } need('}'); }
         else v.init = assign();
+      } else if (isOp('(') && ty.obj === 'LCD') {   // LiquidCrystal_I2C lcd(0x27, 16, 2);
+        i++; v.ctor = [];
+        while (!isOp(')')) { v.ctor.push(assign()); if (!eat(',')) break; }
+        need(')');
       } else if (isOp('(')) throw new SimError(`Objects like "${v.name}(...)" are not supported in this simulator yet`, v.line);
       vars.push(v);
       if (!eat(',')) break;
@@ -286,7 +297,7 @@ export function parse(src: string): Program {
     if (peek().t === 'id' && peek(1).t === 'id' && !isType()) throw unknownType(peek().v as string, peek().line);
     if (!isType()) throw new SimError(`Expected a declaration such as "int x = 0;" or a function such as "void setup() { }" but found ${show(peek())}`, peek().line);
     const ty = readType(), name = ident();
-    if (isOp('(')) {
+    if (isOp('(') && ty.obj !== 'LCD') {   // a function, except that "LiquidCrystal_I2C lcd(0x27, 16, 2);" makes a display
       need('('); const params: Func['params'] = [];
       while (!isOp(')')) { if (isId('void') && isOp(')', 1)) { i++; break; } const pt = readType(); const pn = ident(); if (eat('[')) need(']'); params.push({ name: pn.v, ty: pt }); if (!eat(',')) break; }
       need(')');
@@ -347,6 +358,7 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
     if (typeof v === 'string') return v;
     if (Array.isArray(v)) return '[array]';
     if (isServo(v)) return '[Servo]';
+    if (isLcd(v)) return '[LCD]';
     if (n && isC(n, env)) return String.fromCharCode(v);
     if (n && isF(n, env)) return Number(v).toFixed(digits == null ? 2 : (digits as number));
     return String(Math.trunc(v));
@@ -376,7 +388,7 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
   /** The String methods that change the String itself and give nothing back, as in Arduino. */
   const CHANGES_STRING = new Set(['trim', 'toLowerCase', 'toUpperCase']);
   const coerce = (rec: { float: boolean; str: boolean }, v: Val): Val => {
-    if (isServo(v)) return v;
+    if (isServo(v) || isLcd(v)) return v;
     if (rec.str) return typeof v === 'string' ? v : String(v);
     if (typeof v === 'string') return v;
     if (rec.float) return Number(v);
@@ -549,6 +561,30 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
       }
       throw err(`A Servo has no ".${n.name}()". It has attach(), write(), read(), attached() and detach().`, n.line);
     }
+    if (isLcd(v)) {
+      const send = (op: string, args: number[] = []) => hw.lcd?.(v.addr, op, args);
+      const num = (k: number) => { if (typeof a[k] !== 'number') throw err(`.${n.name}() needs ${k + 1} number(s) inside the brackets`, n.line); return a[k] as number; };
+      const codes = (text: string) => Array.from(text, ch => ch.charCodeAt(0));
+      switch (n.name) {
+        case 'init': case 'begin': send('init', [v.light ? 1 : 0]); return 0;
+        case 'backlight': v.light = true; send('light', [1]); return 0;
+        case 'noBacklight': v.light = false; send('light', [0]); return 0;
+        case 'setBacklight': v.light = !!num(0); send('light', [v.light ? 1 : 0]); return 0;
+        case 'clear': case 'home': case 'display': case 'noDisplay': case 'blink': case 'noBlink': case 'noCursor': send(n.name); return 0;
+        case 'cursor': send('showCursor'); return 0;
+        case 'scrollDisplayLeft': send('scrollLeft'); return 0;
+        case 'scrollDisplayRight': send('scrollRight'); return 0;
+        case 'setCursor': send('cursor', [num(0), Math.min(num(1), v.rows - 1)]); return 0;
+        case 'print': case 'println': {   // the same text as Serial.print would send. println adds "\r\n", which a display shows as two junk characters
+          const text = (n.args.length ? fmt(a[0], n.args[0], env, a[1]) : '') + (n.name === 'println' ? '\r\n' : '');
+          send('write', codes(text));
+          return text.length;
+        }
+        case 'write': { const c = typeof a[0] === 'string' ? codes(a[0]) : [num(0)]; send('write', c); return c.length; }
+        case 'createChar': throw err('lcd.createChar() is not supported in this simulator yet', n.line);
+      }
+      throw err(`A LiquidCrystal_I2C display has no ".${n.name}()". It has init(), backlight(), noBacklight(), clear(), home(), setCursor(), print(), write(), cursor(), noCursor(), blink(), noBlink(), display(), noDisplay(), scrollDisplayLeft() and scrollDisplayRight().`, n.line);
+    }
     if (typeof v === 'string') {
       const text = (k: number): string => { const x = a[k]; return typeof x === 'string' ? x : typeof x === 'number' ? String.fromCharCode(x) : ''; };   // given as text, or as one character
       const num = (k: number) => { if (typeof a[k] !== 'number') throw err(`.${n.name}() needs a number inside the brackets`, n.line); return a[k] as number; };
@@ -579,6 +615,16 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
     for (const d of n.vars) {
       const rec: Rec = { float: n.ty.float, str: n.ty.str && !d.arr, chr: !!n.ty.chr, v: 0 };
       const fresh = (): ServoObj => ({ servo: true, pin: -1, angle: 90 });   // a new servo starts at 90°, as in the real library
+      if (n.ty.obj === 'LCD') {
+        const how = 'LiquidCrystal_I2C lcd(0x27, 16, 2);';
+        if (d.arr || d.init || d.list) throw err(`A display is made with "${how}": its address, then its columns and rows`, d.line);
+        if (!d.ctor || d.ctor.length < 3) throw err(`LiquidCrystal_I2C needs the display's address, columns and rows, like "${how}"`, d.line);
+        const nums: number[] = [];
+        for (const x of d.ctor.slice(0, 3)) nums.push(Math.trunc((await ev(x, env)) as number));
+        rec.v = { lcd: true, addr: nums[0], cols: nums[1], rows: nums[2], light: false };   // the backlight stays off at init() until backlight() is called, as in the library
+        env.m.set(d.name, rec);
+        continue;
+      }
       if (n.ty.obj) {
         if (d.init || d.list) throw err(`A ${n.ty.obj} is made with "${n.ty.obj} ${d.name};" and set up later with ${d.name}.attach(pin)`, d.line);
         rec.v = d.arr ? Array.from({ length: d.size ? Math.max(0, (await ev(d.size, env)) as number) : 0 }, fresh) : fresh();

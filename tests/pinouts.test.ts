@@ -4,9 +4,10 @@ import { test } from 'node:test';
 import { PARTS } from '../src/data/missions';
 import { PINOUTS } from '../src/data/pinouts';
 import { holesOf, makeItem, toolKind } from '../src/state/bench';
+import { LCD_PINS } from '../src/sim/lcd';
 import { MODULE_KINDS, type PartKind } from '../src/types';
 
-const KINDS: PartKind[] = ['wire', 'led', 'res', 'button', 'pot', 'buzzer', 'sonar', 'pad', 'servo', 'ldr', 'temp', 'rgb', 'slide', 'joy', 'tilt', 'reed', ...MODULE_KINDS];
+const KINDS: PartKind[] = ['wire', 'led', 'res', 'button', 'pot', 'buzzer', 'sonar', 'pad', 'servo', 'ldr', 'temp', 'rgb', 'slide', 'joy', 'tilt', 'reed', 'lcd', ...MODULE_KINDS];
 const tones = (k: PartKind) => PINOUTS[k].legs.map(l => l.tone);
 
 test('every kind of part, and every part in the tray, has a pinout with something to say', () => {
@@ -29,6 +30,8 @@ test('the parts with a + and a − say which leg is which, in the order the simu
   for (const k of MODULE_KINDS) assert.deepEqual(tones(k), ['plus', 'signal', 'minus'], `${k}: +, OUT, GND`);   // the pin in col, col + 1, col + 2
   assert.deepEqual(tones('rgb'), ['signal', 'minus', 'signal', 'signal']);   // red, the shared − leg, green, blue, as rgbLegs
   assert.deepEqual(PINOUTS.joy.legs.map(l => l.name), ['GND', '+', 'VRx', 'VRy', 'SW']);   // as joyLegs
+  assert.deepEqual(PINOUTS.lcd.legs.map(l => l.name), [...LCD_PINS]);   // the names its connection points go by
+  assert.deepEqual(tones('lcd'), ['minus', 'plus', 'signal', 'signal']);
 });
 
 test('the parts with no polarity do not pretend to have one', () => {
@@ -41,7 +44,7 @@ test('leg counts match the legs the bench gives each part', () => {
   for (const k of Object.keys(counts) as PartKind[]) assert.equal(PINOUTS[k].legs.length, counts[k], k);
   for (const id of Object.keys(PARTS) as (keyof typeof PARTS)[]) {   // every part of the tray: as many legs in its pinout as holes it takes on the bench
     const tool = PARTS[id].tool, k = toolKind(tool);
-    if (k === 'button' || k === 'pad') continue;   // a button covers a column no leg goes in, and the pad sits on the table
+    if (k === 'button' || k === 'pad' || k === 'lcd') continue;   // a button covers a column no leg goes in, and the pad and the LCD lie on the table
     assert.equal(PINOUTS[k].legs.length, holesOf(makeItem(tool, [], 'd10', 'd14')).length, `${id}: one pinout leg for each hole`);
   }
 });

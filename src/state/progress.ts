@@ -62,7 +62,7 @@ const FIELDS: Record<Item['t'], { s: string[]; n: string[] }> = {
   pot: { s: ['id', 'row', 'ctl'], n: ['col'] }, buzzer: { s: ['id', 'a', 'b'], n: [] }, sonar: { s: ['id', 'row', 'ctl'], n: ['col'] }, pad: { s: ['id', 'ctl'], n: [] },
   servo: { s: ['id', 'row'], n: ['col'] }, ldr: { s: ['id', 'a', 'b', 'ctl'], n: [] }, temp: { s: ['id', 'row', 'ctl'], n: ['col'] },
   rgb: { s: ['id', 'row'], n: ['col'] }, slide: { s: ['id', 'row', 'ctl'], n: ['col'] }, joy: { s: ['id', 'row', 'ctl'], n: ['col'] },
-  contact: { s: ['id', 'kind', 'a', 'b', 'ctl'], n: [] }, module: { s: ['id', 'kind', 'row', 'ctl'], n: ['col'] },
+  contact: { s: ['id', 'kind', 'a', 'b', 'ctl'], n: [] }, module: { s: ['id', 'kind', 'row', 'ctl'], n: ['col'] }, lcd: { s: ['id'], n: [] },
 };
 /** The kinds a part with a `kind` may be. */
 const KINDS: Partial<Record<Item['t'], readonly string[]>> = { contact: CONTACT_KINDS, module: MODULE_KINDS };

@@ -20,6 +20,7 @@ export const SYMBOLS: Record<string, ReactNode> = {
   tilt: <><path d="M2 18h11M35 18h11" /><rect x="13" y="11" width="22" height="14" rx="7" /><circle cx="28.5" cy="18" r="3.2" className="dot" /></>,
   reed: <><path d="M2 16h8M38 16h8" /><rect x="10" y="9" width="28" height="14" rx="7" /><path d="M13 14.5h13M22 17.5h13" /></>,
   joystick: <><rect x="8" y="22" width="32" height="7" rx="2" /><path d="M24 22V13" /><circle cx="24" cy="8" r="5" /><path d="m5 9-3 3 3 3M43 9l3 3-3 3" /></>,
+  lcd: <><rect x="3" y="5" width="42" height="22" rx="2" /><rect x="8" y="10" width="32" height="12" rx="1" /><path d="M11 14h3M16 14h3M21 14h3M11 18h3M16 18h3" /></>,
   pir: <><path d="M12 26a12 12 0 0 1 24 0z" /><path d="M7 26h34" /><path d="M5 6c3 3 3 8 0 11M43 6c-3 3-3 8 0 11" /></>,
   ir: <><rect x="3" y="9" width="12" height="14" rx="2" /><path d="M15 13h17m-4-3 4 3-4 3M32 21H15m4-3-4 3 4 3" /><path d="M39 4v24" /></>,
   soil: <><path d="M13 3h7v18l-3.5 7L13 21zM28 3h7v18l-3.5 7L28 21z" /><path d="M3 17h6M39 17h6M22 17h4" /></>,

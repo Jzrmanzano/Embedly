@@ -3,6 +3,7 @@
 import * as T from 'three';
 import { ESP_FAR, ESP_HOLES, ESP_NEAR } from '../data/boards';
 import { bands, ohmsLabel } from '../data/resistor';
+import { COLS as LCD_COLS, DARK_LCD, LCD_PINS, type LcdView } from '../sim/lcd';
 import { itemId, kindOf, type BoardId, type Info, type Item } from '../types';
 
 export interface WorldSpec {
@@ -18,6 +19,8 @@ export interface World {
   hots: Hot[];
   /** Drives a part: LED brightness, button pressed, knob position, buzzer frequency, wall distance. */
   set(id: string, value: number): void;
+  /** Shows what an LCD displays. */
+  lcd(id: string, view: LcdView): void;
   highlight(id: string | null): void;
   animate(timeMs: number): void;
   /** Replaces every placed part and wire. LEDs in `burnt` show as burnt out. */
@@ -47,7 +50,7 @@ interface BuiltBoard {
   W: number; D: number; setLed(v: number): void; usbAt: Vec; plug: Vec;
 }
 /** A part as built. `more` holds the setters of a part with more than one on-screen value, by what follows its id (":y", ":sw"). */
-interface Made { g: T.Group; set?: (v: number) => void; more?: Record<string, (v: number) => void>; top?: T.Vector3; burn?: () => void }
+interface Made { g: T.Group; set?: (v: number) => void; more?: Record<string, (v: number) => void>; top?: T.Vector3; burn?: () => void; lcd?: (v: LcdView) => void }
 
 const INK = 0x1b2430, HILITE = 0xe2572b, METAL = 0xc9ced3, GOLD = 0xd9b24a, DARK = 0x23272e;
 const WIRE: Record<string, number> = { red: 0xd6453d, black: 0x2f353d, orange: 0xf08a24, yellow: 0xe8c22e, green: 0x3aa655, blue: 0x3577d4, white: 0xe9ecef, purple: 0x8d5bd1 };
@@ -63,7 +66,8 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
   const world = new T.Group();
   const devs: Record<string, (v: number) => void> = {}, groups: Record<string, T.Group> = {};
   const hots: Hot[] = [], itemAnim: ((t: number) => void)[] = [];
-  let uno: BuiltBoard | null = null, bb: T.Group | null = null, padPos: T.Vector3 | null = null, lit: T.MeshBasicMaterial[] = [];
+  let uno: BuiltBoard | null = null, bb: T.Group | null = null, padPos: T.Vector3 | null = null, lcdPos: T.Vector3 | null = null, lit: T.MeshBasicMaterial[] = [];
+  const lcdDraws: Record<string, (v: LcdView) => void> = {};
 
   /* --- primitives: toon-shaded solids with an ink outline (a slightly larger back-face shell) --- */
   const toon = (color: number, o: Opt = {}) => { const m = new T.MeshToonMaterial({ color, gradientMap: grad }); if (o.glow) { m.emissive.setHex(o.glow); m.emissiveIntensity = o.gi == null ? 1 : o.gi; } return m; };
@@ -234,6 +238,11 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
     if ((m = /^U:(.+)$/.exec(name))) { const p = uno?.anchors[m[1]]; if (!p) throw new Error('Unknown Uno pin ' + name); return new T.Vector3(...p).add(uno!.group.position); }
     if ((m = /^E:(.+)$/.exec(name))) { if (!ESP_HOLES[m[1]]) throw new Error('Unknown ESP32 pin ' + name); return anchor(ESP_HOLES[m[1]]); }
     if (name === 'PAD') return padPos!.clone();
+    if ((m = /^LCD:(\w+)$/.exec(name))) {   // the LCD backpack's header pins, standing up from the tab on its left
+      const i = (LCD_PINS as readonly string[]).indexOf(m[1]);
+      if (i < 0) throw new Error('Unknown LCD pin ' + name);
+      return new T.Vector3(lcdPos!.x - 47.5, 3.2, lcdPos!.z + (i - 1.5) * 2.54);
+    }
     if ((m = /^([TB][+-])(\d+)$/.exec(name))) return new T.Vector3(colX(+m[2]), BBH, RAILZ[m[1]]).add(bb!.position);
     if ((m = /^([a-j])(\d+)$/.exec(name))) return new T.Vector3(colX(+m[2]), BBH, ROWZ[m[1]]).add(bb!.position);
     throw new Error('Unknown connection point ' + name);
@@ -499,8 +508,50 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
     const set = (on: number) => { m.material.emissive.setHex(0xffc27a); m.material.emissiveIntensity = on ? 0.7 : 0; };
     return { g, set, top: new T.Vector3(at.x, 3, at.z) };
   }
+  /** The 16×2 LCD lying on the table: a green board with the display on top, and the backpack's tab on its left holding the four pins.
+      What it shows is drawn on a canvas: the lit (or unlit) glass, a faint box for each character, and the characters. */
+  function mkLcd(): Made {
+    const at = lcdPos!, g = new T.Group(), x = at.x, z = at.z;
+    box(g, x, 0, z, 80, 1.6, 36, 0x1f7a4a);
+    box(g, x, 1.6, z, 71, 7, 25, 0x262b31);
+    box(g, x - 44, 0, z, 12, 1.6, 15, 0x2a62b8);
+    LCD_PINS.forEach((_, i) => box(g, x - 47.5, 1.6, z + (i - 1.5) * 2.54, 0.64, 1.6, 0.64, GOLD, { nh: 1 }));
+    printed(g, 7, 13, 24, 1.62, k => LCD_PINS.forEach((name, i) => k.text(name, 0.4, 6.5 + (i - 1.5) * 2.54, 1.7, { bold: true, align: 'left' })), x - 41.5, z);
+    const cv = document.createElement('canvas'); cv.width = 640; cv.height = 160;
+    const ctx = cv.getContext('2d')!, tex = new T.CanvasTexture(cv); tex.anisotropy = anisotropy;
+    const glass = new T.Mesh(new T.PlaneGeometry(64, 16), new T.MeshBasicMaterial({ map: tex }));
+    glass.rotation.x = -Math.PI / 2; glass.position.set(x, 8.65, z); g.add(glass);
+    let drawn = '', blinkOn = true, last: LcdView = DARK_LCD;
+    const paint = (v: LcdView) => {
+      const key = JSON.stringify(v) + (v.cursor?.blink ? String(blinkOn) : '');
+      if (key === drawn) return;
+      drawn = key;
+      const W = cv.width, H = cv.height, padX = 18, padY = 14, cw = (W - padX * 2) / LCD_COLS, ch = (H - padY * 2) / 2;
+      const ink = v.light ? '#18240c' : '#1b260e';
+      ctx.fillStyle = !v.powered ? '#2c3424' : v.light ? '#a6d13f' : '#56702f';
+      ctx.fillRect(0, 0, W, H);
+      ctx.font = `700 ${Math.round(ch * 0.74)}px "JetBrains Mono", ui-monospace, monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (let r = 0; r < 2; r++) for (let c = 0; c < LCD_COLS; c++) {
+        const cx = padX + c * cw, cy = padY + r * ch, glyph = v.lines[r][c];
+        if (v.powered) { ctx.fillStyle = 'rgba(20, 40, 8, 0.1)'; ctx.fillRect(cx + 2, cy + 3, cw - 4, ch - 6); }
+        ctx.fillStyle = ink;
+        if (glyph === '█') ctx.fillRect(cx + 2, cy + 3, cw - 4, ch - 6);
+        else if (glyph !== ' ') ctx.fillText(glyph, cx + cw / 2, cy + ch / 2 + 1);
+      }
+      if (v.cursor) {
+        const cx = padX + v.cursor.col * cw, cy = padY + v.cursor.row * ch;
+        ctx.fillStyle = ink;
+        if (v.cursor.blink && blinkOn) ctx.fillRect(cx + 2, cy + 3, cw - 4, ch - 6); else ctx.fillRect(cx + 3, cy + ch - 8, cw - 6, 3);
+      }
+      tex.needsUpdate = true;
+    };
+    itemAnim.push(t => { const on = Math.floor(t / 530) % 2 === 0; if (on !== blinkOn) { blinkOn = on; if (last.cursor?.blink) paint(last); } });   // a blinking cursor, about twice a second
+    paint(DARK_LCD);
+    return { g, lcd: v => { last = v; paint(v); }, top: new T.Vector3(x, 16, z) };
+  }
   function make(it: Item, k: number): Made {
     switch (it.t) {
+      case 'lcd': return mkLcd();
       case 'wire': return mkWire(it, k);
       case 'led': return mkLed(it);
       case 'res': return mkRes(it);
@@ -561,6 +612,7 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
   Object.assign(groups, b.parts); devs.builtin = b.setLed;
   if (spec.parts) for (const id of Object.keys(spec.parts)) { const h = b.hot[id]; if (h) addHot(id, spec.parts[id][0], new T.Vector3(...h).add(b.group.position)); }
   padPos = new T.Vector3(bb.position.x + colX(8), 0.8, 46);
+  lcdPos = new T.Vector3(bb.position.x + colX(28), 0, 64);   // in front of the breadboard, clear of the touch pad's place
   const boardHots = hots.length;
 
   /* --- the parts the student placed --- */
@@ -569,7 +621,7 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
   const free = (o: T.Object3D) => o.traverse(c => { if (c instanceof T.Mesh) { c.geometry.dispose(); c.material.map?.dispose(); c.material.dispose(); } });
   function setCircuit(items: Item[], burnt: string[]) {
     placed.forEach(g => { world.remove(g); free(g); });
-    placedIds.forEach(id => { delete devs[id]; delete groups[id]; delete burners[id]; delete tops[id]; });
+    placedIds.forEach(id => { delete devs[id]; delete groups[id]; delete burners[id]; delete tops[id]; delete lcdDraws[id]; });
     placed = []; placedIds = []; itemAnim.length = 0; hots.length = boardHots; burntSet = new Set(burnt); lit = [];
     items.forEach((it, k) => {
       let made: Made;
@@ -578,6 +630,7 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
       made.g.userData.pick = id;
       world.add(made.g); groups[id] = made.g; placed.push(made.g); placedIds.push(id);
       if (made.set) devs[id] = made.set;
+      if (made.lcd) lcdDraws[id] = made.lcd;
       if (made.more) for (const [tail, f] of Object.entries(made.more)) { devs[id + tail] = f; placedIds.push(id + tail); }
       if (made.top) tops[id] = made.top;
       if (made.burn) { burners[id] = made.burn; if (burntSet.has(id)) made.burn(); }
@@ -609,6 +662,7 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
   return {
     group: world, hots,
     set(id, value) { devs[id]?.(value); },
+    lcd(id, view) { lcdDraws[id]?.(view); },
     highlight(id) {
       lit.forEach(m => m.color.setHex(INK));
       lit = [];

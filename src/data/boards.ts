@@ -24,6 +24,7 @@ export const ITEM_INFO: Record<string, Info> = {
   slide: ['Slide switch', 'Joins its middle leg to the left leg or to the right one, and stays where you put it. Use two legs for on and off, or all three to choose between two things.'],
   tilt: ['Tilt switch', 'A small can with a metal ball inside. Standing upright, the ball joins the two legs. Tilted over, it rolls away and the circuit opens. Read it like a button, with INPUT_PULLUP.'],
   reed: ['Reed switch', 'Two thin metal reeds in a glass tube. A magnet nearby pulls them together and joins the two legs: this is how a door sensor knows the door is shut. Read it like a button, with INPUT_PULLUP.'],
+  lcd: ['LCD display (16×2)', 'Two lines of 16 characters, with a backpack on the back that needs only four wires: GND, VCC (5 V), and SDA and SCL to the board\'s I2C pins. The sketch writes to it with the LiquidCrystal_I2C library, at address 0x27.'],
   joy: ['Joystick', 'Two knobs and a button under one stick. VRx follows left and right, VRy follows down and up, each a voltage for an analog pin. Pressing the stick joins SW to GND, so read SW with INPUT_PULLUP.'],
   pir: ['Motion sensor (PIR)', 'Notices the warmth of a person or animal moving in front of it. OUT goes HIGH while it sees movement and LOW when all is still. It needs 5 V (VIN on the ESP32).'],
   ir: ['Obstacle sensor (IR)', 'Shines invisible infrared light and watches for it bouncing back. OUT is HIGH while the way is clear and goes LOW when something is in front of it.'],

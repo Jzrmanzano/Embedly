@@ -33,7 +33,9 @@ export type Item =
   /** A sensor module with three pins in a row: + in `row``col`, OUT one column right, GND two columns right. */
   | { t: 'module'; kind: ModuleKind; id: string; row: string; col: number; ctl: string }
   /** A thumb joystick, five pins in a row: GND in `row``col`, then +, VRx, VRy and SW. Its on-screen controls are kept under its id (left to right), id + ":y" (down to up) and id + ":sw" (pressed). */
-  | { t: 'joy'; id: string; row: string; col: number; ctl: string };
+  | { t: 'joy'; id: string; row: string; col: number; ctl: string }
+  /** A 16×2 character LCD with an I2C backpack. It is too wide for the breadboard, so it lies on the table at a place of its own, and its four pins are wired by name: "LCD:GND", "LCD:VCC", "LCD:SDA", "LCD:SCL". */
+  | { t: 'lcd'; id: string };
 
 /** The colours an LED comes in. */
 export const LED_COLORS = { red: 0xff3b30, green: 0x2ecc40, yellow: 0xffc800, blue: 0x2f7bff, white: 0xf2f6ff } as const;

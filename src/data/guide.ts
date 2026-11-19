@@ -890,6 +890,49 @@ void loop() {
     ],
   },
   {
+    id: 'lcd', group: 'parts', title: 'LCD displays (16×2)', lede: 'Two lines of 16 characters, on four wires.',
+    blocks: [
+      { p: 'A 16×2 LCD shows two lines of 16 characters. On its back sits a small board, the <b>I2C backpack</b>, which lets the board talk to it over two wires, SDA and SCL, instead of six. With power and ground, that makes four.' },
+      { table: [
+        ['GND', 'GND'],
+        ['VCC', '5V on the Uno, VIN on the ESP32. It needs 5 V.'],
+        ['SDA', 'The data line: A4 on the Uno (the pin marked SDA by AREF is the same pin), D21 on the ESP32.'],
+        ['SCL', 'The clock line: A5 on the Uno (or SCL by AREF), D22 on the ESP32.'],
+      ], head: ['Pin', 'Goes to'] },
+      { p: 'I2C is a <b>bus</b>: several parts can share the same two wires, each answering at its own <b>address</b>. This display answers at <code>0x27</code>, and the sketch has to use the same number.' },
+      { code: `#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);   // its address, columns and rows
+
+void setup() {
+  lcd.init();
+  lcd.backlight();          // without this the screen stays dark
+  lcd.print("Hello!");
+}
+
+void loop() {
+  lcd.setCursor(0, 1);      // column 0 of row 1: the start of the second line
+  lcd.print(millis() / 1000);
+  lcd.print(" s");
+  delay(1000);
+}` },
+      { table: [
+        ['<code>lcd.init()</code>', 'Gets the display ready. Once, in <code>setup()</code>.'],
+        ['<code>lcd.backlight()</code>', 'Lights it from behind. <code>init()</code> leaves the light off.'],
+        ['<code>lcd.clear()</code>', 'Empties both lines and goes back to the start.'],
+        ['<code>lcd.setCursor(col, row)</code>', 'Where the next character goes. Both count from 0.'],
+        ['<code>lcd.print(x)</code>', 'Writes text or a number from there on, as <code>Serial.print</code> would.'],
+      ], head: ['Code', 'What it does'] },
+      { list: [
+        '<code>print()</code> only writes over what was there. When a number gets shorter, from 10 to 9, the old last digit stays behind: print a space after it, or <code>clear()</code> first.',
+        'Use <code>print()</code>, never <code>println()</code>. A display has no new line, and <code>println()</code> leaves two junk characters.',
+        'The display has its own set of characters. A "°" typed into the sketch shows as a junk block: the degree sign is <code>lcd.print((char)223);</code>',
+      ] },
+      { tip: 'A display that lights up with a row of blocks along the top has power but has not heard from the sketch. Check that SDA and SCL go to the right pins and are not swapped, and that the address in the sketch is 0x27.' },
+    ],
+  },
+  {
     id: 'touch', group: 'parts', title: 'The touch pad (ESP32)', lede: 'A bare piece of metal that senses a finger.',
     blocks: [
       { p: 'Some ESP32 pins can sense touch with no button at all. Your body holds a little electric charge, and a finger near the metal changes what the pin measures. Wire the pad to a touch pin, such as <b>D4</b>.' },

@@ -1,5 +1,6 @@
 /* The rules of placing parts on the bench: which connection points exist, which are taken, and what a part needs. No 3D and no React in here. */
 import { ESP_HOLES } from '../data/boards';
+import { LCD_PINS, lcdPoint } from '../sim/lcd';
 import { itemId, kindOf, type BoardId, type ContactKind, type Item, type ModuleKind, type PartKind, type WireColor } from '../types';
 
 export type ToolKind = Item['t'];
@@ -32,6 +33,7 @@ export function allTerminals(board: BoardId, items: Item[]): string[] {
   if (board === 'uno') out.push(...UNO_PINS.map(p => 'U:' + p));
   else out.push(...Object.keys(ESP_HOLES).filter(p => p !== 'EN').map(p => 'E:' + p));
   if (items.some(it => it.t === 'pad')) out.push('PAD');
+  if (items.some(it => it.t === 'lcd')) out.push(...LCD_PINS.map(lcdPoint));
   return out;
 }
 
@@ -42,12 +44,12 @@ export function holesOf(it: Item): string[] {
     case 'led': return [it.a, it.k];
     case 'button': return [`e${it.col}`, `e${it.col + 1}`, `e${it.col + 2}`, `f${it.col}`, `f${it.col + 1}`, `f${it.col + 2}`];   // the body covers the middle column too, though no leg goes in it
     case 'pot': case 'servo': case 'temp': case 'sonar': case 'rgb': case 'slide': case 'module': case 'joy': return Array.from({ length: WIDTH[it.t]! }, (_, i) => `${it.row}${it.col + i}`);
-    case 'pad': return [];
+    case 'pad': case 'lcd': return [];   // they lie on the table, not in the breadboard
   }
 }
 
 const NAMES: Record<PartKind, string> = {
-  led: 'LED', res: 'resistor', buzzer: 'buzzer', wire: 'wire', button: 'button', pot: 'knob', sonar: 'distance sensor', pad: 'touch pad', servo: 'servo', ldr: 'light sensor', temp: 'temperature sensor',
+  led: 'LED', res: 'resistor', buzzer: 'buzzer', wire: 'wire', button: 'button', pot: 'knob', sonar: 'distance sensor', pad: 'touch pad', servo: 'servo', ldr: 'light sensor', temp: 'temperature sensor', lcd: 'LCD display',
   rgb: 'RGB LED', slide: 'slide switch', joy: 'joystick', tilt: 'tilt switch', reed: 'reed switch',
   pir: 'motion sensor', ir: 'obstacle sensor', soil: 'soil moisture sensor', water: 'water level sensor', gas: 'gas sensor', flame: 'flame sensor',
 };
@@ -68,12 +70,13 @@ export function placementError(board: BoardId, items: Item[], it: Item): string 
   }
   if (WIDTH[it.t] && 'col' in it && board === 'esp32' && it.col < ESP_FIRST_FREE) return 'That spot is under the ESP32. Use the free holes on the right.';
   if (it.t === 'pad' && items.some(x => x.t === 'pad')) return 'There is only one touch pad.';
+  if (it.t === 'lcd' && items.some(x => x.t === 'lcd')) return 'There is only one LCD display.';
   return null;
 }
 
 /** Points that carry power or ground, so wires to them can be coloured red and black. */
-const isPlus = (n: string) => /^[TB]\+/.test(n) || /^[UE]:(5V|3V3|VIN)$/.test(n);
-const isMinus = (n: string) => /^[TB]-/.test(n) || /^[UE]:GND/.test(n);
+const isPlus = (n: string) => /^[TB]\+/.test(n) || /^[UE]:(5V|3V3|VIN)$/.test(n) || n === lcdPoint('VCC');
+const isMinus = (n: string) => /^[TB]-/.test(n) || /^[UE]:GND/.test(n) || n === lcdPoint('GND');
 const WIRE_CYCLE: WireColor[] = ['orange', 'yellow', 'green', 'blue', 'purple', 'white'];
 
 export function nextId(items: Item[], prefix: string): string {
@@ -116,6 +119,7 @@ export function makeItem(tool: Tool, items: Item[], a: string, b?: string): Item
     case 'joy': return { t: 'joy', id: nextId(items, 'joy'), row, col, ctl: DEFAULT_CTL.joy! };
     case 'contact': { const kind = toolKind(tool) as ContactKind; return { t: 'contact', kind, id: nextId(items, kind), a, b: b!, ctl: DEFAULT_CTL[kind]! }; }
     case 'module': { const kind = toolKind(tool) as ModuleKind; return { t: 'module', kind, id: nextId(items, kind), row, col, ctl: DEFAULT_CTL[kind]! }; }
+    case 'lcd': return { t: 'lcd', id: nextId(items, 'lcd') };
   }
 }
 

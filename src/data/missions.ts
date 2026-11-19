@@ -7,7 +7,7 @@ import { LED_COLORS, type BoardId, type Item } from '../types';
 
 /* --- the parts tray --- */
 export type PartId = 'led' | 'resistor' | 'wire' | 'button' | 'knob' | 'buzzer' | 'sonar' | 'pad' | 'servo' | 'ldr' | 'temp'
-  | 'rgb' | 'slide' | 'tilt' | 'reed' | 'pir' | 'ir' | 'soil' | 'water' | 'gas' | 'flame' | 'joystick';
+  | 'rgb' | 'slide' | 'tilt' | 'reed' | 'pir' | 'ir' | 'soil' | 'water' | 'gas' | 'flame' | 'joystick' | 'lcd';
 /** Every part of the tray. A `studio` part is one no mission unlocks yet: it is in the Open Studio's tray and nowhere else.
     The LED is one part in every colour, and the resistor one part of every value: the drawer picks which, and the tool carries it. */
 export const PARTS: Record<PartId, { label: string; tool: Tool; only?: BoardId; studio?: true }> = {
@@ -27,6 +27,7 @@ export const PARTS: Record<PartId, { label: string; tool: Tool; only?: BoardId; 
   tilt: { label: 'Tilt switch', tool: { kind: 'contact', sub: 'tilt' }, studio: true },
   reed: { label: 'Reed switch', tool: { kind: 'contact', sub: 'reed' } },
   joystick: { label: 'Joystick', tool: { kind: 'joy' }, studio: true },
+  lcd: { label: 'LCD display', tool: { kind: 'lcd' }, studio: true },
   pir: { label: 'Motion sensor', tool: { kind: 'module', sub: 'pir' } },
   ir: { label: 'Obstacle sensor', tool: { kind: 'module', sub: 'ir' } },
   soil: { label: 'Soil moisture', tool: { kind: 'module', sub: 'soil' } },
@@ -45,7 +46,7 @@ export function partIdOf(it: Item): PartId {
     case 'res': return 'resistor';
     case 'pot': return 'knob';
     case 'joy': return 'joystick';
-    case 'rgb': case 'slide': return it.t;
+    case 'rgb': case 'slide': case 'lcd': return it.t;
     case 'contact': case 'module': return it.kind;
     case 'wire': case 'button': case 'buzzer': case 'sonar': case 'pad': case 'servo': case 'ldr': case 'temp': return it.t;
   }
@@ -1287,7 +1288,7 @@ void loop() {
     unlocks: [],
   },
   {
-    id: 'workshop', title: 'Open studio', place: 'Open Studio', hook: 'Free build with every part, open from the start.', map: [75, 93], after: [], sandbox: true, guide: ['circuit', 'breadboard', 'switch', 'loops', 'functions'],
+    id: 'workshop', title: 'Open studio', place: 'Open Studio', hook: 'Free build with every part, open from the start.', map: [75, 93], after: [], sandbox: true, guide: ['circuit', 'breadboard', 'switch', 'loops', 'functions', 'lcd'],
     story: 'The studio is yours: no goal and no checks. <b>Every part is in the tray here</b>, whether or not a mission has unlocked it yet, so you can build and test a project of your own at any time. Wire it, write the sketch, and run it. The missions teach the parts one at a time, and the <b>i</b> on a part in the tray shows its pinout.',
     goal: 'Build anything you like.',
     how: ['Use the tray to add parts and wires. Drag a wire end to move it, and use Step to watch your sketch one line at a time.', 'Point at a hole or pin to read its voltage while the sketch runs.'],
@@ -1974,7 +1975,7 @@ void loop() {
     unlocks: [],
   },
   {
-    id: 'workshop', title: 'Open studio', place: 'Open Studio', hook: 'Free build with every part, open from the start.', map: [75, 93], after: [], sandbox: true, guide: ['circuit', 'breadboard', 'switch', 'loops', 'functions'],
+    id: 'workshop', title: 'Open studio', place: 'Open Studio', hook: 'Free build with every part, open from the start.', map: [75, 93], after: [], sandbox: true, guide: ['circuit', 'breadboard', 'switch', 'loops', 'functions', 'lcd'],
     story: 'The studio is yours: no goal and no checks. <b>Every part is in the tray here</b>, whether or not a mission has unlocked it yet, so you can build and test a project of your own at any time. Wire it, write the sketch, and run it. The missions teach the parts one at a time, and the <b>i</b> on a part in the tray shows its pinout.',
     goal: 'Build anything you like.',
     how: ['Use the tray to add parts and wires. The ESP32 plugs into the left of the breadboard, so build in columns 22 to 30.', 'Point at a hole or pin to read its voltage while the sketch runs.'],
