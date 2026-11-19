@@ -1,46 +1,50 @@
 /* Makes the site's icons in public/: the favicon as an SVG, a 32 px PNG for browsers that cannot use an SVG one, and the 180 px icon
-   iPhones and iPads use on the home screen. All three are the brand mark from the header (the "chip" in src/components/Icons.tsx),
-   filled in so it stays clear at 16 px: a microcontroller with three pins on each side and a dot in the middle.
-   The shape is defined once, below, on the same 24-unit grid as the header's icon. Run with: node scripts/make-icons.mjs */
+   iPhones and iPads use on the home screen. All three are the brand mark: a microcontroller seen from above, legs on two sides and the
+   notch at one end, on a rounded tile. The header draws the same mark (BrandMark in src/components/Icons.tsx), so change both together.
+   The chip is always white. Its tile is the light theme's orange, and in a dark browser the brighter orange of the bench's highlights,
+   which keeps the white chip readable (3.7:1) and the tile clear of a dark tab bar.
+   The shape is defined once, below, on a 32-unit grid. Run with: node scripts/make-icons.mjs */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
 
-const ORANGE = '#b83c06', ORANGE_DARK = '#ff8f55', PAPER = '#f4eee2';   // --accent in the light and dark themes, and --bg
+const LIGHT = { tile: '#b83c06', glyph: '#ffffff' }, DARK = { tile: '#e2572b', glyph: '#ffffff' };   // --mark and --mark-ink in each theme: the chip is always white
 
-/* --- the mark, on a 24-unit grid: a big body with three short pins on each side, which reads as a chip even at 16 px --- */
-const BODY = { x: 4.5, y: 4.5, w: 15, h: 15, r: 1.6 }, DOT = { cx: 12, cy: 12, r: 2 };
-const PIN_W = 2, PIN_L = 2.5, PIN_AT = [8.25, 12, 15.75];
-const PINS = PIN_AT.flatMap(c => [
-  { x: c - PIN_W / 2, y: BODY.y - PIN_L, w: PIN_W, h: PIN_L }, { x: c - PIN_W / 2, y: BODY.y + BODY.h, w: PIN_W, h: PIN_L },   // top and bottom
-  { x: BODY.x - PIN_L, y: c - PIN_W / 2, w: PIN_L, h: PIN_W }, { x: BODY.x + BODY.w, y: c - PIN_W / 2, w: PIN_L, h: PIN_W },   // left and right
-]);
-const inRoundRect = (u, v, { x, y, w, h, r }) => {
+/* --- the mark, on a 32-unit grid --- */
+const TILE = { x: 1, y: 1, w: 30, h: 30, r: 7 };
+const BODY = { x: 10, y: 6, w: 12, h: 20, r: 1.5 }, NOTCH = { cx: 16, cy: 6, r: 2.1 };
+const LEG_W = 3.5, LEG_H = 2.6, LEG_AT = [10, 16, 22];
+const LEGS = LEG_AT.flatMap(c => [{ x: BODY.x - LEG_W, y: c - LEG_H / 2, w: LEG_W, h: LEG_H }, { x: BODY.x + BODY.w, y: c - LEG_H / 2, w: LEG_W, h: LEG_H }]);
+const inRect = (u, v, { x, y, w, h, r = 0 }) => {
   if (u < x || u > x + w || v < y || v > y + h) return false;
   const dx = Math.max(x + r - u, 0, u - (x + w - r)), dy = Math.max(y + r - v, 0, v - (y + h - r));
   return dx * dx + dy * dy <= r * r;
 };
-const inMark = (u, v) =>
-  (inRoundRect(u, v, BODY) && (u - DOT.cx) ** 2 + (v - DOT.cy) ** 2 > DOT.r ** 2) || PINS.some(p => u >= p.x && u <= p.x + p.w && v >= p.y && v <= p.y + p.h);
+const inGlyph = (u, v) => ((inRect(u, v, BODY) && (u - NOTCH.cx) ** 2 + (v - NOTCH.cy) ** 2 > NOTCH.r ** 2) || LEGS.some(l => inRect(u, v, l)));
 
-/* --- the SVG: the same shapes as paths, its colour following the browser's light or dark setting --- */
+/* --- the SVG: the same shapes as paths, its colours following the browser's light or dark setting --- */
 const n = x => +x.toFixed(2);
-const { x, y, w, h, r } = BODY;
-const body = `M${n(x + r)} ${y}h${n(w - 2 * r)}a${r} ${r} 0 0 1 ${r} ${r}v${n(h - 2 * r)}a${r} ${r} 0 0 1-${r} ${r}h-${n(w - 2 * r)}a${r} ${r} 0 0 1-${r}-${r}v-${n(h - 2 * r)}a${r} ${r} 0 0 1 ${r}-${r}z`
-  + `M${DOT.cx} ${n(DOT.cy - DOT.r)}a${DOT.r} ${DOT.r} 0 1 0 0 ${n(2 * DOT.r)}a${DOT.r} ${DOT.r} 0 1 0 0-${n(2 * DOT.r)}z`;
-const pins = PINS.map(p => `M${n(p.x)} ${n(p.y)}h${n(p.w)}v${n(p.h)}h-${n(p.w)}z`).join('');
-const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><style>path{fill:${ORANGE}}@media (prefers-color-scheme:dark){path{fill:${ORANGE_DARK}}}</style><path fill-rule="evenodd" d="${body}"/><path d="${pins}"/></svg>\n`;
+const rounded = ({ x, y, w, h, r }) => `M${n(x + r)} ${n(y)}h${n(w - 2 * r)}a${r} ${r} 0 0 1 ${r} ${r}v${n(h - 2 * r)}a${r} ${r} 0 0 1-${r} ${r}h-${n(w - 2 * r)}a${r} ${r} 0 0 1-${r}-${r}v-${n(h - 2 * r)}a${r} ${r} 0 0 1 ${r}-${r}z`;
+const glyph = rounded(BODY) + LEGS.map(l => `M${n(l.x)} ${n(l.y)}h${n(l.w)}v${n(l.h)}h-${n(l.w)}z`).join('');
+const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><style>.t{fill:${LIGHT.tile}}.g{fill:${LIGHT.glyph}}@media (prefers-color-scheme:dark){.t{fill:${DARK.tile}}}</style>`
+  + `<path class="t" d="${rounded(TILE)}"/><path class="g" d="${glyph}"/><circle class="t" cx="${NOTCH.cx}" cy="${NOTCH.cy}" r="${NOTCH.r}"/></svg>\n`;
 
 /* --- the PNGs: each pixel sampled 5 × 5 times, so the edges are smooth --- */
 const rgb = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
-function raster(size, { color, background, inset = 0 }) {
-  const out = Buffer.alloc(size * size * 4), [r0, g0, b0] = rgb(color), back = background ? rgb(background) : null, S = 5;
-  const scale = 24 / (size * (1 - 2 * inset)), off = size * inset;
+/** `bleed`: the tile fills the whole square, for a home-screen icon the phone rounds itself. */
+function raster(size, colours, { bleed = false } = {}) {
+  const out = Buffer.alloc(size * size * 4), tile = rgb(colours.tile), mark = rgb(colours.glyph), S = 5;
+  const scale = bleed ? TILE.w / size : 32 / size, off = bleed ? TILE.x : 0;
   for (let py = 0; py < size; py++) for (let px = 0; px < size; px++) {
-    let hits = 0;
-    for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) if (inMark((px + (i + 0.5) / S - off) * scale, (py + (j + 0.5) / S - off) * scale)) hits++;
-    const a = hits / (S * S), k = (py * size + px) * 4;
-    if (back) [0, 1, 2].forEach(c => { out[k + c] = Math.round([r0, g0, b0][c] * a + back[c] * (1 - a)); }), (out[k + 3] = 255);
-    else { out[k] = r0; out[k + 1] = g0; out[k + 2] = b0; out[k + 3] = Math.round(a * 255); }
+    const sum = [0, 0, 0];
+    let opaque = 0;
+    for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+      const u = (px + (i + 0.5) / S) * scale + off, v = (py + (j + 0.5) / S) * scale + off;
+      const c = inGlyph(u, v) ? mark : bleed || inRect(u, v, TILE) ? tile : null;
+      if (c) { opaque++; c.forEach((x, k) => { sum[k] += x; }); }
+    }
+    const k = (py * size + px) * 4;
+    if (opaque) for (let c = 0; c < 3; c++) out[k + c] = Math.round(sum[c] / opaque);
+    out[k + 3] = Math.round((opaque / (S * S)) * 255);
   }
   return png(size, out);
 }
@@ -60,6 +64,6 @@ function png(size, rgba) {
 
 mkdirSync('public', { recursive: true });
 writeFileSync('public/favicon.svg', svg);
-writeFileSync('public/favicon-32.png', raster(32, { color: ORANGE }));
-writeFileSync('public/apple-touch-icon.png', raster(180, { color: ORANGE, background: PAPER, inset: 0.12 }));   // iOS fills see-through corners with black, so it gets the paper behind it
+writeFileSync('public/favicon-32.png', raster(32, LIGHT));
+writeFileSync('public/apple-touch-icon.png', raster(180, LIGHT, { bleed: true }));
 console.log('public/favicon.svg, public/favicon-32.png, public/apple-touch-icon.png');

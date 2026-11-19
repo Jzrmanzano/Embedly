@@ -27,7 +27,7 @@ const PATHS = {
   close: <path d="M6 6l12 12M18 6 6 18" />,
   check: <path d="m5 12.5 4.5 4.5L19 7" />,
   copy: <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h8" /></>,
-  chip: <><rect x="5.5" y="5.5" width="13" height="13" rx="1.8" /><path d="M8.25 2.5v3M12 2.5v3M15.75 2.5v3M8.25 18.5v3M12 18.5v3M15.75 18.5v3M2.5 8.25h3M2.5 12h3M2.5 15.75h3M18.5 8.25h3M18.5 12h3M18.5 15.75h3" /><circle cx="12" cy="12" r="1.7" fill="currentColor" /></>,
+  chip: <><path d="M9 3.5h1.5a1.5 1.5 0 0 0 3 0H15a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5H9a1.5 1.5 0 0 1-1.5-1.5V5A1.5 1.5 0 0 1 9 3.5z" /><path d="M4 7.5h3.5M4 12h3.5M4 16.5h3.5M16.5 7.5H20M16.5 12H20M16.5 16.5H20" /></>,
   sun: <><circle cx="12" cy="12" r="4" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4" /></>,
   moon: <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />,
   chevron:<path d="m9 6 6 6-6 6" />,
@@ -39,4 +39,17 @@ export type IconName = keyof typeof PATHS;
 
 export function Icon({ name, className = '' }: { name: IconName; className?: string }) {
   return <svg className={`icon ${className}`.trim()} viewBox="0 0 24 24" aria-hidden="true" focusable="false">{PATHS[name]}</svg>;
+}
+
+/** The brand mark beside the name: a microcontroller on a rounded tile, the same drawing as the site's favicon.
+    scripts/make-icons.mjs draws that one from the same shapes, so change both together. The chip is white on a --mark tile,
+    which is a brighter orange in the dark theme, as the favicon is in a dark browser. */
+export function BrandMark() {
+  return (
+    <svg className="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+      <rect x="1" y="1" width="30" height="30" rx="7" fill="currentColor" />
+      <path className="mark-chip" d="M11.5 6h9a1.5 1.5 0 0 1 1.5 1.5v17a1.5 1.5 0 0 1-1.5 1.5h-9a1.5 1.5 0 0 1-1.5-1.5v-17a1.5 1.5 0 0 1 1.5-1.5zM6.5 8.7h3.5v2.6h-3.5zM22 8.7h3.5v2.6h-3.5zM6.5 14.7h3.5v2.6h-3.5zM22 14.7h3.5v2.6h-3.5zM6.5 20.7h3.5v2.6h-3.5zM22 20.7h3.5v2.6h-3.5z" />
+      <circle cx="16" cy="6" r="2.1" fill="currentColor" />
+    </svg>
+  );
 }

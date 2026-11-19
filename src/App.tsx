@@ -7,7 +7,7 @@ import { BoardsPage } from './components/BoardsPage';
 import { GuidePage } from './components/GuidePage';
 import { HelpDialog } from './components/HelpDialog';
 import { Home } from './components/Home';
-import { Icon, type IconName } from './components/Icons';
+import { BrandMark, Icon, type IconName } from './components/Icons';
 import { PartsPanel } from './components/PartsPanel';
 import { PredictDialog } from './components/PredictDialog';
 import { RunBar, Stage } from './components/Stage';
@@ -50,7 +50,7 @@ function TopBar() {
   const done = !!passed[missionKey(board.id, mission.id)];
   return (
     <header className="bar">
-      <a className="brand" href="#" aria-label="Embedly. Back to the home page"><Icon name="chip" className="mark" /><h1>Embed<span>ly</span></h1></a>
+      <a className="brand" href="#" aria-label="Embedly. Back to the home page"><BrandMark /><h1>Embed<span>ly</span></h1></a>
       <div className="crumb"><span>{mission.place}</span><Icon name="chevron" /><b>{mission.title}</b>{done && <><Icon name="check" className="tick" /><span className="sr-only">passed</span></>}</div>
       {!mission.choice && <RunBar />}
       <div className="seg" role="tablist" aria-label="Choose a board">

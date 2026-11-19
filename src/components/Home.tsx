@@ -5,7 +5,7 @@ import { MISSIONS } from '../data/missions';
 import { progressBackup, resetProgress, restoreProgress } from '../state/actions';
 import { boardProgress, graded, nextMission, sideProgress, sideQuests } from '../state/progress';
 import { useLab } from '../state/store';
-import { Icon } from './Icons';
+import { BrandMark, Icon } from './Icons';
 import { ThemeToggle } from './ThemeToggle';
 
 const ALL_BOARDS = Object.values(BOARDS);
@@ -89,7 +89,7 @@ export function Home() {
   return (
     <div className="home">
       <header className="home-bar">
-        <a className="brand" href="#" aria-label="Embedly home"><Icon name="chip" className="mark" /><h1>Embed<span>ly</span></h1></a>
+        <a className="brand" href="#" aria-label="Embedly home"><BrandMark /><h1>Embed<span>ly</span></h1></a>
         <nav aria-label="Sections">
           <a href="#boards-section">Missions</a>
           <a href="#boards">Compare boards</a>

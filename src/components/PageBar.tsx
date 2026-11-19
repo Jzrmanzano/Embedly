@@ -2,7 +2,7 @@
    back to the mission that was open, or into the lab if none has been opened yet. */
 import type { ReactNode } from 'react';
 import { missionOf, useLab } from '../state/store';
-import { Icon } from './Icons';
+import { BrandMark } from './Icons';
 import { ThemeToggle } from './ThemeToggle';
 
 export function PageBar({ crumb, backKey, here }: { crumb: ReactNode; backKey?: string; here: 'boards' | 'guide' }) {
@@ -10,7 +10,7 @@ export function PageBar({ crumb, backKey, here }: { crumb: ReactNode; backKey?: 
   const label = seen ? `Back to ${mission.title}` : 'Open the lab';
   return (
     <header className="bar guide-bar">
-      <a className="brand" href="#" aria-label="Embedly. Back to the home page"><Icon name="chip" className="mark" /><h1>Embed<span>ly</span></h1></a>
+      <a className="brand" href="#" aria-label="Embedly. Back to the home page"><BrandMark /><h1>Embed<span>ly</span></h1></a>
       <div className="crumb">{crumb}</div>
       <nav className="site-nav" aria-label="Pages">
         <a href="#boards" aria-current={here === 'boards' ? 'page' : undefined}>Compare boards</a>
