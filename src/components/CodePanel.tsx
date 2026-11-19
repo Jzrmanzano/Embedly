@@ -2,7 +2,13 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState, type FormEvent 
 import { clearSerial, editCode, getFrames, resetCode, sendSerial } from '../state/actions';
 import { codeOf, useLab } from '../state/store';
 import { Icon } from './Icons';
+import { Plotter } from './Plotter';
 import { Timeline } from './Timeline';
+
+type SerialView = 'monitor' | 'plotter';
+const VIEW_KEY = 'embedly-serial-view';
+/** Which view of the serial output this viewer last chose, remembered in this browser only. */
+const savedView = (): SerialView => { try { return localStorage.getItem(VIEW_KEY) === 'plotter' ? 'plotter' : 'monitor'; } catch { return 'monitor'; } };
 
 function CopyButton({ text }: { text: string }) {
   const [label, setLabel] = useState('Copy');
@@ -34,13 +40,14 @@ export function CodePanel() {
   const code = useLab(codeOf), running = useLab(s => s.running), errLine = useLab(s => s.errLine), serial = useLab(s => s.serial);
   const paused = useLab(s => s.paused), heldAt = useLab(s => s.line), cursor = useLab(s => s.cursor), tick = useLab(s => s.frameTick);
   const gutter = useRef<HTMLPreElement>(null), monitor = useRef<HTMLPreElement>(null), area = useRef<HTMLTextAreaElement>(null);
-  const [scroll, setScroll] = useState(0), [metrics, setMetrics] = useState({ line: 20, top: 8 });
+  const [scroll, setScroll] = useState(0), [metrics, setMetrics] = useState({ line: 20, top: 8 }), [view, setView] = useState<SerialView>(savedView);
+  const choose = (v: SerialView) => { setView(v); try { localStorage.setItem(VIEW_KEY, v); } catch { /* just not remembered */ } };
   const lines = code.split('\n').length;
   void tick;
   // the line the sketch is held at, or the line of the recorded frame being looked at
   const frame = cursor != null ? getFrames()[cursor] : null, current = frame ? frame.line : paused ? heldAt : null;
 
-  useEffect(() => { monitor.current!.scrollTop = monitor.current!.scrollHeight; }, [serial]);
+  useEffect(() => { monitor.current!.scrollTop = monitor.current!.scrollHeight; }, [serial, view]);
   useLayoutEffect(() => {
     const cs = getComputedStyle(area.current!);
     setMetrics({ line: parseFloat(cs.lineHeight) || 20, top: parseFloat(cs.paddingTop) || 0 });
@@ -74,8 +81,16 @@ export function CodePanel() {
         </div>
       </div>
       <Timeline />
-      <div className="serial-head"><span>Serial monitor</span><button type="button" onClick={clearSerial}>Clear</button></div>
-      <pre className="serial" ref={monitor} aria-live="off">{serial}</pre>
+      <div className="serial-head">
+        <span>Serial</span>
+        <div className="serial-views" role="group" aria-label="Show the serial output as">
+          <button type="button" aria-pressed={view === 'monitor'} onClick={() => choose('monitor')}>Monitor</button>
+          <button type="button" aria-pressed={view === 'plotter'} onClick={() => choose('plotter')}>Plotter</button>
+        </div>
+        <button type="button" onClick={clearSerial}>Clear</button>
+      </div>
+      <pre className="serial" ref={monitor} aria-live="off" hidden={view !== 'monitor'}>{serial}</pre>
+      {view === 'plotter' && <Plotter />}
       <SerialSend running={running} />
     </section>
   );

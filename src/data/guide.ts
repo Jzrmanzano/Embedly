@@ -422,6 +422,19 @@ void loop() {
       ], head: ['Code', 'What it does'] },
       { tip: 'Text needs double quotes: <code>Serial.println("light")</code> prints the word, <code>Serial.println(light)</code> prints the number stored in the variable.' },
       { p: 'Put a <code>delay()</code> in a loop that prints, or the monitor fills faster than you can read.' },
+      { p: 'Numbers are easier to follow as a graph. Switch the serial output from <b>Monitor</b> to <b>Plotter</b> and each line the sketch prints becomes a reading, drawn as it arrives with the newest at the right. Print one line per reading, separate the numbers with commas, and name each one so you can tell them apart:' },
+      { code: `void setup() {
+  Serial.begin(9600);
+}
+
+void loop() {
+  Serial.print("light:");
+  Serial.print(analogRead(A0));
+  Serial.print(",knob:");
+  Serial.println(analogRead(A1));
+  delay(100);
+}` },
+      { p: 'A line with no numbers in it, such as <code>Light on</code>, is not a reading, so the plotter skips it: messages and readings can share the same output.' },
       { p: 'Serial works both ways. Type into the box under the Serial monitor while the sketch runs and press Enter: the text goes to the board with a newline at the end, as the Arduino IDE sends it. It waits there until the sketch reads it.' },
       { table: [
         ['<code>Serial.available()</code>', 'How many characters are waiting to be read. 0 when nothing has been typed.'],

@@ -22,6 +22,8 @@
   --code-ink: #e6e9ef;
   --code-dim: #9aa5b8;
   --code-accent: #ff9a62;  /* the accent as seen on the dark code panel */
+  /* the Serial Plotter's series, in this fixed order: the dark steps of a colour-blind-checked palette, since the code panel is dark in both themes */
+  --plot-1: #3987e5; --plot-2: #d95926; --plot-3: #199e70; --plot-4: #c98500; --plot-5: #d55181; --plot-6: #0ca30c; --plot-7: #9085e9; --plot-8: #e66767;
   --r: 10px;
   --tray-h: 0px;
   --il: 0px;
@@ -35,14 +37,14 @@
     color-scheme: dark;
     --bg: #141a17; --panel: #1c2420; --panel-2: #25302b; --bench: #101512; --ink: #ece8dc; --muted: #a9b3ab; --line: #33413a; --edge: #738078;
     --accent: #ff8f55; --accent-ink: #1f0d03; --blue: #86b8ff; --ok: #7fd98d; --ok-ink: #08210d; --warn: #ffc266; --pwr: #ff8f86; --pwr-ink: #2a0a07;
-    --code-bg: #0e1311; --code-ink: #e6ebe7; --code-dim: #93a39a; --code-accent: #ff8f55;
+    --code-bg: #0e1311; --code-ink: #e6ebe7; --code-dim: #93a39a; --code-accent: #ff8f55; --plot-1: #3987e5; --plot-2: #d95926; --plot-3: #199e70; --plot-4: #c98500; --plot-5: #d55181; --plot-6: #0ca30c; --plot-7: #9085e9; --plot-8: #e66767;
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #141a17; --panel: #1c2420; --panel-2: #25302b; --bench: #101512; --ink: #ece8dc; --muted: #a9b3ab; --line: #33413a; --edge: #738078;
   --accent: #ff8f55; --accent-ink: #1f0d03; --blue: #86b8ff; --ok: #7fd98d; --ok-ink: #08210d; --warn: #ffc266; --pwr: #ff8f86; --pwr-ink: #2a0a07;
-  --code-bg: #0e1311; --code-ink: #e6ebe7; --code-dim: #93a39a; --code-accent: #ff8f55;
+  --code-bg: #0e1311; --code-ink: #e6ebe7; --code-dim: #93a39a; --code-accent: #ff8f55; --plot-1: #3987e5; --plot-2: #d95926; --plot-3: #199e70; --plot-4: #c98500; --plot-5: #d55181; --plot-6: #0ca30c; --plot-7: #9085e9; --plot-8: #e66767;
 }
 
 /* --- base --- */
@@ -345,9 +347,31 @@ dl.facts dt { color: var(--muted); } dl.facts dd { margin: 0; }
 .editor textarea:focus-visible { outline-offset: -3px; }
 .linehl { position: absolute; left: 0; right: 0; background: color-mix(in srgb, var(--code-accent) 24%, transparent); box-shadow: inset 4px 0 0 var(--code-accent); pointer-events: none; }
 .serial-head { border-top: 1px solid #ffffff1f; }
-.serial-head span { margin-right: auto; }
+.serial-head .serial-views { display: flex; gap: 2px; margin-right: auto; }
+.serial-head .serial-views button { border-color: transparent; color: var(--code-dim); }
+.serial-head .serial-views button[aria-pressed="true"] { border-color: #ffffff3d; background: #ffffff14; color: var(--code-ink); }
 .serial { flex: none; height: 110px; margin: 0; padding: 4px 14px 10px; overflow: auto; font: .82rem/1.5 var(--f-mono); color: #9fe3b6; white-space: pre-wrap; word-break: break-word; }
 .serial:empty::before { content: "Text your sketch prints with Serial.println() appears here."; color: var(--code-dim); }
+/* --- the Serial Plotter: lines on the dark code panel; the series colours are --plot-1 to --plot-8, in that order --- */
+.plot { flex: none; padding: 0 12px 8px; color: var(--code-ink); }
+.plot-empty { margin: 0; height: 132px; padding: 8px 2px; color: var(--code-dim); font: .8rem/1.5 var(--f-mono); }
+.plot-empty code { color: var(--code-ink); }
+.plot-legend { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 0 0 2px; padding: 0; list-style: none; font: .76rem var(--f-mono); color: var(--code-dim); }
+.plot-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.plot-legend b { color: var(--code-ink); font-weight: 700; }
+.plot-legend i, .plot-row i { width: 12px; height: 2px; border-radius: 1px; flex: none; }
+.plot-area { position: relative; border-radius: 6px; }
+.plot-area:focus-visible { outline-offset: 0; }
+.plot-area svg { display: block; overflow: visible; }
+.plot-grid { stroke: #ffffff1f; stroke-width: 1; shape-rendering: crispEdges; }
+.plot-tick { fill: var(--code-dim); font: .7rem var(--f-mono); }
+.plot-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.plot-dot { stroke: var(--code-bg); stroke-width: 2; }
+.plot-cross { stroke: var(--code-dim); stroke-width: 1; shape-rendering: crispEdges; }
+.plot-tip { position: absolute; top: 4px; display: flex; flex-direction: column; gap: 2px; padding: 6px 9px; border: 1px solid #ffffff3d; border-radius: 7px; background: var(--code-bg); font: .74rem var(--f-mono); color: var(--code-dim); pointer-events: none; white-space: nowrap; }
+.plot-row { display: flex; align-items: center; gap: 6px; }
+.plot-row b { color: var(--code-ink); }
+.plot-when { color: var(--code-dim); }
 .serial-send { flex: none; display: flex; gap: 6px; padding: 0 12px 10px; }
 .serial-send input { flex: 1; min-width: 0; padding: 5px 9px; border: 1px solid #ffffff3d; border-radius: 7px; background: transparent; color: var(--code-ink); font: .82rem var(--f-mono); }
 .serial-send input::placeholder { color: var(--code-dim); opacity: 1; }

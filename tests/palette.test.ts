@@ -30,7 +30,7 @@ const luminance = (hex: string) => {
 };
 const contrast = (a: string, b: string) => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
 
-/** Pairs [foreground, background, minimum contrast]. 4.5 is for text, 3 for the edges of controls. */
+/** Pairs [foreground, background, minimum contrast]. 4.5 is for text, 3 for the edges of controls and for the lines of a chart. */
 const PAIRS: [string, string, number][] = [
   ['ink', 'bg', 4.5], ['ink', 'panel', 4.5], ['ink', 'bench', 4.5], ['ink', 'panel-2', 4.5],
   ['muted', 'bg', 4.5], ['muted', 'panel', 4.5], ['muted', 'panel-2', 4.5],
@@ -38,6 +38,7 @@ const PAIRS: [string, string, number][] = [
   ['blue', 'panel', 4.5], ['ok', 'panel', 4.5], ['ok-ink', 'ok', 4.5], ['warn', 'panel', 4.5], ['pwr', 'panel', 4.5], ['pwr-ink', 'pwr', 4.5],
   ['code-ink', 'code-bg', 4.5], ['code-dim', 'code-bg', 4.5], ['code-accent', 'code-bg', 4.5], ['#1f0d03', 'code-accent', 4.5],
   ['edge', 'panel', 3], ['edge', 'bg', 3], ['accent', 'bench', 3],
+  ...[1, 2, 3, 4, 5, 6, 7, 8].map((k): [string, string, number] => [`plot-${k}`, 'code-bg', 3]),   // the plotter's lines, against the code panel they are drawn on
 ];
 
 for (const [name, set] of [['light', light], ['dark', dark]] as const) {
