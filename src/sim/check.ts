@@ -106,11 +106,20 @@ export async function observe(board: BoardId, items: Item[], code: string, plan:
   catch (e) { error = e instanceof SimError ? `Your sketch stopped with an error on line ${e.line}: ${e.message}` : `Your sketch stopped with an error: ${e instanceof Error ? e.message : e}`; }
   void passes;
 
-  const cache = new Map<string, Sample>();
+  /** The board as the pins and inputs leave it, kept for each pin state and set of inputs. What has been printed is not part of it: printing changes no pin. */
+  const cache = new Map<string, Omit<Sample, 't' | 'serial'>>();
   const frameBefore = (t: number) => {
     let lo = 0, hi = frames.length - 1;
     while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (frames[mid].t <= t) lo = mid; else hi = mid - 1; }
     return lo;
+  };
+  /** Everything printed by a moment: the whole text cut at the end of the last print by then (prints arrive in time order). */
+  const printed = serial.map(e => e.text).join(''), ends: number[] = [];
+  serial.reduce((n, e) => { ends.push(n + e.text.length); return n + e.text.length; }, 0);
+  const serialAt = (t: number) => {
+    let lo = 0, hi = serial.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (serial[mid].t <= t) lo = mid + 1; else hi = mid; }
+    return lo ? printed.slice(0, ends[lo - 1]) : '';
   };
   const at = (t: number): Sample => {
     const i = frameBefore(t), inputs = inputsAt(items, plan, t), key = `${sigs[i]}|${JSON.stringify(inputs)}|${t > 0 ? '' : 'start'}`;
@@ -118,12 +127,12 @@ export async function observe(board: BoardId, items: Item[], code: string, plan:
     if (!s) {
       const r = makeReadout(b, analysis, { ...frames[i], inputs }, []), sol = r.circuit;
       s = {
-        t, leds: ledIds.map(id => r.ledGlow(id)), duties: ledIds.map(id => sol.ledDuty(id)), builtin: r.builtinGlow,
-        sound: Math.max(0, ...buzzIds.map(id => r.buzzFreq(id))), servos: servoIds.map(id => r.servoAngle(id)), serial: serial.filter(e => e.t <= t).map(e => e.text).join(''),
+        leds: ledIds.map(id => r.ledGlow(id)), duties: ledIds.map(id => sol.ledDuty(id)), builtin: r.builtinGlow,
+        sound: Math.max(0, ...buzzIds.map(id => r.buzzFreq(id))), servos: servoIds.map(id => r.servoAngle(id)),
       };
       cache.set(key, s);
     }
-    return { ...s, t };
+    return { ...s, t, serial: serialAt(t) };
   };
   const samples = frames.map(f => at(f.t));
   return {

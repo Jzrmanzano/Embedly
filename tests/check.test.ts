@@ -19,6 +19,13 @@ const follows = phases('The LED follows the button', [
   { when: 'the button is let go again', set: { button: 0 }, expect: { led: false } },
 ]);
 
+test('what was printed by a moment is read at that moment, even when no pin has changed since an earlier one', async () => {
+  const code = 'bool said = false;\nvoid setup() { Serial.begin(9600); Serial.println("first"); }\nvoid loop() { if (!said && millis() > 1000) { Serial.println("second"); said = true; } delay(10); }';
+  const tr = await observe('uno', [], code, [], 2000);
+  assert.equal(tr.at(500).serial, 'first\n');
+  assert.equal(tr.at(2000).serial, 'first\nsecond\n', 'the board looks the same as at 500 ms, but more has been printed since');
+});
+
 test('a sketch that follows the input passes, and the wiring check comes first', async () => {
   const r = await runChecks('uno', button.circuit, button.code, [follows]);
   assert.equal(r.length, 2);
