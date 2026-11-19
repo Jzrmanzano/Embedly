@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { BOARDS } from '../data/boards';
 import { MISSIONS, missionKey } from '../data/missions';
 import type { CheckResult } from '../sim/check';
-import type { BoardId, Item } from '../types';
+import { LED_COLORS, type BoardId, type Item } from '../types';
 import { NONE as NO_PANELS, USUAL_WIDTHS, type Panel, type Panels, type Widths } from './panels';
 import type { Tool } from './bench';
 import type { Page } from './route';
@@ -83,6 +83,8 @@ export interface LabState {
   sound: boolean;
   /** The resistor value picked in the Parts drawer, which the next resistor placed will have. */
   ohms: number;
+  /** The LED colour picked in the Parts drawer, which the next LED placed will have. */
+  ledColor: number;
   /** What a left-button drag on the bench does: slide the view sideways and up or down, or turn it. */
   nav: 'pan' | 'rotate';
   labels: boolean;
@@ -142,7 +144,7 @@ export const useLab = create<LabState>(() => ({
   page: 'home', labSeen: false, board: 'uno', mission: 0, tab: 'mission', panels: NO_PANELS, focusPanel: null, widths: loadWidths(), help: false, guide: null, hot: null, edits: loadSketches(), ...saved, undo: {}, redo: {},
   tool: null, pending: null, point: null, notice: null, drag: null, sparks: 0, paused: false, line: null, cursor: null, frameTick: 0, probe: null,
   inputs: {}, ...loadProgress(), results: null, checking: false, asking: null,
-  sound: false, ohms: 220, nav: 'pan', labels: true, running: false, errLine: null, serial: '',
+  sound: false, ohms: 220, ledColor: LED_COLORS.red, nav: 'pan', labels: true, running: false, errLine: null, serial: '',
 }));
 
 const NONE: Item[] = [], NONE_IDS: string[] = [];

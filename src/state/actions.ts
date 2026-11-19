@@ -294,11 +294,15 @@ export function moveWireTyped(id: string, aText: string, bText: string): string 
 /* --- choosing and placing parts --- */
 /** The tray part a tool belongs to. */
 const partOf = (tool: Tool): PartId | undefined =>
-  (Object.keys(PARTS) as PartId[]).find(id => sameTool(tool, PARTS[id].tool));   // a resistor of any value is the resistor
+  (Object.keys(PARTS) as PartId[]).find(id => sameTool(tool, PARTS[id].tool));   // a resistor of any value is the resistor, an LED of any colour the LED
 
 /** Picks the resistor value to place. A resistor that is already in hand changes value at once. */
 export function setOhms(ohms: number) {
   set(s => ({ ohms, tool: s.tool?.kind === 'res' ? { ...s.tool, ohms } : s.tool }));
+}
+/** Picks the colour of the next LED to place. An LED that is already in hand changes colour at once. */
+export function setLedColor(color: number) {
+  set(s => ({ ledColor: color, tool: s.tool?.kind === 'led' ? { ...s.tool, color } : s.tool }));
 }
 export function pickTool(tool: Tool | null) {
   const part = tool && partOf(tool);

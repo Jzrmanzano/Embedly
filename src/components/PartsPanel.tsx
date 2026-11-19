@@ -2,9 +2,11 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { lockedBy, PARTS, STUDIO_PARTS, trayParts, type PartId } from '../data/missions';
 import { PINOUTS } from '../data/pinouts';
 import { bands, nearestStop, ohmsLabel, parseOhms, RESISTOR_STOPS, useFor } from '../data/resistor';
-import { pickTool, redo, resetBench, setOhms, undo } from '../state/actions';
+import { ledDrop } from '../sim/circuit';
+import { pickTool, redo, resetBench, setLedColor, setOhms, undo } from '../state/actions';
 import { sameTool, toolKind } from '../state/bench';
 import { benchOf, keyOf, missionOf, useLab } from '../state/store';
+import { LED_COLORS, ledColorName, type BoardId } from '../types';
 import { Icon } from './Icons';
 import { Pinout } from './Pinout';
 import { PartSymbol } from './Symbols';
@@ -12,17 +14,63 @@ import { PartSymbol } from './Symbols';
 /** The parts, sorted by what they do on the bench rather than by when they were unlocked. */
 const GROUPS: { name: string; ids: PartId[] }[] = [
   { name: 'Wiring', ids: ['wire', 'resistor'] },
-  { name: 'Lights, sound and motion', ids: ['led-red', 'led-green', 'led-yellow', 'led-blue', 'led-white', 'rgb', 'buzzer', 'servo'] },
+  { name: 'Lights, sound and motion', ids: ['led', 'rgb', 'buzzer', 'servo'] },
   { name: 'Switches and controls', ids: ['button', 'slide', 'knob', 'joystick', 'tilt', 'reed', 'pad'] },
   { name: 'Sensors', ids: ['ldr', 'temp', 'sonar', 'pir', 'ir', 'soil', 'water', 'gas', 'flame'] },
 ];
 /** The drawing each part is shown with (the ones the guide draws). A resistor draws itself, with the bands of its value. */
 const DRAWING: Record<PartId, string> = {
-  wire: 'wire', resistor: 'resistor', 'led-red': 'led', 'led-green': 'led', buzzer: 'buzzer', servo: 'servo',
+  wire: 'wire', resistor: 'resistor', led: 'led', buzzer: 'buzzer', servo: 'servo',
   button: 'button', knob: 'knob', ldr: 'ldr', temp: 'temp', sonar: 'sonar', pad: 'touch',
-  'led-yellow': 'led', 'led-blue': 'led', 'led-white': 'led', rgb: 'rgb', slide: 'slide', tilt: 'tilt', reed: 'reed', joystick: 'joystick',
+  rgb: 'rgb', slide: 'slide', tilt: 'tilt', reed: 'reed', joystick: 'joystick',
   pir: 'pir', ir: 'ir', soil: 'soil', water: 'water', gas: 'gas', flame: 'flame',
 };
+
+type LedName = keyof typeof LED_COLORS;
+const LED_NAMES = Object.keys(LED_COLORS) as LedName[];
+/** The colour the LED's drawing is inked in. Yellow and white would vanish on the paper, so those two are drawn a shade darker; the swatches show the LED's own colour. */
+const LED_INK: Record<LedName, string> = { red: '#ff3b30', green: '#2ecc40', yellow: '#d99a00', blue: '#2f7bff', white: '#8d97a1' };
+const hex = (color: number) => `#${color.toString(16).padStart(6, '0')}`;
+const named = (name: string) => name[0].toUpperCase() + name.slice(1);
+
+/** What a colour means on this board: the voltage it lights at, and whether a 3.3 V pin lights it well through the usual resistor. */
+function ledNote(color: number, board: BoardId): string {
+  const v = ledDrop(color);
+  if (v < 3) return `Lights from about ${v} V. The usual 220 Ω resistor makes it bright on either board.`;
+  return board === 'esp32'
+    ? `Lights from about ${v} V, so from the ESP32's 3.3 V pins it only glows faintly through 220 Ω. With 100 Ω it lights properly.`
+    : `Lights from about ${v} V, more than a red one needs. The Uno's 5 V pins light it well through 220 Ω.`;
+}
+
+/** The LED tile: pick it up, and choose its colour. Every colour is the same part, so the tile shows the one the next LED placed will be. */
+function LedTile({ locked, board, onInfo, infoOpen }: { locked: boolean; board: BoardId; onInfo: () => void; infoOpen: boolean }) {
+  const tool = useLab(s => s.tool), color = useLab(s => s.ledColor), name = ledColorName(color) ?? 'red';
+  const pick = { ...PARTS.led.tool, color };
+  return (
+    <div className="bin-wrap wide">
+      <div className="choice-tile">
+        <button type="button" className="bin" aria-pressed={locked ? undefined : sameTool(tool, pick)} onClick={() => pickTool(pick)}>
+          <span className="bin-art" style={{ color: LED_INK[name] }}><PartSymbol id="led" /></span>
+          <b>{named(name)} LED</b>
+        </button>
+        <fieldset className="picker led-colors">
+          <legend className="sr-only">LED colour</legend>
+          <div className="swatches">
+            {LED_NAMES.map(c => (
+              <label key={c} className="swatch">
+                <input type="radio" name="led-color" value={c} checked={c === name} onChange={() => setLedColor(LED_COLORS[c])} />
+                <i style={{ background: hex(LED_COLORS[c]) }} aria-hidden="true" />
+                <span>{named(c)}</span>
+              </label>
+            ))}
+          </div>
+          <p>{ledNote(color, board)}</p>
+        </fieldset>
+      </div>
+      <button type="button" className={infoOpen ? 'bin-i on' : 'bin-i'} aria-label="Pinout of the LED" aria-expanded={infoOpen} title="Pinout" onClick={onInfo}>i</button>
+    </div>
+  );
+}
 
 /** A resistor lying down, with the bands of its value. */
 function ResistorArt({ ohms }: { ohms: number }) {
@@ -49,7 +97,7 @@ function ResistorTile({ locked, onInfo, infoOpen }: { locked: boolean; onInfo: (
   const pick = { ...PARTS.resistor.tool, ohms };
   return (
     <div className="bin-wrap wide">
-      <div className="resistor-tile">
+      <div className="choice-tile">
         <button type="button" className="bin" aria-pressed={locked ? undefined : sameTool(tool, pick)} onClick={() => pickTool(pick)}>
           <span className="bin-art"><ResistorArt ohms={ohms} /></span>
           <b>Resistor <span className="ohms">{ohmsLabel(ohms)}</span></b>
@@ -98,6 +146,7 @@ export function PartsPanel() {
             <div className="bins">
               {g.ids.map(id => {
                 if (id === 'resistor') return <ResistorTile key={id} locked={!have.has(id)} infoOpen={info === id} onInfo={() => setInfo(info === id ? null : id)} />;
+                if (id === 'led') return <LedTile key={id} locked={!have.has(id)} board={board} infoOpen={info === id} onInfo={() => setInfo(info === id ? null : id)} />;
                 const p = PARTS[id], locked = !have.has(id), by = lockedBy(id);
                 return (
                   <div key={id} className="bin-wrap">
@@ -105,7 +154,7 @@ export function PartsPanel() {
                       type="button" className={locked ? 'bin locked' : 'bin'} aria-pressed={locked ? undefined : sameTool(tool, p.tool)} aria-disabled={locked || undefined}
                       title={locked && by ? `Locked. Pass “${by.mission.title}” to unlock it.` : undefined} onClick={() => pickTool(p.tool)}
                     >
-                      <span className="bin-art" style={p.swatch ? { color: p.swatch } : undefined}><PartSymbol id={DRAWING[id]} /></span>
+                      <span className="bin-art"><PartSymbol id={DRAWING[id]} /></span>
                       <b>{p.label}</b>
                       {locked && <small><Icon name="lock" />{by ? `Pass “${by.mission.title}”` : 'Locked'}</small>}
                     </button>

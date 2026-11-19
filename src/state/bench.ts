@@ -7,8 +7,8 @@ export type ToolKind = Item['t'];
 export interface Tool { kind: ToolKind; color?: number; ohms?: number; sub?: ModuleKind | ContactKind }
 /** Which kind of part a tool places, named as kindOf names the item it makes. */
 export const toolKind = (tool: Tool): PartKind => (tool.kind === 'module' || tool.kind === 'contact' ? tool.sub ?? (tool.kind === 'module' ? 'pir' : 'tilt') : tool.kind);
-/** Are these the same part of the tray? A resistor of any value is the resistor. */
-export const sameTool = (a: Tool | null | undefined, b: Tool | null | undefined) => !!a && !!b && a.kind === b.kind && a.color === b.color && a.sub === b.sub && (b.kind === 'res' || a.ohms === b.ohms);
+/** Are these the same part of the tray? A resistor of any value is the resistor, and an LED of any colour is the LED. */
+export const sameTool = (a: Tool | null | undefined, b: Tool | null | undefined) => !!a && !!b && a.kind === b.kind && a.sub === b.sub;
 
 /** Parts that go between two points the student picks one after the other. */
 export const TWO_POINT: ToolKind[] = ['led', 'res', 'buzzer', 'wire', 'ldr', 'contact'];

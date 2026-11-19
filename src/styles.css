@@ -884,13 +884,23 @@ a.btn, a.toggle { color: var(--ink); text-decoration: none; }
 .i-badge { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: var(--blue); color: var(--bg); font: italic 700 .8rem var(--f-display); }
 .card .pinout figcaption { font-size: .82rem; } .card .pinout-more { max-height: none; }
 
-/* --- the resistor tile: one tile, with a value to choose --- */
+/* --- the resistor and LED tiles: one part each, with a value or a colour to choose --- */
 .bin-wrap.wide { grid-column: 1 / -1; }
-.resistor-tile { flex: 1; display: flex; flex-direction: column; gap: 0; border: 1.5px solid var(--edge); border-radius: var(--r); background: var(--bg); overflow: hidden; }
-.resistor-tile .bin { border: 0; border-radius: 0; min-height: 0; flex-direction: row; justify-content: center; gap: 12px; padding: 10px 40px 8px 12px; background: transparent; }
-.resistor-tile .bin:hover { transform: none; background: var(--panel-2); }
-.resistor-tile .bin[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
-.resistor-tile .bin b { font-size: .95rem; }
+.choice-tile { flex: 1; display: flex; flex-direction: column; gap: 0; border: 1.5px solid var(--edge); border-radius: var(--r); background: var(--bg); overflow: hidden; }
+.choice-tile .bin { border: 0; border-radius: 0; min-height: 0; flex-direction: row; justify-content: center; gap: 12px; padding: 10px 40px 8px 12px; background: transparent; }
+.choice-tile .bin:hover { transform: none; background: var(--panel-2); }
+.choice-tile .bin[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.choice-tile .bin b { font-size: .95rem; }
+.choice-tile .bin-art { width: auto; flex: none; }
+.led-colors { margin: 0; min-width: 0; border-width: 1px 0 0; }
+.swatches { display: flex; gap: 4px; }
+.swatch { position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 2px 5px; border-radius: 8px; color: var(--muted); font-size: .78rem; cursor: pointer; }
+.swatch:hover { background: var(--panel-2); }
+.swatch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.swatch i { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--edge); }
+.swatch:has(input:checked) { color: var(--ink); font-weight: 700; }
+.swatch input:checked + i { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--ink); }
+.swatch input:focus-visible + i { outline: 3px solid var(--blue); outline-offset: 4px; }
 .ohms { font-family: var(--f-mono); font-weight: 700; }
 .res-art { width: 84px; height: 40px; }
 .res-art .lead { fill: none; stroke: #aab2ba; stroke-width: 2.4; stroke-linecap: round; }
@@ -905,5 +915,4 @@ a.btn, a.toggle { color: var(--ink); text-decoration: none; }
 .picker p { margin: 0; color: var(--muted); font-size: .82rem; line-height: 1.35; }
 .picker p.bad { color: var(--pwr); font-weight: 700; }
 .pinout-card h3 .ohms { font-weight: 400; color: var(--muted); }
-.resistor-tile .bin-art { width: auto; flex: none; }
-.resistor-tile .bin-art .res-art { width: 110px; height: 48px; }
+.choice-tile .bin-art .res-art { width: 110px; height: 48px; }

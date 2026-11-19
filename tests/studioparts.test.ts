@@ -1,4 +1,4 @@
-/* The parts only the Open Studio has: more LED colours, the RGB LED, the slide, tilt and reed switches, the joystick and the sensor modules.
+/* The parts beyond the first missions' kit: the LED in every colour, the RGB LED, the slide, tilt and reed switches, the joystick and the sensor modules.
    Each one can be placed, behaves electrically as its pinout says, is drawn in the schematic and survives a backup. */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -75,6 +75,27 @@ test('the new LED colours light on a pin, and a blue or white one needs more vol
     assert.ok(amps(color) > 0.004 && amps(color) < 0.02, `${name} LED carries ${amps(color)} A`);
   }
   assert.ok(amps(LED_COLORS.blue) < amps(LED_COLORS.red) && amps(LED_COLORS.white) < amps(LED_COLORS.yellow));
+});
+
+test('an LED of any colour is the one LED part, and is placed in the colour picked', () => {
+  for (const color of Object.values(LED_COLORS)) {
+    const tool = { kind: 'led' as const, color }, it = makeItem(tool, [], 'e10', 'e11');
+    assert.equal(partIdOf(it), 'led');
+    assert.ok(it.t === 'led' && it.color === color, 'the colour in hand is the colour placed');
+    assert.ok(sameTool(tool, PARTS.led.tool), 'the drawer\'s LED tile counts as picked whatever the colour');
+  }
+});
+
+test('what the colour picker says: 220 Ω lights every colour on the Uno, and all but blue and white on the ESP32, which light with 100 Ω', () => {
+  const uno = (color: number, ohms = 220): Item[] => [wire('U:9', 'a10'), { t: 'led', id: 'led', a: 'e10', k: 'e11', color }, { t: 'res', a: 'c11', b: 'c15', ohms }, wire('a15', 'U:GND')];
+  const esp = (color: number, ohms = 220): Item[] => [wire('E:D5', 'j22'), { t: 'led', id: 'led', a: 'g22', k: 'g23', color }, { t: 'res', a: 'h23', b: 'h27', ohms }, wire('j27', 'B-27'), wire('E:GND', 'B-5')];
+  const lit = (board: BoardId, items: Item[]) => analyze(board, items).solve({ [board === 'uno' ? 9 : 5]: HIGH }).ledGlow('led') > 0.5;   // the checks' "on"
+  for (const [name, color] of Object.entries(LED_COLORS)) {
+    assert.ok(lit('uno', uno(color)), `${name} lights on the Uno through 220 Ω`);
+    const bright = name !== 'blue' && name !== 'white';
+    assert.equal(lit('esp32', esp(color)), bright, `${name} ${bright ? 'lights' : 'only glows faintly'} on the ESP32 through 220 Ω`);
+    assert.ok(lit('esp32', esp(color, 100)), `${name} lights on the ESP32 through 100 Ω`);
+  }
 });
 
 const RGB: Item[] = [

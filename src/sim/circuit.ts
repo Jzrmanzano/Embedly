@@ -128,7 +128,8 @@ const holeNode = (n: string): string | null => {
   if ((m = /^([TB][+-])\d+$/.exec(n))) return m[1];
   return null;
 };
-const ledDrop = (color: number) => { const r = color >> 16 & 255, g = color >> 8 & 255, b = color & 255; return b > r ? 3 : g > r ? 2.2 : 1.9; };
+/** The voltage across a lit LED, from its colour: about 3 V where blue is the strongest of the three (blue and white), 2.2 V where green is stronger than red, and 1.9 V for red and yellow. */
+export const ledDrop = (color: number) => { const r = color >> 16 & 255, g = color >> 8 & 255, b = color & 255; return b > r && b > g ? 3 : g > r ? 2.2 : 1.9; };
 
 interface El {
   kind: 'R' | 'D' | 'SW' | 'POT' | 'LOAD' | 'TEMP' | 'MOD'; id: string; a: string; b: string; w?: string; ohms: number; vf: number; it: Item;

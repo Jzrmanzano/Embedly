@@ -3,15 +3,15 @@
 import { blinks, colorOn, ledOn, phases, reaction, servoAt, soundOn, sweeps, type InputKind, type InputStep, type Sample, type Scenario, type Trace } from '../sim/check';
 import type { Tool } from '../state/bench';
 import type { Choice } from './boardchoice';
-import { LED_COLORS, ledColorName, type BoardId, type Item } from '../types';
+import { LED_COLORS, type BoardId, type Item } from '../types';
 
 /* --- the parts tray --- */
-export type PartId = 'led-red' | 'led-green' | 'resistor' | 'wire' | 'button' | 'knob' | 'buzzer' | 'sonar' | 'pad' | 'servo' | 'ldr' | 'temp'
-  | 'led-yellow' | 'led-blue' | 'led-white' | 'rgb' | 'slide' | 'tilt' | 'reed' | 'pir' | 'ir' | 'soil' | 'water' | 'gas' | 'flame' | 'joystick';
-/** Every part of the tray. A `studio` part is one no mission unlocks yet: it is in the Open Studio's tray and nowhere else. */
-export const PARTS: Record<PartId, { label: string; tool: Tool; swatch?: string; only?: BoardId; studio?: true }> = {
-  'led-red': { label: 'Red LED', tool: { kind: 'led', color: 0xff3b30 }, swatch: '#ff3b30' },
-  'led-green': { label: 'Green LED', tool: { kind: 'led', color: 0x2ecc40 }, swatch: '#2ecc40' },
+export type PartId = 'led' | 'resistor' | 'wire' | 'button' | 'knob' | 'buzzer' | 'sonar' | 'pad' | 'servo' | 'ldr' | 'temp'
+  | 'rgb' | 'slide' | 'tilt' | 'reed' | 'pir' | 'ir' | 'soil' | 'water' | 'gas' | 'flame' | 'joystick';
+/** Every part of the tray. A `studio` part is one no mission unlocks yet: it is in the Open Studio's tray and nowhere else.
+    The LED is one part in every colour, and the resistor one part of every value: the drawer picks which, and the tool carries it. */
+export const PARTS: Record<PartId, { label: string; tool: Tool; only?: BoardId; studio?: true }> = {
+  led: { label: 'LED', tool: { kind: 'led', color: LED_COLORS.red } },
   resistor: { label: 'Resistor', tool: { kind: 'res', ohms: 220 } },
   wire: { label: 'Wire', tool: { kind: 'wire' } },
   button: { label: 'Button', tool: { kind: 'button' } },
@@ -22,9 +22,6 @@ export const PARTS: Record<PartId, { label: string; tool: Tool; swatch?: string;
   servo: { label: 'Servo', tool: { kind: 'servo' } },
   ldr: { label: 'Light sensor', tool: { kind: 'ldr' } },
   temp: { label: 'Temp sensor', tool: { kind: 'temp' } },
-  'led-yellow': { label: 'Yellow LED', tool: { kind: 'led', color: LED_COLORS.yellow }, swatch: '#d99a00', studio: true },
-  'led-blue': { label: 'Blue LED', tool: { kind: 'led', color: LED_COLORS.blue }, swatch: '#2f7bff', studio: true },
-  'led-white': { label: 'White LED', tool: { kind: 'led', color: LED_COLORS.white }, swatch: '#8d97a1', studio: true },
   rgb: { label: 'RGB LED', tool: { kind: 'rgb' }, studio: true },
   slide: { label: 'Slide switch', tool: { kind: 'slide' }, studio: true },
   tilt: { label: 'Tilt switch', tool: { kind: 'contact', sub: 'tilt' }, studio: true },
@@ -40,11 +37,11 @@ export const PARTS: Record<PartId, { label: string; tool: Tool; swatch?: string;
 /** The parts that only the Open Studio has. */
 export const STUDIO_PARTS = (Object.keys(PARTS) as PartId[]).filter(id => PARTS[id].studio);
 /** What the tray holds before any mission has been passed. */
-export const BASE_PARTS: PartId[] = ['led-red', 'resistor', 'wire'];
+export const BASE_PARTS: PartId[] = ['led', 'resistor', 'wire'];
 
 export function partIdOf(it: Item): PartId {
   switch (it.t) {
-    case 'led': { const name = ledColorName(it.color); return name ? `led-${name}` : 'led-red'; }
+    case 'led': return 'led';
     case 'res': return 'resistor';
     case 'pot': return 'knob';
     case 'joy': return 'joystick';
@@ -591,7 +588,7 @@ void loop() {
         { when: 'it drives out again', set: { sonar: 60 }, expect: { led: false } },
       ]),
     ],
-    unlocks: ['led-green', 'soil'],
+    unlocks: ['soil'],
   },
   choose({
     id: 'linebot', title: 'Line-follower robot', place: 'Robotics Club', hook: 'Choose a board small enough for the club\'s robot.', map: [75, 43], after: ['parking'], guide: ['boards', 'analog'],
@@ -1332,7 +1329,7 @@ void loop() {
         { when: 'the button is let go again (the LED should stay off)', set: { button: 0 }, ms: 600, expect: { led: false } },
       ]),
     ],
-    unlocks: ['led-green', 'pir'],
+    unlocks: ['pir'],
   },
   choose({
     id: 'bagtag', title: 'Bag finder tag', place: 'Lost & Found', hook: 'Choose a board small enough to hide in a bag, that a phone can find.', map: [75, 54], after: ['toggle'], guide: ['boards'],
