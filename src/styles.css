@@ -348,6 +348,13 @@ dl.facts dt { color: var(--muted); } dl.facts dd { margin: 0; }
 .serial-head span { margin-right: auto; }
 .serial { flex: none; height: 110px; margin: 0; padding: 4px 14px 10px; overflow: auto; font: .82rem/1.5 var(--f-mono); color: #9fe3b6; white-space: pre-wrap; word-break: break-word; }
 .serial:empty::before { content: "Text your sketch prints with Serial.println() appears here."; color: var(--code-dim); }
+.serial-send { flex: none; display: flex; gap: 6px; padding: 0 12px 10px; }
+.serial-send input { flex: 1; min-width: 0; padding: 5px 9px; border: 1px solid #ffffff3d; border-radius: 7px; background: transparent; color: var(--code-ink); font: .82rem var(--f-mono); }
+.serial-send input::placeholder { color: var(--code-dim); opacity: 1; }
+.serial-send input:disabled { border-style: dashed; cursor: not-allowed; }
+.serial-send button { background: none; border: 1px solid #ffffff3d; color: var(--code-ink); font: .78rem var(--f-mono); padding: 3px 12px; border-radius: 7px; cursor: pointer; }
+.serial-send button:hover:not(:disabled) { border-color: #ffffff9c; }
+.serial-send button:disabled { color: var(--code-dim); cursor: not-allowed; }
 .timeline { flex: none; border-top: 1px solid #ffffff1f; padding: 6px 12px 8px; color: var(--code-ink); }
 .timeline-head { display: flex; align-items: center; gap: 6px; font: .76rem var(--f-mono); color: var(--code-dim); }
 .timeline-head span { font-weight: 700; color: var(--code-ink); }

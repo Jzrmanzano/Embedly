@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { clearSerial, editCode, getFrames, resetCode } from '../state/actions';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
+import { clearSerial, editCode, getFrames, resetCode, sendSerial } from '../state/actions';
 import { codeOf, useLab } from '../state/store';
 import { Icon } from './Icons';
 import { Timeline } from './Timeline';
@@ -11,6 +11,22 @@ function CopyButton({ text }: { text: string }) {
     navigator.clipboard.writeText(text).then(() => done(true), () => done(false));
   };
   return <button type="button" onClick={copy}><Icon name="copy" />{label}</button>;
+}
+
+/** The line under the serial monitor for typing to the board. Enter sends the text with a newline at the end, as the Arduino IDE does; the sketch reads it with Serial.read() and the like. */
+function SerialSend({ running }: { running: boolean }) {
+  const [text, setText] = useState('');
+  const send = (e: FormEvent) => { e.preventDefault(); if (sendSerial(text)) setText(''); };
+  return (
+    <form className="serial-send" onSubmit={send}>
+      <label className="sr-only" htmlFor="serial-in">Message for the board</label>
+      <input
+        id="serial-in" value={text} onChange={e => setText(e.target.value)} disabled={!running} autoComplete="off" spellCheck={false} autoCapitalize="off"
+        placeholder={running ? 'Type a message for the board' : 'Run the sketch to send it messages'}
+      />
+      <button type="submit" disabled={!running} title="Sends the text with a newline at the end, as the Arduino IDE does">Send</button>
+    </form>
+  );
 }
 
 /** The sketch editor with its line-number gutter, and the serial monitor under it. */
@@ -60,6 +76,7 @@ export function CodePanel() {
       <Timeline />
       <div className="serial-head"><span>Serial monitor</span><button type="button" onClick={clearSerial}>Clear</button></div>
       <pre className="serial" ref={monitor} aria-live="off">{serial}</pre>
+      <SerialSend running={running} />
     </section>
   );
 }

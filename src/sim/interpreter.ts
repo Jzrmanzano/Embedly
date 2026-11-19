@@ -17,6 +17,8 @@ export interface Hardware {
   /** Sends servo pulses on a pin for this angle (0 to 180), or stops them with null. */
   servo(pin: number, angle: number | null): void;
   print(text: string): void;
+  /** What has been typed into the Serial Monitor and not read yet, one character code each, oldest first. Serial.read() takes from the front. */
+  serialIn?: number[];
 }
 export interface RunControl {
   stop: boolean;
@@ -36,7 +38,8 @@ type Tok =
   | { t: 'num'; v: number; f: boolean; line: number };
 type IdTok = { t: 'id'; v: string; line: number };
 
-interface Ty { float: boolean; str: boolean; isVoid: boolean; obj?: 'Servo' }
+/** `chr`: a plain char, which prints as the character it holds (an unsigned char or a byte prints as a number, as on a real board). */
+interface Ty { float: boolean; str: boolean; isVoid: boolean; obj?: 'Servo'; chr?: boolean }
 type Expr =
   | { k: 'num'; v: number; f?: boolean }
   | { k: 'str'; v: string }
@@ -73,7 +76,7 @@ export interface Program { globals: DeclStmt[]; funcs: Map<string, Func> }
 /** A Servo object: the pin it is attached to (-1 when it is not) and the last angle written to it. */
 interface ServoObj { servo: true; pin: number; angle: number }
 type Val = number | string | Val[] | ServoObj;
-interface Rec { float: boolean; str: boolean; v: Val }
+interface Rec { float: boolean; str: boolean; chr?: boolean; v: Val }
 const isServo = (v: unknown): v is ServoObj => typeof v === 'object' && v !== null && !Array.isArray(v) && (v as ServoObj).servo === true;
 /** Servo.write() takes degrees but, like the real library, treats big numbers as a pulse width in microseconds. */
 const SERVO_MIN_US = 544, SERVO_MAX_US = 2400;
@@ -151,8 +154,14 @@ export function parse(src: string): Program {
   };
   function readType(): Ty {
     const ty: Ty = { float: false, str: false, isVoid: false };
-    while (isType()) { const w = toks[i++].v as string; if (FLOATS.has(w)) ty.float = true; if (w === 'String') ty.str = true; if (w === 'void') ty.isVoid = true; if (w === 'Servo') ty.obj = 'Servo'; }
+    let unsigned = false;
+    while (isType()) {
+      const w = toks[i++].v as string;
+      if (FLOATS.has(w)) ty.float = true; if (w === 'String') ty.str = true; if (w === 'void') ty.isVoid = true; if (w === 'Servo') ty.obj = 'Servo';
+      if (w === 'char') ty.chr = true; if (w === 'unsigned') unsigned = true;
+    }
     while (isOp('*') || isOp('&')) { i++; if (!ty.obj) ty.str = true; }   // a Servo& parameter is still the Servo itself
+    if (unsigned || ty.str) ty.chr = false;   // an unsigned char is a small number, and a char* is text
     return ty;
   }
   function declRest(ty: Ty, nameTok: IdTok): DeclStmt {
@@ -316,7 +325,21 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
       case 'seq': return isF(n.b, env);
       case 'cast': return n.ty.float;
       case 'call': if (FLOAT_FN.has(n.name)) return true; if (MIXED_FN.has(n.name)) return n.args.some(a => isF(a, env)); return !!prog.funcs.get(n.name)?.ty.float;
-      case 'mcall': return n.name === 'toFloat';
+      case 'mcall': return n.name === 'toFloat' || n.name === 'parseFloat';
+    }
+    return false;
+  }
+  /** Whether an expression is a char, which prints as a character: a char literal or variable, a cast to char, one character of a String or a char array, or a function that returns a char. */
+  function isC(n: Expr, env: Env): boolean {
+    switch (n.k) {
+      case 'chr': return true;
+      case 'id': return !!env.get(n.name)?.chr;
+      case 'idx': { if (n.a.k !== 'id') return false; const r = env.get(n.a.name); return !!r && (!!r.chr || typeof r.v === 'string'); }
+      case 'cast': return !!n.ty.chr;
+      case 'cond': return isC(n.a, env) && isC(n.b, env);
+      case 'assign': return isC(n.l, env);
+      case 'call': return !!prog.funcs.get(n.name)?.ty.chr;
+      case 'mcall': return n.name === 'charAt';
     }
     return false;
   }
@@ -324,10 +347,34 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
     if (typeof v === 'string') return v;
     if (Array.isArray(v)) return '[array]';
     if (isServo(v)) return '[Servo]';
-    if (n && n.k === 'chr') return String.fromCharCode(v);
+    if (n && isC(n, env)) return String.fromCharCode(v);
     if (n && isF(n, env)) return Number(v).toFixed(digits == null ? 2 : (digits as number));
     return String(Math.trunc(v));
   };
+  /* What is typed into the Serial Monitor arrives here. Reading it works as Arduino's Stream does: the timed reads wait up to Serial.setTimeout() (1 s at first) for a character. */
+  const inbox = hw.serialIn ?? [];
+  let serialTimeout = 1000;
+  const waitForInput = async () => {
+    const start = hw.now();
+    while (!inbox.length && hw.now() - start < serialTimeout) { await hw.sleep(Math.min(10, serialTimeout)); if (ctl.stop) throw STOP; }
+  };
+  const timedRead = async () => { await waitForInput(); return inbox.length ? inbox.shift()! : -1; };
+  const timedPeek = async () => { await waitForInput(); return inbox.length ? inbox[0] : -1; };
+  const isDigit = (c: number) => c >= 48 && c <= 57;
+  /** Serial.parseInt() and parseFloat(): skip whatever cannot start a number, read while the number goes on, and leave the rest (such as the newline) to be read later. 0 when no number came in time. */
+  async function parseNumber(float: boolean): Promise<number> {
+    for (;;) { const c = await timedPeek(); if (c < 0) return 0; if (isDigit(c) || c === 45 || (float && c === 46)) break; inbox.shift(); }
+    let text = '';
+    for (;;) {
+      const c = await timedPeek();
+      if (c < 0 || !(isDigit(c) || (c === 45 && !text) || (float && c === 46 && !text.includes('.')))) break;
+      text += String.fromCharCode(c); inbox.shift();
+    }
+    const v = float ? parseFloat(text) : parseInt(text, 10);
+    return Number.isFinite(v) ? v : 0;
+  }
+  /** The String methods that change the String itself and give nothing back, as in Arduino. */
+  const CHANGES_STRING = new Set(['trim', 'toLowerCase', 'toUpperCase']);
   const coerce = (rec: { float: boolean; str: boolean }, v: Val): Val => {
     if (isServo(v)) return v;
     if (rec.str) return typeof v === 'string' ? v : String(v);
@@ -407,7 +454,7 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
     if (vals.length !== f.params.length) throw err(`${name}() needs ${f.params.length} value(s) but got ${vals.length}`, line);
     if (++depth > 200) throw err(`${name}() keeps calling itself and never stops`, line);
     const env = new Env(G);
-    f.params.forEach((p, k) => { const rec: Rec = { float: p.ty.float, str: p.ty.str, v: 0 }; rec.v = Array.isArray(vals[k]) ? vals[k] : coerce(rec, vals[k]); env.m.set(p.name, rec); });
+    f.params.forEach((p, k) => { const rec: Rec = { float: p.ty.float, str: p.ty.str, chr: !!p.ty.chr, v: 0 }; rec.v = Array.isArray(vals[k]) ? vals[k] : coerce(rec, vals[k]); env.m.set(p.name, rec); });
     const r = await exec(f.body, env);
     depth--;
     return r && 'ret' in r ? r.ret : 0;
@@ -448,10 +495,12 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
     }
     throw err(`"${n.name}()" is not a function this simulator knows. Check the spelling and capital letters.`, n.line);
   }
-  async function mcall(n: McallExpr, env: Env): Promise<Val> {
+  /** `asStatement`: the call is a line of its own, so nothing is done with what it gives back. */
+  async function mcall(n: McallExpr, env: Env, asStatement = false): Promise<Val> {
     const a: Val[] = [];
     for (const x of n.args) a.push(await ev(x, env));
     if (n.obj.k === 'id' && n.obj.name === 'Serial' && !env.get('Serial')) {
+      const charArg = (k: number) => { if (a.length <= k) throw err(`Serial.${n.name}() needs a character inside the brackets, such as '\\n'`, n.line); return a[k] as number; };
       switch (n.name) {
         case 'begin': return 0;
         case 'print': case 'println': hw.print((n.args.length ? fmt(a[0], n.args[0], env, a[1]) : '') + (n.name === 'println' ? '\n' : '')); return 0;
@@ -461,8 +510,19 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
             c === '%' ? '%' : c === 'f' ? Number(a[k++]).toFixed(d == null ? 6 : +d) : c === 'c' ? String.fromCharCode(a[k++] as number) : c === 's' ? String(a[k++]) : String(Math.trunc(a[k++] as number))));
           return 0;
         }
-        case 'available': return 0;
-        case 'read': return -1;
+        case 'available': return inbox.length;
+        case 'read': return inbox.length ? inbox.shift()! : -1;
+        case 'peek': return inbox.length ? inbox[0] : -1;
+        case 'setTimeout': if (!a.length) throw err('Serial.setTimeout() needs a number of milliseconds inside the brackets', n.line); serialTimeout = Math.max(0, a[0] as number); return 0;
+        case 'flush': return 0;
+        case 'readString': case 'readStringUntil': {   // reads until the character (which is taken but not kept), or until nothing more comes in time
+          const until = n.name === 'readStringUntil' ? charArg(0) : null;
+          let text = '';
+          for (;;) { const c = await timedRead(); if (c < 0 || c === until) break; text += String.fromCharCode(c); }
+          return text;
+        }
+        case 'parseInt': return parseNumber(false);
+        case 'parseFloat': return parseNumber(true);
       }
       throw err(`Serial.${n.name}() is not supported in this simulator`, n.line);
     }
@@ -490,15 +550,34 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
       throw err(`A Servo has no ".${n.name}()". It has attach(), write(), read(), attached() and detach().`, n.line);
     }
     if (typeof v === 'string') {
-      if (n.name === 'length') return v.length;
-      if (n.name === 'toInt') return parseInt(v, 10) || 0;
-      if (n.name === 'toFloat') return parseFloat(v) || 0;
+      const text = (k: number): string => { const x = a[k]; return typeof x === 'string' ? x : typeof x === 'number' ? String.fromCharCode(x) : ''; };   // given as text, or as one character
+      const num = (k: number) => { if (typeof a[k] !== 'number') throw err(`.${n.name}() needs a number inside the brackets`, n.line); return a[k] as number; };
+      if (CHANGES_STRING.has(n.name)) {
+        if (!asStatement) throw err(`${n.name}() changes the String itself and gives nothing back, so it cannot be used as a value. Write it on a line of its own, like "text.${n.name}();".`, n.line);
+        const changed = n.name === 'trim' ? v.trim() : n.name === 'toLowerCase' ? v.toLowerCase() : v.toUpperCase();
+        if (n.obj.k === 'id' || n.obj.k === 'idx') (await slot(n.obj, env)).set(changed);
+        return 0;
+      }
+      switch (n.name) {
+        case 'length': return v.length;
+        case 'toInt': return parseInt(v, 10) || 0;
+        case 'toFloat': return parseFloat(v) || 0;
+        case 'equals': return v === text(0) ? 1 : 0;
+        case 'equalsIgnoreCase': return v.toLowerCase() === text(0).toLowerCase() ? 1 : 0;
+        case 'indexOf': return v.indexOf(text(0), a.length > 1 ? num(1) : 0);
+        case 'lastIndexOf': return v.lastIndexOf(text(0));
+        case 'startsWith': return v.startsWith(text(0)) ? 1 : 0;
+        case 'endsWith': return v.endsWith(text(0)) ? 1 : 0;
+        case 'substring': return v.substring(num(0), a.length > 1 ? num(1) : v.length);
+        case 'charAt': { const ix = num(0); return ix >= 0 && ix < v.length ? v.charCodeAt(ix) : 0; }
+      }
+      throw err(`A String has no ".${n.name}()" in this simulator. It has length(), trim(), toLowerCase(), toUpperCase(), toInt(), toFloat(), equals(), equalsIgnoreCase(), indexOf(), lastIndexOf(), startsWith(), endsWith(), substring() and charAt().`, n.line);
     }
     throw err(`".${n.name}()" is not supported in this simulator`, n.line);
   }
   async function declare(n: DeclStmt, env: Env): Promise<void> {
     for (const d of n.vars) {
-      const rec: Rec = { float: n.ty.float, str: n.ty.str && !d.arr, v: 0 };
+      const rec: Rec = { float: n.ty.float, str: n.ty.str && !d.arr, chr: !!n.ty.chr, v: 0 };
       const fresh = (): ServoObj => ({ servo: true, pin: -1, angle: 90 });   // a new servo starts at 90°, as in the real library
       if (n.ty.obj) {
         if (d.init || d.list) throw err(`A ${n.ty.obj} is made with "${n.ty.obj} ${d.name};" and set up later with ${d.name}.attach(pin)`, d.line);
@@ -522,7 +601,7 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
     switch (n.k) {
       case 'block': { const e = new Env(env); for (const s of n.body) { const r = await exec(s, e); if (r) return r; } return; }
       case 'decl': return declare(n, env);
-      case 'expr': await ev(n.e, env); return;
+      case 'expr': if (n.e.k === 'mcall') await mcall(n.e, env, true); else await ev(n.e, env); return;
       case 'if': if (await ev(n.c, env)) return exec(n.a, env); if (n.b) return exec(n.b, env); return;
       case 'while': while (await ev(n.c, env)) { const r = await exec(n.body, env); if (r === BRK) break; if (r && r !== CNT) return r; await tick(); } return;
       case 'dowhile': do { const r = await exec(n.body, env); if (r === BRK) break; if (r && r !== CNT) return r; await tick(); } while (await ev(n.c, env)); return;

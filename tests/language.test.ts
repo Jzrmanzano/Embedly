@@ -1,4 +1,4 @@
-/* switch statements and Servo objects in the interpreter, and the servo on the bench: its wiring rules, its signal, and where it points. */
+/* The language the interpreter understands beyond the basics: switch statements, Servo objects, typing to the board (Serial input, char and String), and the servo on the bench: its wiring rules, its signal, and where it points. */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BOARDS } from '../src/data/boards';
@@ -181,4 +181,89 @@ test('the servo is recorded in the timeline, so looking back shows where it poin
   const tr = await observe('uno', barrier.circuit, code, [], 1000);
   const angles = new Set(tr.samples.map(servoAt));
   assert.ok(angles.has(0) && angles.has(180), `saw ${[...angles].join(', ')}`);
+});
+
+/* --- typing to the board: Serial input, char and String --- */
+/** Runs a sketch on the virtual clock with this already typed into the Serial Monitor, for some passes of loop(). Timeouts cost no real time. */
+async function typed(code: string, input: string, loops = 1) {
+  let serial = '', pass = 0;
+  const hw = makeHW(BOARDS.uno, [], () => ({}), s => { serial += s; }, { virtualClock: true });
+  hw.skipDelays = true;
+  for (const ch of input) hw.serialIn.push(ch.charCodeAt(0));
+  const ctl = { stop: false, onLoop() { if (++pass >= loops) ctl.stop = true; } };
+  await run(code, hw, ctl);
+  return { serial, left: hw.serialIn.length, ms: hw.elapsed() };
+}
+
+test('Serial.available(), peek() and read() take what was typed one character at a time', async () => {
+  const r = await typed(sketch(`  Serial.println(Serial.available());
+  Serial.println(Serial.peek());
+  char c = Serial.read();
+  Serial.println(c);
+  Serial.println(Serial.read());
+  Serial.println(Serial.available());`), 'hi\n');
+  assert.equal(r.serial, '3\n104\nh\n105\n1\n', 'peek looks without taking; a char prints as a letter, an int as a number');
+  assert.equal((await typed(sketch('  Serial.println(Serial.read());'), '')).serial, '-1\n', 'nothing typed');
+});
+
+test('readStringUntil() reads a line without its newline, and trim() and the comparisons find the command', async () => {
+  const r = await typed(sketch(`  String command = Serial.readStringUntil('\\n');
+  Serial.println("[" + command + "]");
+  command.trim();
+  Serial.println("[" + command + "]");
+  if (command == "On") Serial.println("same");
+  if (command.equalsIgnoreCase("on")) Serial.println("same, any case");
+  command.toUpperCase();
+  Serial.println(command);`), '  On \n');
+  assert.equal(r.serial, '[  On ]\n[On]\nsame\nsame, any case\nON\n');
+  assert.equal(r.left, 0, 'the newline was taken too');
+});
+
+test('parseInt() leaves the newline behind, so the next call waits a second and gives 0, as on a real board', async () => {
+  const code = 'void setup() { Serial.begin(9600); }\nvoid loop() { if (Serial.available() > 0) { int n = Serial.parseInt(); Serial.println(n * 2); } }';
+  const r = await typed(code, '21\n', 3);
+  assert.equal(r.serial, '42\n0\n');
+  assert.ok(r.ms >= 1000, `the second parseInt() waited for its timeout (${Math.round(r.ms)} ms)`);
+  assert.equal((await typed(sketch('  Serial.println(Serial.parseFloat());'), 'x -3.75\n')).serial, '-3.75\n', 'parseFloat skips what cannot start a number');
+});
+
+test('readString() waits for the timeout after the last character, and setTimeout() changes it', async () => {
+  const slow = await typed(sketch('  Serial.println(Serial.readString());'), 'abc');
+  assert.equal(slow.serial, 'abc\n');
+  assert.ok(slow.ms >= 1000, `waited ${Math.round(slow.ms)} ms`);
+  const quick = await typed(sketch('  Serial.setTimeout(50);\n  Serial.println(Serial.readString());'), 'abc');
+  assert.ok(quick.ms < 200, `waited ${Math.round(quick.ms)} ms`);
+});
+
+test('a char prints as a character, an unsigned char or a byte as a number', async () => {
+  const r = await typed(sketch(`  char c = 'A' + 1;
+  unsigned char u = 66;
+  byte b = 67;
+  String s = "x";
+  s += c;
+  Serial.println(c);
+  Serial.println(u);
+  Serial.println(b);
+  Serial.println(s);
+  Serial.println((char)72);
+  Serial.println(s[1]);
+  Serial.println(s.charAt(0));`), '');
+  assert.equal(r.serial, 'B\n66\n67\nxB\nH\nB\nx\n');
+});
+
+test('the String methods for picking a command apart', async () => {
+  const r = await typed(sketch(`  String line = "led=on";
+  int eq = line.indexOf('=');
+  Serial.println(eq);
+  Serial.println(line.substring(0, eq));
+  Serial.println(line.substring(eq + 1));
+  Serial.println(line.startsWith("led"));
+  Serial.println(line.endsWith("off"));
+  Serial.println(line.indexOf("x"));`), '');
+  assert.equal(r.serial, '3\nled\non\n1\n0\n-1\n');
+});
+
+test('trim() used as a value says that it changes the String itself', async () => {
+  await fails(sketch('  String s = " a ";\n  s = s.trim();'), /changes the String itself and gives nothing back/, 5);
+  await fails(sketch('  String s = "a";\n  s.reverse();'), /A String has no "\.reverse\(\)"/);
 });

@@ -73,6 +73,8 @@ export interface VirtualHW extends Hardware {
   /** Lets time pass on the sketch's clock. */
   advance(ms: number): void;
   analysis: Analysis;
+  /** What has been typed into the Serial Monitor and not read yet, one character code each. */
+  serialIn: number[];
 }
 
 /** The pins of a virtual board, connected through the student's wiring to the parts of one circuit. `inputs` reads the on-screen button, knob and wall. */
@@ -117,7 +119,7 @@ export function makeHW(board: Board, circuit: Item[], inputs: () => Record<strin
   const ledIds = circuit.filter(it => it.t === 'led').map(it => (it as Extract<Item, { t: 'led' }>).id);
 
   const hw: VirtualHW = {
-    consts: board.consts, tones, servos, print, analysis, line: 0, skipDelays: false,
+    consts: board.consts, tones, servos, print, analysis, line: 0, skipDelays: false, serialIn: [],
     sleep: ms => { if (hw.skipDelays) { skew += ms; hooks.onChange?.(); return Promise.resolve(); } return new Promise<void>(r => { wake = r; timer = setTimeout(r, ms); }); },
     pause: () => new Promise<void>(r => setTimeout(r, 0)),
     wakeUp() { clearTimeout(timer); wake?.(); },

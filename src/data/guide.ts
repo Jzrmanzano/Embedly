@@ -402,7 +402,7 @@ void loop() {
     ],
   },
   {
-    id: 'serial', group: 'code', title: 'Serial: letting the board talk', lede: 'Print messages and numbers to see what your sketch is thinking.',
+    id: 'serial', group: 'code', title: 'Serial: letting the board talk', lede: 'Print messages and numbers to see what your sketch is thinking, and type messages back to it.',
     blocks: [
       { p: 'A board has no screen, so when something goes wrong you cannot see why. <code>Serial</code> sends text to the <b>Serial monitor</b> under the code editor. Printing a sensor reading is the best way to find out what the sketch really sees.' },
       { code: `void setup() {
@@ -422,6 +422,38 @@ void loop() {
       ], head: ['Code', 'What it does'] },
       { tip: 'Text needs double quotes: <code>Serial.println("light")</code> prints the word, <code>Serial.println(light)</code> prints the number stored in the variable.' },
       { p: 'Put a <code>delay()</code> in a loop that prints, or the monitor fills faster than you can read.' },
+      { p: 'Serial works both ways. Type into the box under the Serial monitor while the sketch runs and press Enter: the text goes to the board with a newline at the end, as the Arduino IDE sends it. It waits there until the sketch reads it.' },
+      { table: [
+        ['<code>Serial.available()</code>', 'How many characters are waiting to be read. 0 when nothing has been typed.'],
+        ['<code>Serial.read()</code>', 'Takes the next character, as a number. Store it in a <code>char</code> to print it as a letter. -1 when there is none.'],
+        ['<code>Serial.readStringUntil(\'\\n\')</code>', 'Takes everything up to the newline as a <code>String</code>, and throws the newline away.'],
+        ['<code>Serial.parseInt()</code>', 'Skips anything that is not a number, then reads a whole number.'],
+      ], head: ['Code', 'What it does'] },
+      { code: `void setup() {
+  Serial.begin(9600);
+  pinMode(13, OUTPUT);
+}
+
+void loop() {
+  if (Serial.available() > 0) {                     // something has been typed
+    String command = Serial.readStringUntil('\\n');
+    command.trim();                                 // drop spaces at either end
+    if (command == "on") {
+      digitalWrite(13, HIGH);
+      Serial.println("Light on");
+    } else if (command == "off") {
+      digitalWrite(13, LOW);
+      Serial.println("Light off");
+    } else {
+      Serial.println("Type on or off");
+    }
+  }
+}` },
+      { list: [
+        '<code>command.trim()</code> changes the String itself and gives nothing back, so it goes on a line of its own. <code>toLowerCase()</code> and <code>toUpperCase()</code> work the same way.',
+        'Compare two Strings with <code>==</code>, or with <code>equalsIgnoreCase()</code> to accept "ON" and "On" too.',
+      ] },
+      { tip: '<code>Serial.parseInt()</code> leaves the newline behind. On the next pass <code>Serial.available()</code> is 1, so the sketch calls <code>parseInt()</code> again: it finds no number, waits a second, and gives 0. Read the line with <code>readStringUntil(\'\\n\')</code> and turn it into a number with <code>.toInt()</code> instead.' },
     ],
   },
   {

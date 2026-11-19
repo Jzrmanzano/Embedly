@@ -64,6 +64,12 @@ function print(text: string) {
   requestAnimationFrame(() => { flushQueued = false; set({ serial: serialBuf }); });
 }
 export function clearSerial() { serialBuf = ''; set({ serial: '' }); }
+/** Sends a line typed into the Serial Monitor to the running sketch, ending in a newline as the Arduino IDE sends it. False when no sketch is running to receive it. */
+export function sendSerial(text: string): boolean {
+  if (!active) return false;
+  for (const ch of `${text}\n`) active.hw.serialIn.push(ch.charCodeAt(0));
+  return true;
+}
 
 /** Step mode: runs one more line, or starts the sketch held at its first line. While the sketch is running freely this pauses it at the next line. */
 export function stepOnce() {
