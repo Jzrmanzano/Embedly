@@ -581,6 +581,35 @@ void loop() {
     ],
   },
   {
+    id: 'reed', group: 'parts', title: 'Reed switches', lede: 'A switch that a magnet closes, with nothing to press.',
+    blocks: [
+      { p: 'A reed switch is two thin strips of metal, the <b>reeds</b>, sealed in a small glass tube with their tips just apart. Bring a magnet near and the reeds are pulled together, joining the two legs. Take the magnet away and they spring apart again. It has no front and back.' },
+      { p: 'Door and window alarms use one: the switch goes on the frame and a magnet on the door, so the switch is closed while the door is shut. A magnet on a bicycle wheel can count its turns the same way.' },
+      { p: 'Wire it like a push button: one leg to a pin set to <code>INPUT_PULLUP</code>, the other to <b>GND</b>.' },
+      { table: [
+        ['Near (door shut)', 'The switch is closed and joins the pin to GND, so it reads <b>LOW</b>.'],
+        ['Away (door open)', 'The switch is open and the pull-up holds the pin <b>HIGH</b>.'],
+      ], head: ['Magnet', 'What the pin reads'] },
+      { code: `const int REED_PIN = 2;
+
+void setup() {
+  pinMode(REED_PIN, INPUT_PULLUP);
+  Serial.begin(9600);
+}
+
+void loop() {
+  if (digitalRead(REED_PIN) == LOW) {
+    Serial.println("Door shut");
+  } else {
+    Serial.println("Door open");
+  }
+  delay(500);
+}` },
+      { p: 'To act at the moment the door <b>opens</b>, rather than all the time it stays open, compare the reading with the one from the last pass of <code>loop()</code>, as you would for a button press. That moment is also the time to start a <code>millis()</code> count.' },
+      { tip: 'The glass is thin. Bend the legs a few millimetres away from the tube, never right where they leave the glass, or it cracks.' },
+    ],
+  },
+  {
     id: 'knob', group: 'parts', title: 'Knobs (potentiometers)', lede: 'Turn it to get any voltage between 0 V and the supply.',
     blocks: [
       { p: 'A potentiometer is a resistor with a slider that moves along it. It has three legs in a row:' },

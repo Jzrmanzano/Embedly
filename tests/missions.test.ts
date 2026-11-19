@@ -166,6 +166,11 @@ const wrong: [BoardId, string, string, string, string][] = [
   ['esp32', 'stairs', 'digitalRead(PIR_PIN) == HIGH', 'digitalRead(PIR_PIN) == LOW', 'lights the stairs while all is still'],
   ['esp32', 'stairs', 'digitalRead(PIR_PIN) == HIGH)', 'digitalRead(PIR_PIN) == HIGH && !lightOn)', 'does not start the wait again when someone moves again'],
   ['esp32', 'stairs', 'digitalWrite(LED_PIN, lightOn);', 'digitalWrite(LED_PIN, millis() - lastMotion < HOLD_MS);', 'is on for the first 5 seconds, before anyone moves'],
+  ['uno', 'colddoor', 'if (doorOpen && !wasOpen) {', 'if (doorOpen) {', 'starts the count again on every pass, so the alarm never sounds'],
+  ['uno', 'colddoor', 'if (doorOpen && !wasOpen) {', 'if (doorOpen && openedAt == 0) {', 'only counts from the first opening, so a second one sounds at once'],
+  ['uno', 'colddoor', 'digitalRead(REED_PIN) == HIGH', 'digitalRead(REED_PIN) == LOW', 'treats the shut door as open'],
+  ['uno', 'colddoor', 'INPUT_PULLUP', 'INPUT', 'has no pull-up, so the open switch floats'],
+  ['uno', 'colddoor', 'LIMIT_MS = 5000;', 'LIMIT_MS = 0;', 'sounds on every visit'],
 ];
 
 test('uno/crossing: a sketch that still blinks with delay() misses taps', async () => {
@@ -184,6 +189,15 @@ test('esp32/stairs: a sketch that waits with delay() misses someone who moves ag
   }`);
   const r = await runChecks('esp32', m.circuit, sketch, m.checks);
   assert.deepEqual(failures(r).map(f => f.split(':')[0]), ['Each movement starts the 5 seconds again'], 'only the restart check fails: the first wait itself is fine');
+});
+test('uno/colddoor: a sketch that waits with delay() lags behind a door being shut', async () => {
+  const m = get('uno', 'colddoor'), sketch = mutate(m.starter, `    digitalWrite(LIGHT_PIN, HIGH);
+    tone(BUZZER_PIN, 880);`, `    digitalWrite(LIGHT_PIN, HIGH);
+    delay(LIMIT_MS);
+    if (digitalRead(REED_PIN) == HIGH) tone(BUZZER_PIN, 880);`);
+  const r = await runChecks('uno', m.circuit, sketch, m.checks);
+  assert.deepEqual(failures(r).map(f => f.split(':')[0]), ['A quick visit does not sound the alarm', 'Shutting the door silences it, and the next opening counts from the start'],
+    'the buzzer waits its 5 seconds, but the light stays on after the door is shut');
 });
 test('a sketch with any of the plausible mistakes does not pass', () => forEvery(wrong, ([board, id, , , why]) => `${board}/${id} ${why}`, async ([board, id, from, to, why]) => {
   const m = get(board, id), r = await runChecks(board, m.circuit, mutate(m.answer, from, to), m.checks);
@@ -214,6 +228,9 @@ const wrongWiring: [BoardId, string, string, (it: Item) => Item | null][] = [
   ['esp32', 'stairs', 'powers the motion sensor from 3V3', it => (it.t === 'wire' && it.a === 'E:VIN' ? { ...it, a: 'E:3V3' } : it)],
   ['esp32', 'stairs', 'has the motion sensor on the wrong pin', it => (it.t === 'wire' && it.b === 'E:D18' ? { ...it, b: 'E:D19' } : it)],
   ['esp32', 'stairs', 'has no ground on the motion sensor', it => (it.t === 'wire' && it.a === 'j32' ? null : it)],
+  ['uno', 'colddoor', 'leaves the reed switch\'s other leg unconnected', it => (it.t === 'wire' && it.a === 'a22' ? null : it)],
+  ['uno', 'colddoor', 'wires the reed switch to 5V instead of GND', it => (it.t === 'wire' && it.a === 'a22' ? { ...it, b: 'T+22' } : it)],
+  ['uno', 'colddoor', 'has the reed switch on the wrong pin', it => (it.t === 'wire' && it.a === 'U:2' ? { ...it, a: 'U:3' } : it)],
 ];
 test('a bench with any of the plausible wiring mistakes does not pass', () => forEvery(wrongWiring, ([board, id, why]) => `${board}/${id} ${why}`, async ([board, id, why, f]) => {
   const m = get(board, id), r = await runChecks(board, rewire(m.circuit, f), m.answer, m.checks);

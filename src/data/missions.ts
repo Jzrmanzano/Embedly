@@ -25,7 +25,7 @@ export const PARTS: Record<PartId, { label: string; tool: Tool; only?: BoardId; 
   rgb: { label: 'RGB LED', tool: { kind: 'rgb' }, studio: true },
   slide: { label: 'Slide switch', tool: { kind: 'slide' }, studio: true },
   tilt: { label: 'Tilt switch', tool: { kind: 'contact', sub: 'tilt' }, studio: true },
-  reed: { label: 'Reed switch', tool: { kind: 'contact', sub: 'reed' }, studio: true },
+  reed: { label: 'Reed switch', tool: { kind: 'contact', sub: 'reed' } },
   joystick: { label: 'Joystick', tool: { kind: 'joy' }, studio: true },
   pir: { label: 'Motion sensor', tool: { kind: 'module', sub: 'pir' } },
   ir: { label: 'Obstacle sensor', tool: { kind: 'module', sub: 'ir' }, studio: true },
@@ -796,7 +796,7 @@ void loop() {
         { when: 'a third pedestrian taps the button', set: { button: 1 }, ms: 150, expect: { green: true } },
       ]),
     ],
-    unlocks: ['servo'],
+    unlocks: ['servo', 'reed'],
   },
   {
     id: 'barrier', title: 'Bus-bay barrier', place: 'Bus Loop', hook: 'Lift a barrier arm with a servo when the bus driver presses the button.', map: [70, 13], after: ['crossing'], guide: ['servo', 'button', 'digitalread'],
@@ -891,6 +891,121 @@ void loop() {
         { when: 'no bus is waiting', set: { button: 0 }, ms: 800, expect: { servo: [0, 10] } },
         { when: 'the driver taps the button', set: { button: 1 }, ms: 300, expect: { servo: [80, 100] } },
         { when: 'the bus has gone, five seconds later', set: { button: 0 }, ms: 5000, expect: { servo: [0, 10] } },
+      ]),
+    ],
+    unlocks: [],
+  },
+  {
+    id: 'colddoor', title: 'Cold-store door alarm', place: 'Cold Store', hook: 'Sound an alarm when the cold-store door is left open, but not on every quick visit.', map: [30, 5], after: ['crossing'], guide: ['reed', 'millis', 'digitalread', 'buzzer'],
+    story: 'The kitchen\'s walk-in <b>cold store</b> warms up whenever its door is left open, and food has been thrown away twice this month. The old alarm buzzed the moment the door opened, on every single visit, so the cooks unplugged it. Fit a <b>reed switch</b> to the door frame, where the magnet on the door holds it closed while the door is shut. Light a red lamp as soon as the door opens, but sound the buzzer only if the door stays open for <b>more than 5 seconds</b>. Shutting the door silences it, and the next opening starts the count again.',
+    goal: 'The red light is on whenever the door is open. The buzzer sounds once the door has been open for 5 seconds, and stops when the door is shut.',
+    controls: { reed: 'Magnet on the door' },
+    how: [
+      'Wire the reed switch like a button: one leg to pin 2 with <code>INPUT_PULLUP</code>, the other to GND. While the door is shut the magnet closes the switch and the pin reads <b>LOW</b>. An open door reads <b>HIGH</b>.',
+      'Start counting at the moment the door <em>opens</em>: when it is open now but was not on the last pass of <code>loop()</code>, remember <code>openedAt = millis()</code>.',
+      'Sound the buzzer while the door is open and <code>millis() - openedAt &gt;= LIMIT_MS</code>. Do not wait with <code>delay()</code>: the light would lag, and the board could not see the door being shut.',
+    ],
+    starter: `// Cold-store door alarm
+const int REED_PIN = 2;      // LOW while the door is shut: the magnet closes the switch
+const int LIGHT_PIN = 12;    // red "door open" light
+const int BUZZER_PIN = 8;
+const unsigned long LIMIT_MS = 5000;   // how long the door may stay open before the alarm
+
+void setup() {
+  pinMode(REED_PIN, INPUT_PULLUP);
+  pinMode(LIGHT_PIN, OUTPUT);
+}
+
+void loop() {
+  // the old alarm: it buzzes the moment the door opens, on every visit
+  if (digitalRead(REED_PIN) == HIGH) {   // the door is open
+    digitalWrite(LIGHT_PIN, HIGH);
+    tone(BUZZER_PIN, 880);
+  } else {
+    digitalWrite(LIGHT_PIN, LOW);
+    noTone(BUZZER_PIN);
+  }
+}`,
+    circuit: [
+      { t: 'wire', a: 'U:12', b: 'a5', c: 'orange' }, { t: 'led', id: 'light', a: 'e5', k: 'e6', color: 0xff3b30 }, { t: 'res', a: 'c6', b: 'c9' }, { t: 'wire', a: 'a9', b: 'T-9', c: 'black' },
+      { t: 'contact', kind: 'reed', id: 'reed', a: 'e20', b: 'e22', ctl: 'Magnet' }, { t: 'wire', a: 'U:2', b: 'a20', c: 'yellow' }, { t: 'wire', a: 'a22', b: 'T-22', c: 'black' },
+      { t: 'buzzer', id: 'buzz', a: 'e28', b: 'e30' }, { t: 'wire', a: 'U:8', b: 'a28', c: 'purple' }, { t: 'wire', a: 'a30', b: 'T-30', c: 'black' },
+      { t: 'wire', a: 'U:GND', b: 'T-1', c: 'black' },
+    ],
+    answer: `const int REED_PIN = 2;      // LOW while the door is shut: the magnet closes the switch
+const int LIGHT_PIN = 12;    // red "door open" light
+const int BUZZER_PIN = 8;
+const unsigned long LIMIT_MS = 5000;   // how long the door may stay open before the alarm
+
+bool wasOpen = false;
+unsigned long openedAt = 0;  // when the door was last opened
+
+void setup() {
+  pinMode(REED_PIN, INPUT_PULLUP);
+  pinMode(LIGHT_PIN, OUTPUT);
+}
+
+void loop() {
+  bool doorOpen = digitalRead(REED_PIN) == HIGH;
+
+  if (doorOpen && !wasOpen) {   // the door has just been opened: start counting
+    openedAt = millis();
+  }
+  wasOpen = doorOpen;
+
+  digitalWrite(LIGHT_PIN, doorOpen);
+  if (doorOpen && millis() - openedAt >= LIMIT_MS) {
+    tone(BUZZER_PIN, 880);
+  } else {
+    noTone(BUZZER_PIN);
+  }
+}`,
+    predict: {
+      question: 'Someone opens the cold-store door, takes out a crate, and shuts it again 3 seconds later. What will the alarm do?',
+      options: [
+        { id: 'quiet', label: 'The light comes on while the door is open, and the buzzer stays quiet' }, { id: 'beeps', label: 'The buzzer sounds as soon as the door opens' },
+        { id: 'always', label: 'Something is on while the door is shut' }, { id: 'never', label: 'Nothing happens at all' },
+      ],
+      demo: [{ from: 0, set: { reed: 1 } }, { from: 1000, set: { reed: 0 } }, { from: 4000, set: { reed: 1 } }], run: 5000,
+      classify: tr => {
+        const before = ledOn(tr.at(800)) || soundOn(tr.at(800)), light = ledOn(tr.at(2500)), beeped = tr.window(1000, 4000).some(soundOn);
+        return before ? 'always' : beeped ? 'beeps' : light ? 'quiet' : 'never';
+      },
+      works: 'quiet',
+      explain: {
+        quiet: 'The light showed the door was open, and the buzzer stayed quiet for a quick visit, which is what the cooks need.',
+        beeps: 'The buzzer sounded on a quick visit, like the old alarm the cooks unplugged. Start counting when the door opens, and sound the buzzer only once 5 seconds have gone by.',
+        always: 'Something was on while the door was shut. With <code>INPUT_PULLUP</code> a shut door reads LOW and an open one HIGH: check which one the sketch treats as open, and that the switch\'s other leg goes to GND.',
+        never: 'Nothing came on while the door was open. Check that the switch is on the pin the sketch reads, that the pin uses <code>INPUT_PULLUP</code>, and that the light\'s pin matches its wire.',
+      },
+    },
+    hints: [
+      'Flip the door\'s magnet to "away" and back to "near" within a couple of seconds. The old sketch buzzes at once: the buzzer has to wait until the door has been open for 5 seconds.',
+      'Keep <code>bool wasOpen</code> and <code>unsigned long openedAt</code> above setup(). When the door is open now but <code>wasOpen</code> is false, it has just opened: set <code>openedAt = millis()</code>. Then set <code>wasOpen = doorOpen</code>. Sound the buzzer only while the door is open and <code>millis() - openedAt &gt;= LIMIT_MS</code>.',
+      'Above setup(): bool wasOpen = false; unsigned long openedAt = 0; In loop(): bool doorOpen = digitalRead(REED_PIN) == HIGH; if (doorOpen && !wasOpen) { openedAt = millis(); } wasOpen = doorOpen; digitalWrite(LIGHT_PIN, doorOpen); if (doorOpen && millis() - openedAt >= LIMIT_MS) { tone(BUZZER_PIN, 880); } else { noTone(BUZZER_PIN); }',
+    ],
+    checks: [
+      phases('All is quiet while the door is shut', [{ when: 'the door is shut', set: { reed: 1 }, ms: 3000, mode: 'during', expect: { led: false, sound: false } }]),
+      phases('The light comes on the moment the door opens', [
+        { when: 'the door is shut', set: { reed: 1 }, ms: 1000, expect: { led: false } },
+        { when: 'the door has just been opened', set: { reed: 0 }, ms: 300, expect: { led: true, sound: false } },
+      ]),
+      phases('A quick visit does not sound the alarm', [
+        { when: 'the door is shut', set: { reed: 1 }, ms: 500, expect: { led: false, sound: false } },
+        { when: 'someone fetches a crate in 3 seconds', set: { reed: 0 }, ms: 3000, mode: 'during', expect: { sound: false } },
+        { when: 'they shut the door again', set: { reed: 1 }, ms: 1500, expect: { led: false, sound: false } },
+      ]),
+      phases('The alarm sounds when the door is left open', [
+        { when: 'the door is shut', set: { reed: 1 }, ms: 500, expect: { led: false } },
+        { when: 'the door has been open for nearly 4 seconds', set: { reed: 0 }, ms: 4000, expect: { led: true, sound: false } },
+        { when: 'the door has been open for nearly 6 seconds', set: { reed: 0 }, ms: 2000, expect: { led: true, sound: true } },
+      ]),
+      phases('Shutting the door silences it, and the next opening counts from the start', [
+        { when: 'the door is shut', set: { reed: 1 }, ms: 500, expect: { sound: false } },
+        { when: 'the door has been left open', set: { reed: 0 }, ms: 6500, expect: { sound: true } },
+        { when: 'someone shuts it', set: { reed: 1 }, ms: 1000, expect: { led: false, sound: false } },
+        { when: 'it has been open again for nearly 3 seconds', set: { reed: 0 }, ms: 3000, expect: { led: true, sound: false } },
+        { when: 'it has been open again for nearly 6 seconds', set: { reed: 0 }, ms: 3000, expect: { sound: true } },
       ]),
     ],
     unlocks: [],

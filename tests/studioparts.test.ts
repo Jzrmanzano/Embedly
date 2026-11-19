@@ -234,6 +234,13 @@ test('the checks leave a part they do not script at rest', () => {
   assert.deepEqual(inputsOf(RGB[0], 'rgb1'), {}, 'an RGB LED has no on-screen control');
 });
 
+test('the checks script a reed switch by its kind, and leave a tilt switch alone', () => {
+  const contact = (kind: 'reed' | 'tilt'): Item[] => [{ t: 'contact', kind, id: 'c', a: 'e10', b: 'e12', ctl: '' }];
+  assert.deepEqual(inputsAt(contact('reed'), [], 0), { c: 0 }, 'the magnet starts away');
+  assert.deepEqual(inputsAt(contact('reed'), [{ from: 0, set: { reed: 1 } }], 100), { c: 1 });
+  assert.deepEqual(inputsAt(contact('tilt'), [{ from: 0, set: { reed: 1 } }], 100), { c: 0 }, 'a tilt switch is not a reed switch');
+});
+
 test('the checks script a sensor module by its kind, and leave it at rest until they do', () => {
   assert.deepEqual(inputsAt(module('soil'), [], 0), { m: 0.5 }, 'damp soil');
   assert.deepEqual(inputsAt(module('soil'), [{ from: 0, set: { soil: 0.7 } }, { from: 1000, set: { soil: 0.1 } }], 1500), { m: 0.1 });
