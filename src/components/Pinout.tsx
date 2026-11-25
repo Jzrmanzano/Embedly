@@ -5,8 +5,8 @@ import type { ModuleKind, PartKind } from '../types';
 
 /** Where the legs sit, side by side, for each part, and how far the body reaches either side of the middle. */
 const MODULES: Record<ModuleKind, number> = { pir: 42, ir: 42, soil: 42, water: 42, gas: 42, flame: 42 };
-const SPACING: Record<PartKind, number> = { led: 34, res: 112, wire: 44, button: 30, pot: 34, buzzer: 40, sonar: 46, pad: 0, servo: 36, ldr: 34, temp: 42, rgb: 30, slide: 34, tilt: 30, reed: 112, joy: 40, lcd: 34, ...MODULES };
-const HALF: Record<PartKind, number> = { led: 20, res: 32, wire: 22, button: 62, pot: 38, buzzer: 28, sonar: 88, pad: 24, servo: 48, ldr: 26, temp: 34, rgb: 22, slide: 46, tilt: 17, reed: 32, joy: 92, lcd: 98, pir: 52, ir: 52, soil: 52, water: 52, gas: 52, flame: 52 };
+const SPACING: Record<PartKind, number> = { led: 34, res: 112, wire: 44, button: 30, pot: 34, buzzer: 40, sonar: 46, pad: 0, servo: 36, ldr: 34, temp: 42, rgb: 30, slide: 34, tilt: 30, reed: 112, joy: 40, lcd: 34, breadboard: 44, ...MODULES };
+const HALF: Record<PartKind, number> = { led: 20, res: 32, wire: 22, button: 62, pot: 38, buzzer: 28, sonar: 88, pad: 24, servo: 48, ldr: 26, temp: 34, rgb: 22, slide: 46, tilt: 17, reed: 32, joy: 92, lcd: 98, breadboard: 92, pir: 52, ir: 52, soil: 52, water: 52, gas: 52, flame: 52 };
 const TOP = 64;   // where the body ends and the legs begin
 /** Parts that lie down, with a lead out of each end. */
 const LYING: PartKind[] = ['res', 'reed'];
@@ -55,6 +55,18 @@ const BODY: Record<PartKind, (cx: number, ohms?: number) => ReactNode> = {
     <rect x={cx - 82} y="14" width="164" height="36" rx="2" className="pv-dark" />
     <rect x={cx - 76} y="19" width="152" height="26" rx="1" className="pv-glass" />
   </>),
+  breadboard: cx => {   // seen from above: the + and − rails, then a to e, the gap and f to j. One column's two strips are ringed, as the guide draws them, over the legs that name them.
+    const cols = Array.from({ length: 33 }, (_, i) => cx - 88 + i * 5.5), dot = (x: number, y: number) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.1" fill="#3b3f45" />;
+    return (<>
+      <rect x={cx - 92} y="2" width="184" height={TOP + 2} rx="4" className="pv-cream" />
+      <path d={`M${cx - 88} 6.5 H${cx + 88}`} stroke="#d6453d" strokeWidth="1.2" />
+      <path d={`M${cx - 88} 17.5 H${cx + 88}`} stroke="#3577d4" strokeWidth="1.2" />
+      <rect x={cx - 92} y="40.5" width="184" height="3" fill="#d9d4c6" />
+      {cols.flatMap(x => [10, 14, 21, 25, 29, 33, 37, 47, 51, 55, 59, 63].map(y => dot(x, y)))}
+      <rect x={cx - 69} y="18" width="6" height="22.5" rx="3" fill="none" stroke="#e2572b" strokeWidth="1.6" />
+      <rect x={cx - 25} y="43.5" width="6" height="22.5" rx="3" fill="none" stroke="#3577d4" strokeWidth="1.6" />
+    </>);
+  },
   servo: cx => (<>
     <rect x={cx - 48} y="20" width="96" height={TOP - 20} rx="4" className="pv-blue" />
     <rect x={cx - 58} y="26" width="116" height="6" className="pv-blue" />

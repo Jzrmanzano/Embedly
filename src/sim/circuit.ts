@@ -3,7 +3,7 @@
    reports the mistakes a student can make, and `solve` finds the voltage of every net and the current in every part
    for a given state of the board's pins. All numbers are simple DC values: enough to teach, small enough to explain. */
 import { ESP_HOLES } from '../data/boards';
-import { itemId, type BoardId, type Item, type ModuleKind } from '../types';
+import { itemId, MAIN_COLS, type BoardId, type Item, type ModuleKind } from '../types';
 import { LCD_MIN_VOLTS, LCD_PINS, lcdPoint } from './lcd';
 
 /** What a pin is doing right now. `level` runs from 0 to 1 (a PWM duty cycle for analogWrite). */
@@ -136,7 +136,7 @@ const ESP_PIN_NUM: Record<string, number> = { RX2: 16, TX2: 17, RX0: 3, TX0: 1, 
 const holeNode = (n: string): string | null => {
   let m;
   if ((m = /^([a-j])(\d+)$/.exec(n))) return `c${m[2]}${m[1] <= 'e' ? 't' : 'b'}`;
-  if ((m = /^([TB][+-])\d+$/.exec(n))) return m[1];
+  if ((m = /^([TB][+-])(\d+)$/.exec(n))) return +m[2] > MAIN_COLS ? `${m[1]}:2` : m[1];   // the second breadboard's rails are strips of their own
   return null;
 };
 /** The voltage across a lit LED, from its colour: about 3 V where blue is the strongest of the three (blue and white), 2.2 V where green is stronger than red, and 1.9 V for red and yellow. */
@@ -244,6 +244,7 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
         needsRoot.push([e, [gnd, vcc, sig]]); break;
       }
       case 'lcd': lcds.push(id); needsRoot.push([mk('LOAD', lcdPoint('VCC'), lcdPoint('GND'), { ohms: R_LCD }), LCD_PINS.map(lcdPoint)]); break;
+      case 'breadboard': break;   // its strips are joined by name, as holeNode says
     }
   });
   for (const [el, terms] of needsRoot) { els.push(el); terms.forEach(touch); }

@@ -35,7 +35,25 @@ export type Item =
   /** A thumb joystick, five pins in a row: GND in `row``col`, then +, VRx, VRy and SW. Its on-screen controls are kept under its id (left to right), id + ":y" (down to up) and id + ":sw" (pressed). */
   | { t: 'joy'; id: string; row: string; col: number; ctl: string }
   /** A 16×2 character LCD with an I2C backpack. It is too wide for the breadboard, so it lies on the table at a place of its own, and its four pins are wired by name: "LCD:GND", "LCD:VCC", "LCD:SDA", "LCD:SCL". */
-  | { t: 'lcd'; id: string };
+  | { t: 'lcd'; id: string }
+  /** A second breadboard on the table. Its holes and rails are named on from the first one's: "a31", "T+31" and up.
+      It starts just to the right of the first. Once moved, `x` is where its left end lies and `z` where its middle lies, in millimetres from the middle of the first (src/state/table.ts). */
+  | { t: 'breadboard'; id: string; size: BreadboardSize; x?: number; z?: number };
+
+/** The bench's own breadboard has columns 1 to 30. */
+export const MAIN_COLS = 30;
+/** A second breadboard is short (half size, 30 columns, like the bench's own) or long (full size, 63 columns). */
+export type BreadboardSize = 'short' | 'long';
+export const BREADBOARD_COLS: Record<BreadboardSize, number> = { short: 30, long: 63 };
+/** The first and last column of the second breadboard on this bench, or null when there is none. Its columns carry on from the first one's. */
+export function extraColumns(items: Item[]): [first: number, last: number] | null {
+  const bb = items.find(it => it.t === 'breadboard');
+  return bb ? [MAIN_COLS + 1, MAIN_COLS + BREADBOARD_COLS[bb.size]] : null;
+}
+/** True for a hole or rail point on the second breadboard, such as "a31" or "B-45". */
+export const onExtraBoard = (point: string) => /^([a-j]|[TB][+-])\d+$/.test(point) && +point.replace(/^\D+/, '') > MAIN_COLS;
+/** "Short breadboard", "Long breadboard". */
+export const breadboardName = (size: BreadboardSize) => `${size === 'long' ? 'Long' : 'Short'} breadboard`;
 
 /** The colours an LED comes in. */
 export const LED_COLORS = { red: 0xff3b30, green: 0x2ecc40, yellow: 0xffc800, blue: 0x2f7bff, white: 0xf2f6ff } as const;

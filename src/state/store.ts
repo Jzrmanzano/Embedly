@@ -2,9 +2,10 @@ import { create } from 'zustand';
 import { BOARDS } from '../data/boards';
 import { MISSIONS, missionKey } from '../data/missions';
 import type { CheckResult } from '../sim/check';
-import { LED_COLORS, type BoardId, type Item } from '../types';
+import { LED_COLORS, type BoardId, type BreadboardSize, type Item } from '../types';
 import { NONE as NO_PANELS, USUAL_WIDTHS, type Panel, type Panels, type Widths } from './panels';
 import type { Tool } from './bench';
+import type { Place } from './table';
 import type { Page } from './route';
 import type { CardId } from '../data/boardchoice';
 
@@ -44,6 +45,8 @@ export interface LabState {
   point: string | null;
   /** A wire end being dragged to a new place, and the point it is over right now. */
   drag: { id: string; end: 'a' | 'b'; to: string | null } | null;
+  /** Where the second breadboard is while it is being dragged around the table. It is put down there when the pointer comes up. */
+  bbDrag: Place | null;
   /** A message about the last thing that happened on the bench. */
   notice: Notice | null;
   /** Which panels are open over the bench, and the panel the student just asked for, which should take the keyboard focus. */
@@ -85,6 +88,8 @@ export interface LabState {
   ohms: number;
   /** The LED colour picked in the Parts drawer, which the next LED placed will have. */
   ledColor: number;
+  /** The breadboard size picked in the Parts drawer, for the second breadboard. */
+  bbSize: BreadboardSize;
   /** What a left-button drag on the bench does: slide the view sideways and up or down, or turn it. */
   nav: 'pan' | 'rotate';
   labels: boolean;
@@ -142,9 +147,9 @@ export function saveWidths(widths: Widths) {
 const saved = loadBenches();
 export const useLab = create<LabState>(() => ({
   page: 'home', labSeen: false, board: 'uno', mission: 0, tab: 'mission', panels: NO_PANELS, focusPanel: null, widths: loadWidths(), help: false, guide: null, hot: null, edits: loadSketches(), ...saved, undo: {}, redo: {},
-  tool: null, pending: null, point: null, notice: null, drag: null, sparks: 0, paused: false, line: null, cursor: null, frameTick: 0, probe: null,
+  tool: null, pending: null, point: null, notice: null, drag: null, bbDrag: null, sparks: 0, paused: false, line: null, cursor: null, frameTick: 0, probe: null,
   inputs: {}, ...loadProgress(), results: null, checking: false, asking: null,
-  sound: false, ohms: 220, ledColor: LED_COLORS.red, nav: 'pan', labels: true, running: false, errLine: null, serial: '',
+  sound: false, ohms: 220, ledColor: LED_COLORS.red, bbSize: 'short', nav: 'pan', labels: true, running: false, errLine: null, serial: '',
 }));
 
 const NONE: Item[] = [], NONE_IDS: string[] = [];

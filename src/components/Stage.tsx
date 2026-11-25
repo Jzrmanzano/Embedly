@@ -4,10 +4,11 @@ import { ohmsLabel } from '../data/resistor';
 import { view } from '../scene/view';
 import { analyze } from '../sim/circuit';
 import { DARK_LCD, type LcdView } from '../sim/lcd';
-import { cancelTool, currentReadout, dismissNotice, escapePanel, flipItem, moveWireTyped, placeTyped, removeItem, requestRun, resumeRun, selectHot, setHelp, setInput, setNav, showGuide, stepOnce, stopRun, toggleLabels, togglePanel, toggleSound, redo, undo } from '../state/actions';
+import { isHome } from '../state/table';
+import { cancelTool, currentReadout, dismissNotice, escapePanel, flipItem, homeBreadboard, moveWireTyped, placeTyped, removeItem, requestRun, resumeRun, selectHot, setHelp, setInput, setNav, showGuide, stepOnce, stopRun, toggleLabels, togglePanel, toggleSound, redo, undo } from '../state/actions';
 import { TWO_POINT, type ToolKind } from '../state/bench';
 import { benchOf, boardOf, missionOf, useLab } from '../state/store';
-import { itemId, kindOf, type Item, type PartKind } from '../types';
+import { breadboardName, itemId, kindOf, onExtraBoard, type Item, type PartKind } from '../types';
 import { Boundary, isLoadError } from './Boundary';
 import { Icon } from './Icons';
 import { Pinout } from './Pinout';
@@ -60,6 +61,7 @@ const STEPS: Record<ToolKind, [string, string?]> = {
   module: ['Click the hole for the sensor\'s left pin (+). It uses three columns in a row: +, OUT and GND.'],
   joy: ['Click the hole for the joystick\'s left pin (GND). It uses five columns in a row: GND, +, VRx, VRy and SW.'],
   lcd: ['The LCD lies on the table in front of the bench. Wire its four pins: GND, VCC to 5V, SDA and SCL.'],
+  breadboard: ['The second breadboard goes to the right of the first. Its columns carry on from 31.'],
 };
 
 /** What to do next with the chosen part. It floats over the 3D view, so showing it never moves the bench under the pointer. */
@@ -126,13 +128,14 @@ function PartCard() {
   return (
     <div className="card">
       <button type="button" className="x" aria-label="Close" onClick={() => selectHot(null)}>×</button>
-      <b>{item?.t === 'res' ? `${ohmsLabel(item.ohms ?? 220)} resistor` : info[0]}</b>
+      <b>{item?.t === 'res' ? `${ohmsLabel(item.ohms ?? 220)} resistor` : item?.t === 'breadboard' ? breadboardName(item.size) : info[0]}</b>
       <p>{info[1]}</p>
       {item && <details className="pinout-more"><summary><span className="i-badge" aria-hidden="true">i</span>Pinout</summary><Pinout kind={kindOf(item)} ohms={item.t === 'res' ? item.ohms ?? 220 : undefined} /></details>}
       {item?.t === 'wire' && <WireEnds id={hot} a={item.a} b={item.b} />}
       {item && (
         <div className="card-actions">
           {item.t === 'led' && <button type="button" onClick={() => flipItem(hot)}>Flip</button>}
+          {item.t === 'breadboard' && !isHome(item) && <button type="button" onClick={homeBreadboard} title="Back beside the first breadboard, where it started">Put it back</button>}
           <button type="button" onClick={() => removeItem(hot)}>Remove</button>
         </div>
       )}
@@ -167,7 +170,7 @@ function nameOf(point: string): string {
   let m;
   if ((m = /^U:(\d+)$/.exec(point))) return `Pin ${m[1]}`;
   if ((m = /^[UE]:(.+)$/.exec(point))) return `Pin ${m[1].replace('GNDf', 'GND').replace(/GND[2b]/, 'GND')}`;
-  if ((m = /^([TB])([+-])/.exec(point))) return `${m[2] === '+' ? 'Plus' : 'Minus'} rail, ${m[1] === 'T' ? 'far' : 'near'} side`;
+  if ((m = /^([TB])([+-])/.exec(point))) return `${m[2] === '+' ? 'Plus' : 'Minus'} rail, ${m[1] === 'T' ? 'far' : 'near'} side${onExtraBoard(point) ? ', second breadboard' : ''}`;
   if ((m = /^LCD:(.+)$/.exec(point))) return `LCD pin ${m[1]}`;
   return point === 'PAD' ? 'Touch pad' : `Hole ${point}`;
 }

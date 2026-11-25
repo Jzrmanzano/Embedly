@@ -4,7 +4,8 @@ import * as T from 'three';
 import { ESP_FAR, ESP_HOLES, ESP_NEAR } from '../data/boards';
 import { bands, ohmsLabel } from '../data/resistor';
 import { COLS as LCD_COLS, DARK_LCD, LCD_PINS, type LcdView } from '../sim/lcd';
-import { itemId, kindOf, type BoardId, type Info, type Item } from '../types';
+import { BB_DEPTH, BB_HEIGHT, bbLength, colX, LCD_AT, PAD_AT, placeOf, UNO_AT } from '../state/table';
+import { BREADBOARD_COLS, breadboardName, itemId, kindOf, MAIN_COLS, type BoardId, type BreadboardSize, type Info, type Item } from '../types';
 
 export interface WorldSpec {
   board: BoardId;
@@ -32,6 +33,8 @@ export interface World {
   anchor(name: string): T.Vector3 | null;
   /** Rings the point under the pointer and the first point of a part being placed, with a line between them. */
   markers(hover: string | null, pending: string | null): void;
+  /** The middle of the bench's own breadboard in the scene, from which places on the table are measured (src/state/table.ts). */
+  origin: T.Vector3;
   dispose(): void;
 }
 
@@ -56,8 +59,7 @@ const INK = 0x1b2430, HILITE = 0xe2572b, METAL = 0xc9ced3, GOLD = 0xd9b24a, DARK
 const WIRE: Record<string, number> = { red: 0xd6453d, black: 0x2f353d, orange: 0xf08a24, yellow: 0xe8c22e, green: 0x3aa655, blue: 0x3577d4, white: 0xe9ecef, purple: 0x8d5bd1 };
 const ROWZ: Record<string, number> = { a: -13.97, b: -11.43, c: -8.89, d: -6.35, e: -3.81, f: 3.81, g: 6.35, h: 8.89, i: 11.43, j: 13.97 };
 const RAILZ: Record<string, number> = { 'T+': -23.5, 'T-': -20.96, 'B-': 20.96, 'B+': 23.5 };
-const BBH = 8.5, HT = 0.32;
-const colX = (c: number) => (c - 15.5) * 2.54;
+const HT = 0.32;
 
 const grad = new T.DataTexture(new Uint8Array([120, 190, 255]), 3, 1, T.RedFormat);
 grad.minFilter = grad.magFilter = T.NearestFilter; grad.generateMipmaps = false; grad.needsUpdate = true;
@@ -67,6 +69,9 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
   const devs: Record<string, (v: number) => void> = {}, groups: Record<string, T.Group> = {};
   const hots: Hot[] = [], itemAnim: ((t: number) => void)[] = [];
   let uno: BuiltBoard | null = null, bb: T.Group | null = null, padPos: T.Vector3 | null = null, lcdPos: T.Vector3 | null = null, lit: T.MeshBasicMaterial[] = [];
+  /** The second breadboard on the bench now, if there is one, and each size of it once built. */
+  let extra: { g: T.Group; cols: number } | null = null;
+  const extraBoards: Partial<Record<BreadboardSize, T.Group>> = {};
   const lcdDraws: Record<string, (v: LcdView) => void> = {};
 
   /* --- primitives: toon-shaded solids with an ink outline (a slightly larger back-face shell) --- */
@@ -211,20 +216,20 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
     return { group: K.root, parts: K.parts, hot: K.hot, anchors: {}, W, D, setLed: setL, usbAt: [K.X(-0.6), 1.4, K.Z(14)], plug: [9, 4.2, 8.5] };
   }
 
-  /* --- breadboard: 30 columns, rows a to j, a power rail pair on each long side --- */
-  function buildBB() {
-    const L = 30 * 2.54 + 6, Wd = 53.4, g = new T.Group();
-    box(g, 0, 0, 0, L, BBH, Wd, 0xf4f1e8);
-    printed(g, L, Wd, 14, BBH + 0.05, k => {
+  /* --- breadboard: rows a to j, a power rail pair on each long side. The bench's own has columns 1 to 30, and a second one is numbered on from there. --- */
+  function buildBB(cols = MAIN_COLS, first = 1) {
+    const L = bbLength(cols), Wd = BB_DEPTH, g = new T.Group();
+    box(g, 0, 0, 0, L, BB_HEIGHT, Wd, 0xf4f1e8);
+    printed(g, L, Wd, 14, BB_HEIGHT + 0.05, k => {
       const cx = L / 2, cz = Wd / 2;
       k.rect(cx, cz, L, 2.6, '#d9d4c6', true); k.rect(cx, cz, L, 0.5, '#bdb7a6', true);
       k.line([[2, cz + RAILZ['T+'] - 1.5], [L - 2, cz + RAILZ['T+'] - 1.5]], 0.35, '#d6453d'); k.line([[2, cz + RAILZ['T-'] + 1.5], [L - 2, cz + RAILZ['T-'] + 1.5]], 0.35, '#3577d4');
       k.line([[2, cz + RAILZ['B-'] - 1.5], [L - 2, cz + RAILZ['B-'] - 1.5]], 0.35, '#3577d4'); k.line([[2, cz + RAILZ['B+'] + 1.5], [L - 2, cz + RAILZ['B+'] + 1.5]], 0.35, '#d6453d');
-      for (let c = 1; c <= 30; c++) {
-        const x = cx + colX(c);
+      for (let c = 1; c <= cols; c++) {
+        const x = cx + (c - (cols + 1) / 2) * 2.54, n = first + c - 1;
         Object.values(ROWZ).forEach(z => k.rect(x, cz + z, 1.15, 1.15, '#3b3f45', true));
         Object.values(RAILZ).forEach(z => k.rect(x, cz + z, 1.15, 1.15, '#3b3f45', true));
-        if (c === 1 || c % 5 === 0) { k.text(String(c), x, cz - 17.2, 1.5, { color: '#6d737b' }); k.text(String(c), x, cz + 17.2, 1.5, { color: '#6d737b' }); }
+        if (c === 1 || n % 5 === 0) { k.text(String(n), x, cz - 17.2, 1.5, { color: '#6d737b' }); k.text(String(n), x, cz + 17.2, 1.5, { color: '#6d737b' }); }
       }
       Object.entries(ROWZ).forEach(([r, z]) => { k.text(r, 1.6, cz + z, 1.5, { color: '#6d737b' }); k.text(r, L - 1.6, cz + z, 1.5, { color: '#6d737b' }); });
       [['+', 'T+', '#d6453d'], ['−', 'T-', '#3577d4'], ['−', 'B-', '#3577d4'], ['+', 'B+', '#d6453d']].forEach(([s, r, col]) => { k.text(s, 1.6, cz + RAILZ[r], 2, { color: col, bold: true }); k.text(s, L - 1.6, cz + RAILZ[r], 2, { color: col, bold: true }); });
@@ -243,9 +248,28 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
       if (i < 0) throw new Error('Unknown LCD pin ' + name);
       return new T.Vector3(lcdPos!.x - 47.5, 3.2, lcdPos!.z + (i - 1.5) * 2.54);
     }
-    if ((m = /^([TB][+-])(\d+)$/.exec(name))) return new T.Vector3(colX(+m[2]), BBH, RAILZ[m[1]]).add(bb!.position);
-    if ((m = /^([a-j])(\d+)$/.exec(name))) return new T.Vector3(colX(+m[2]), BBH, ROWZ[m[1]]).add(bb!.position);
+    if ((m = /^([TB][+-])(\d+)$/.exec(name))) return hole(+m[2], RAILZ[m[1]]);
+    if ((m = /^([a-j])(\d+)$/.exec(name))) return hole(+m[2], ROWZ[m[1]]);
     throw new Error('Unknown connection point ' + name);
+  }
+  /** A hole in column c, on the bench's own breadboard or on the second one. */
+  function hole(c: number, z: number): T.Vector3 {
+    if (c <= MAIN_COLS) return new T.Vector3(colX(c), BB_HEIGHT, z).add(bb!.position);
+    if (!extra || c > MAIN_COLS + extra.cols) throw new Error(`There is no column ${c} on this bench`);
+    return new T.Vector3((c - MAIN_COLS - (extra.cols + 1) / 2) * 2.54, BB_HEIGHT, z).add(extra.g.position);
+  }
+  /** The second breadboard, built once for each size and kept while the bench is, since the parts are rebuilt with every change and each time it moves while dragged. */
+  function extraBoard(it: Of<'breadboard'>): T.Group {
+    const cols = BREADBOARD_COLS[it.size], p = placeOf(it);
+    let g = extraBoards[it.size];
+    if (!g) { g = extraBoards[it.size] = buildBB(cols, MAIN_COLS + 1); g.userData.keep = true; }   // keep: not thrown away with the parts
+    g.position.set(bb!.position.x + p.x + bbLength(cols) / 2, 0, bb!.position.z + p.z);
+    return g;
+  }
+  /** The second breadboard as a placed part. Its label sits off its far left corner, clear of the holes. */
+  function mkBreadboard(): Made {
+    const { g, cols } = extra!;
+    return { g, top: new T.Vector3(-bbLength(cols) / 2 + 6, BB_HEIGHT, -BB_DEPTH / 2 - 1).add(g.position) };
   }
 
   /* --- components --- */
@@ -568,6 +592,7 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
       case 'contact': return mkContact(it);
       case 'module': return mkModule(it);
       case 'joy': return mkJoy(it);
+      case 'breadboard': return mkBreadboard();
     }
   }
 
@@ -606,13 +631,13 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
   const isUno = spec.board === 'uno';
   bb = buildBB(); bb.position.set(isUno ? 50 : 0, 0, 0); world.add(bb);
   const b = isUno ? (uno = buildUno()) : buildEsp();
-  if (isUno) { b.group.position.set(-50, 1.6, 0); shadow(world, b.group.position.x, 0, b.W, b.D); }
-  else b.group.position.set(colX(4) + b.W / 2 - 8.24, BBH + 4.1, 0);
+  if (isUno) { b.group.position.set(bb.position.x + UNO_AT.x, 1.6, UNO_AT.z); shadow(world, b.group.position.x, 0, b.W, b.D); }
+  else b.group.position.set(colX(4) + b.W / 2 - 8.24, BB_HEIGHT + 4.1, 0);
   world.add(b.group); cable(b);
   Object.assign(groups, b.parts); devs.builtin = b.setLed;
   if (spec.parts) for (const id of Object.keys(spec.parts)) { const h = b.hot[id]; if (h) addHot(id, spec.parts[id][0], new T.Vector3(...h).add(b.group.position)); }
-  padPos = new T.Vector3(bb.position.x + colX(8), 0.8, 46);
-  lcdPos = new T.Vector3(bb.position.x + colX(28), 0, 64);   // in front of the breadboard, clear of the touch pad's place
+  padPos = new T.Vector3(bb.position.x + PAD_AT.x, 0.8, PAD_AT.z);
+  lcdPos = new T.Vector3(bb.position.x + LCD_AT.x, 0, LCD_AT.z);   // in front of the breadboard, clear of the touch pad's place
   const boardHots = hots.length;
 
   /* --- the parts the student placed --- */
@@ -620,9 +645,11 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
   const burners: Record<string, () => void> = {}, tops: Record<string, T.Vector3> = {};
   const free = (o: T.Object3D) => o.traverse(c => { if (c instanceof T.Mesh) { c.geometry.dispose(); c.material.map?.dispose(); c.material.dispose(); } });
   function setCircuit(items: Item[], burnt: string[]) {
-    placed.forEach(g => { world.remove(g); free(g); });
+    placed.forEach(g => { world.remove(g); if (!g.userData.keep) free(g); });
     placedIds.forEach(id => { delete devs[id]; delete groups[id]; delete burners[id]; delete tops[id]; delete lcdDraws[id]; });
-    placed = []; placedIds = []; itemAnim.length = 0; hots.length = boardHots; burntSet = new Set(burnt); lit = [];
+    placed = []; placedIds = []; itemAnim.length = 0; hots.length = boardHots; burntSet = new Set(burnt); lit.forEach(m => m.color.setHex(INK)); lit = [];
+    const second = items.find(it => it.t === 'breadboard');   // first, so the parts plugged into it know where its holes are
+    extra = second?.t === 'breadboard' ? { g: extraBoard(second), cols: BREADBOARD_COLS[second.size] } : null;
     items.forEach((it, k) => {
       let made: Made;
       try { made = make(it, k); } catch { return; }   // a point that is not on this bench is skipped
@@ -634,7 +661,7 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
       if (made.more) for (const [tail, f] of Object.entries(made.more)) { devs[id + tail] = f; placedIds.push(id + tail); }
       if (made.top) tops[id] = made.top;
       if (made.burn) { burners[id] = made.burn; if (burntSet.has(id)) made.burn(); }
-      if (made.top && spec.info[kindOf(it)]) addHot(id, it.t === 'res' ? `${ohmsLabel(it.ohms ?? 220)} resistor` : spec.info[kindOf(it)][0], made.top);   // a resistor's label says its value
+      if (made.top && spec.info[kindOf(it)]) addHot(id, it.t === 'res' ? `${ohmsLabel(it.ohms ?? 220)} resistor` : it.t === 'breadboard' ? breadboardName(it.size) : spec.info[kindOf(it)][0], made.top);   // a resistor's label says its value, a breadboard's its size
       /* Which leg is which, readable from any angle: every part with a + and a − gets a badge just outside each of them. */
       const flat = (from: T.Vector3, to: T.Vector3) => { const u = new T.Vector3(to.x - from.x, 0, to.z - from.z); return u.length() ? u.normalize() : u.set(1, 0, 0); };
       const pole = (title: string, sign: '+' | '-', at: T.Vector3, u: T.Vector3, out: number, lift = 13) => addHot(id, title, at.clone().addScaledVector(u, out).setY(at.y + lift), sign);
@@ -679,6 +706,7 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
     },
     puff,
     anchor: safeAnchor,
+    origin: bb.position.clone(),
     markers(hover, pending) {
       const place = (r: T.Mesh, name: string | null) => { const p = name ? safeAnchor(name) : null; r.visible = !!p; if (p) r.position.set(p.x, p.y + 0.4, p.z); return p; };
       const h = place(hoverRing, hover), q = place(pendRing, pending);
@@ -690,6 +718,7 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
         if (!(o instanceof T.Mesh)) return;
         o.geometry.dispose(); o.material.map?.dispose(); o.material.dispose();
       });
+      Object.values(extraBoards).forEach(g => { if (g && !g.parent) free(g); });   // a size built earlier and not on the bench now
     },
   };
 }

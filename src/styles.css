@@ -918,7 +918,7 @@ a.btn, a.toggle { color: var(--ink); text-decoration: none; }
 .pv-chip.pv-free-leg rect { fill: var(--panel-2); stroke: var(--edge); stroke-width: 1; } .pv-chip.pv-free-leg text { fill: var(--ink); }
 .pinout [class^="pv-"]:not(.pv-leg):not(.pv-chip):not(.pv-name):not(.pv-note) { stroke: var(--ink); stroke-width: 1.6; stroke-linejoin: round; }
 .pv-red { fill: #d6453d; } .pv-dark { fill: #2b3038; } .pv-dark2 { fill: #3b424c; } .pv-blue { fill: #2f6db5; } .pv-light { fill: #e6e9ec; } .pv-orange { fill: #e2572b; } .pv-metal { fill: #aab2ba; }
-.pv-green { fill: #2e8b57; } .pv-pcbred { fill: #b83a32; } .pv-gold { fill: #d9b24a; } .pv-glass { fill: #cfe8dc; }
+.pv-green { fill: #2e8b57; } .pv-pcbred { fill: #b83a32; } .pv-gold { fill: #d9b24a; } .pv-glass { fill: #cfe8dc; } .pv-cream { fill: #f4f1e8; }
 .pv-tan { fill: #dcbd8e; } .pv-copper { fill: #c98a4b; } .pv-band-a { fill: #c0392b; } .pv-band-b { fill: #1b1e23; } .pv-band-c { fill: #e8821e; } .pv-band-gold { fill: #c9a227; }
 .pv-wire { fill: none; stroke: #f08a24 !important; stroke-width: 4 !important; stroke-linecap: round; }
 .pv-flat, .pv-track, .pv-plus { fill: none; stroke-linecap: round; } .pv-flat { stroke-width: 2.4 !important; } .pv-flat.light { stroke: #e6e9ec !important; stroke-width: 1.4 !important; }
@@ -961,3 +961,12 @@ a.btn, a.toggle { color: var(--ink); text-decoration: none; }
 .picker p.bad { color: var(--pwr); font-weight: 700; }
 .pinout-card h3 .ohms { font-weight: 400; color: var(--muted); }
 .choice-tile .bin-art .res-art { width: 110px; height: 48px; }
+.bb-sizes { margin: 0; min-width: 0; border-width: 1px 0 0; }
+.sizes { display: flex; gap: 6px; }
+.size { position: relative; flex: 1 1 0; min-width: 0; display: flex; cursor: pointer; }
+.size input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.size span { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 5px 4px; border: 1.5px solid var(--edge); border-radius: 8px; color: var(--muted); font-size: .84rem; }
+.size small { font: .72rem var(--f-mono); }
+.size:hover span { background: var(--panel-2); }
+.size input:checked + span { color: var(--ink); font-weight: 700; border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.size input:focus-visible + span { outline: 3px solid var(--blue); outline-offset: 2px; }

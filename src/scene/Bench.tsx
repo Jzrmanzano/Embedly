@@ -6,14 +6,18 @@ import { BOARDS, ITEM_INFO } from '../data/boards';
 import { setTone } from '../sim/audio';
 import { RGB_CHANNELS } from '../sim/circuit';
 import { DARK_LCD } from '../sim/lcd';
-import { beginMove, currentReadout, finishMove, isWireEnd, moveTo, pressPoint, releasePoint, selectHot, setPoint, setProbe } from '../state/actions';
-import { allTerminals, movedWire } from '../state/bench';
+import { beginMove, currentReadout, dragBreadboard, dropBreadboard, finishMove, isWireEnd, moveTo, nudgeBreadboard, pressPoint, releasePoint, selectHot, setPoint, setProbe } from '../state/actions';
+import { allTerminals, holesOf, movedWire } from '../state/bench';
 import { benchOf, burntOf, keyOf, missionOf, useLab } from '../state/store';
-import { itemId } from '../types';
+import { BB_HEIGHT, PITCH, placeOf, type Place } from '../state/table';
+import { itemId, onExtraBoard } from '../types';
 import { view } from './view';
 import { buildWorld } from './world';
 
 const VIEW_DIR = new T.Vector3(-0.42, 0.78, 1).normalize(), TOP_DIR = new T.Vector3(0, 1, 0.001).normalize(), projected = new T.Vector3();
+const ray = new T.Raycaster(), ndc = new T.Vector2(), hit = new T.Vector3(), TOP_PLANE = new T.Plane(new T.Vector3(0, 1, 0), -BB_HEIGHT);
+/** Is this the second breadboard, by its id? */
+const isSecond = (id: string | null) => !!id && benchOf(useLab.getState()).some((it, k) => it.t === 'breadboard' && itemId(it, k) === id);
 
 function pickOf(o: T.Object3D | null): string | null {
   for (; o; o = o.parent) if (o.userData.pick) return o.userData.pick;
@@ -26,15 +30,17 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
   const camera = useThree(s => s.camera) as T.OrthographicCamera;
   const board = useLab(s => s.board), hot = useLab(s => s.hot), showParts = useLab(s => !!missionOf(s).showParts);
   const probed = useLab(s => s.probe?.name ?? null), nav = useLab(s => s.nav), bench = useLab(benchOf), burnt = useLab(burntOf), point = useLab(s => s.point), pending = useLab(s => s.pending), sparks = useLab(s => s.sparks);
-  const drag = useLab(s => s.drag), panels = useLab(s => s.panels), widths = useLab(s => s.widths);
+  const drag = useLab(s => s.drag), bbDrag = useLab(s => s.bbDrag), panels = useLab(s => s.panels), widths = useLab(s => s.widths);
+  const second = useLab(s => { const bb = benchOf(s).find(it => it.t === 'breadboard'); return bb?.t === 'breadboard' ? bb.size : null; });
   const insets = useRef({ l: 0, r: 0 });   // how much of the left and right of the screen a panel covers
   const controls = useRef<ComponentRef<typeof OrbitControls>>(null);
-  // while a wire end is being dragged, the wire is drawn plugged into the point under the pointer
+  // while a wire end is being dragged, the wire is drawn plugged into the point under the pointer; while the second breadboard is, it is drawn where it has got to, with its parts on it
   const shown = useMemo(() => {
-    if (!drag?.to) return bench;
-    const r = movedWire(board, bench, drag.id, drag.end, drag.to);
-    return 'items' in r ? r.items : bench;
-  }, [bench, board, drag]);
+    const items = bbDrag ? bench.map(it => (it.t === 'breadboard' ? { ...it, ...bbDrag } : it)) : bench;
+    if (!drag?.to) return items;
+    const r = movedWire(board, items, drag.id, drag.end, drag.to);
+    return 'items' in r ? r.items : items;
+  }, [bench, board, drag, bbDrag]);
   const viewH = useRef(200);   // world millimetres visible top to bottom at zoom 1
   const labelEls = useRef<HTMLButtonElement[]>([]);
 
@@ -85,16 +91,45 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
       }
       return best;
     };
+    /* the second breadboard: press on it (or on a part standing in it) and drag. A press that does not move is a click, which selects as before. */
+    let board2: { x: number; y: number; off: Place; moving: boolean } | null = null;
+    const aim = (e: PointerEvent) => {
+      const r = el.getBoundingClientRect();
+      ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+      ray.setFromCamera(ndc, camera);
+    };
+    const tableAt = (e: PointerEvent): Place | null => {   // the point under the pointer at the height of a breadboard's top, measured as places on the table are
+      aim(e);
+      return ray.ray.intersectPlane(TOP_PLANE, hit) ? { x: hit.x - world.origin.x, z: hit.z - world.origin.z } : null;
+    };
+    const onSecond = (e: PointerEvent): boolean => {
+      aim(e);
+      const id = pickOf(ray.intersectObject(world.group, true).find(h => pickOf(h.object))?.object ?? null), k = bench.findIndex((it, i) => itemId(it, i) === id), it = bench[k];
+      return !!it && (it.t === 'breadboard' || (it.t !== 'wire' && holesOf(it).length > 0 && holesOf(it).every(onExtraBoard)));
+    };
     const down = (e: PointerEvent) => {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
-      if (!useLab.getState().tool) {   // with no part in hand, a wire end can be picked up and moved
+      if (!useLab.getState().tool) {   // with no part in hand, a wire end can be picked up and moved, and so can the second breadboard
         const name = nearest(e);
-        if (name && beginMove(name)) { grabbed = true; setProbe(null); if (controls.current) controls.current.enabled = false; }
+        if (name && beginMove(name)) { grabbed = true; setProbe(null); if (controls.current) controls.current.enabled = false; return; }
+        const bb = bench.find(it => it.t === 'breadboard'), at = bb?.t === 'breadboard' && onSecond(e) ? tableAt(e) : null;
+        if (bb?.t === 'breadboard' && at) {
+          const p = placeOf(bb);
+          board2 = { x: e.clientX, y: e.clientY, off: { x: p.x - at.x, z: p.z - at.z }, moving: false };
+          if (controls.current) controls.current.enabled = false;
+        }
         return;
       }
       if (pressPoint(nearest(e))) { grabbed = true; if (controls.current) controls.current.enabled = false; }
     };
     const move = (e: PointerEvent) => {
+      if (board2) {
+        if (!board2.moving && Math.hypot(e.clientX - board2.x, e.clientY - board2.y) < 5) return;
+        board2.moving = true; setProbe(null); el.style.cursor = 'grabbing';
+        const at = tableAt(e);
+        if (at) dragBreadboard({ x: at.x + board2.off.x, z: at.z + board2.off.z });
+        return;
+      }
       if (useLab.getState().drag) { moveTo(nearest(e)); return; }
       if (useLab.getState().tool) { setProbe(null); setPoint(nearest(e)); return; }
       setPoint(null);
@@ -104,6 +139,13 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
     };
     const leave = () => { setProbe(null); setPoint(null); };
     const up = (e: PointerEvent) => {
+      if (board2) {
+        const moved = board2.moving;
+        board2 = null;
+        if (controls.current) controls.current.enabled = true;
+        if (moved) { el.style.cursor = 'grab'; dropBreadboard(); }
+        return;
+      }
       if (!grabbed) return;
       grabbed = false;
       if (controls.current) controls.current.enabled = true;
@@ -127,7 +169,9 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
 
   const measure = () => {   // side panels only; on a phone they are sheets along the bottom
     const wide = matchMedia('(min-width: 761px)').matches, width = (sel: string) => (wide ? document.querySelector<HTMLElement>(sel)?.offsetWidth ?? 0 : 0);
-    insets.current = { l: width('.rail.left') + width('.drawer.left'), r: width('.rail.right') + width('.drawer.right') };
+    const tools = wide ? document.querySelector<HTMLElement>('.tools') : null;   // the view buttons float on the right, so a wide bench (a long second breadboard) is kept clear of them too
+    const toolsIn = tools ? Math.max(0, gl.domElement.getBoundingClientRect().right - tools.getBoundingClientRect().left + 8) : 0;
+    insets.current = { l: width('.rail.left') + width('.drawer.left'), r: Math.max(width('.rail.right') + width('.drawer.right'), toolsIn) };
   };
   const frustum = () => {
     const a = size.width / size.height, h = viewH.current, shift = ((insets.current.l - insets.current.r) / 2) * (h / size.height);   // slide the window so the scene sits in the free part
@@ -152,7 +196,7 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
     camera.position.copy(target).addScaledVector(VIEW_DIR, 900);
     camera.zoom = 1; frustum(); controls.current!.update();
   };
-  useLayoutEffect(fit, [world]);        // a new board reframes the view; placing parts does not
+  useLayoutEffect(fit, [world, second]);   // a new board reframes the view, and so does a second breadboard coming, going or changing size; placing parts does not
   useLayoutEffect(frustum, [size]);     // a resize keeps the same framing
   useLayoutEffect(() => { measure(); frustum(); }, [panels, widths]);   // opening or resizing a panel slides the view, it does not zoom
   useEffect(() => {
@@ -169,7 +213,13 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
       const dir = ({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] } as Record<string, number[]>)[e.key];
       if (!dir || e.ctrlKey || e.metaKey || e.altKey || (e.target as HTMLElement).closest('input, textarea, select, [role="tab"], [role="slider"]') || !controls.current) return;
       e.preventDefault();
-      const step = (e.shiftKey ? 60 : 20) / camera.zoom, right = new T.Vector3().setFromMatrixColumn(camera.matrixWorld, 0), up = new T.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+      const right = new T.Vector3().setFromMatrixColumn(camera.matrixWorld, 0), up = new T.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+      if (isSecond(useLab.getState().hot)) {   // the selected second breadboard moves instead of the view: one hole along, or ten with Shift, along whichever edge of the table points most the way of the arrow on screen
+        const way = right.clone().multiplyScalar(dir[0]).addScaledVector(up, dir[1]), step = PITCH * (e.shiftKey ? 10 : 1);
+        if (Math.abs(way.x) >= Math.abs(way.z)) nudgeBreadboard(Math.sign(way.x) * step, 0); else nudgeBreadboard(0, Math.sign(way.z) * step);
+        return;
+      }
+      const step = (e.shiftKey ? 60 : 20) / camera.zoom;
       const move = right.multiplyScalar(dir[0] * step).addScaledVector(up, dir[1] * step);
       controls.current.target.add(move); camera.position.add(move); controls.current.update();
     };
@@ -210,7 +260,7 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
         key={world.group.uuid}
         object={world.group}
         onClick={(e: ThreeEvent<MouseEvent>) => { e.stopPropagation(); if (e.delta < 5 && !useLab.getState().tool) selectHot(pickOf(e.object)); }}
-        onPointerMove={(e: ThreeEvent<PointerEvent>) => { e.stopPropagation(); const st = useLab.getState(); gl.domElement.style.cursor = st.drag ? 'grabbing' : st.tool ? 'crosshair' : st.probe && isWireEnd(st.probe.name) ? 'grab' : pickOf(e.object) ? 'pointer' : ''; }}
+        onPointerMove={(e: ThreeEvent<PointerEvent>) => { e.stopPropagation(); const st = useLab.getState(); gl.domElement.style.cursor = st.drag || st.bbDrag ? 'grabbing' : st.tool ? 'crosshair' : (st.probe && isWireEnd(st.probe.name)) || isSecond(pickOf(e.object)) ? 'grab' : pickOf(e.object) ? 'pointer' : ''; }}
         onPointerOut={() => { gl.domElement.style.cursor = ''; }}
       />
     </>

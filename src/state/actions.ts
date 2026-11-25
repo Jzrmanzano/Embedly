@@ -6,9 +6,10 @@ import { analyze } from '../sim/circuit';
 import { makeHW, makeReadout, type Readout, type VirtualHW } from '../sim/hardware';
 import { run as runSketch, SimError, type RunControl } from '../sim/interpreter';
 import { pushFrame, type Frame } from '../sim/timeline';
-import { itemId, type BoardId, type Item } from '../types';
+import { BREADBOARD_COLS, itemId, MAIN_COLS, type BoardId, type BreadboardSize, type Item } from '../types';
 import { clampWidth, closePanel as closePanelIn, closeTop, isOpen, openPanel as openPanelIn, widestPanel, type Panel, type Side } from './panels';
-import { flipped, holesOf, inputsOf, makeItem, movedWire, parseTerminal, placementError, sameTool, TWO_POINT, type Tool } from './bench';
+import { flipped, holesOf, homedBreadboard, inputsOf, makeItem, movedBreadboard, movedWire, parseTerminal, placementError, resizedBreadboard, sameTool, TWO_POINT, withoutBreadboard, type Tool } from './bench';
+import { placeOf, slide, type Place } from './table';
 import { guideHash, parseHash } from './route';
 import { cardOf, fitsAll, type CardId } from '../data/boardchoice';
 import { benchOf, burntOf, codeOf, keyOf, missionOf, saveBenches, saveProgress, saveSketches, saveWidths, useLab, type Tab } from './store';
@@ -191,7 +192,7 @@ export function openFromHash() {
   const choosing = !home && !!MISSIONS[board][mission].choice;
   set(s => {
     const open = home || isPhone() ? s.panels : openPanelIn(s.panels, 'brief', isNarrow());   // a new mission opens its brief, except on a phone where it would cover the bench
-    return { page: home ? 'home' : 'lab', labSeen: s.labSeen || !home, board, mission, hot: null, serial: '', errLine: null, tool: null, pending: null, point: null, notice: null, results: null, asking: null, checking: false, drag: null, panels: choosing ? closePanelIn(closePanelIn(open, 'code'), 'parts') : home || isNarrow() || open.right ? open : openPanelIn(open, 'parts', false) };   // choosing a board needs no code or parts, and on a wide screen the parts are at hand
+    return { page: home ? 'home' : 'lab', labSeen: s.labSeen || !home, board, mission, hot: null, serial: '', errLine: null, tool: null, pending: null, point: null, notice: null, results: null, asking: null, checking: false, drag: null, bbDrag: null, panels: choosing ? closePanelIn(closePanelIn(open, 'code'), 'parts') : home || isNarrow() || open.right ? open : openPanelIn(open, 'parts', false) };   // choosing a board needs no code or parts, and on a wide screen the parts are at hand
   });
   syncInputs();
 }
@@ -249,6 +250,15 @@ export function showAnswer() {
 }
 export function removeItem(id: string) {
   const bench = benchOf(get());
+  if (bench.some((it, k) => it.t === 'breadboard' && itemId(it, k) === id)) {   // what is plugged into the second breadboard comes off with it
+    const kept = new Set(withoutBreadboard(bench)), gone = bench.filter(it => !kept.has(it) && it.t !== 'breadboard');
+    const removed = new Set(bench.flatMap((it, k) => (kept.has(it) ? [] : [itemId(it, k)]))), wires = gone.filter(it => it.t === 'wire').length, parts = gone.length - wires;
+    const count = (n: number, word: string) => (n ? `${n} ${word}${n === 1 ? '' : 's'}` : '');
+    change([...kept], burntOf(get()).filter(b => !removed.has(b)));
+    set({ hot: null });
+    say('info', gone.length ? `The second breadboard is off the bench, along with ${[count(parts, 'part'), count(wires, 'wire')].filter(Boolean).join(' and ')} plugged into it. Undo puts it all back.` : 'The second breadboard is off the bench.', 7000);
+    return;
+  }
   change(bench.filter((it, k) => itemId(it, k) !== id), burntOf(get()).filter(b => b !== id));
   set({ hot: null });
 }
@@ -256,6 +266,46 @@ export function flipItem(id: string) {
   change(benchOf(get()).map((it, k) => (itemId(it, k) === id ? flipped(it) : it)));
 }
 const addItem = (it: Item) => change([...benchOf(get()), it]);
+
+/* --- moving the second breadboard around the table --- */
+let lastNudge: { key: string; at: number } | null = null;
+/** Moves something on the table without changing the circuit, so a running sketch keeps running. It is remembered for undo, and a run of quick nudges is one undo step. */
+function moveOnTable(items: Item[], nudge = false) {
+  const s = get(), key = keyOf(s), now = Date.now(), same = nudge && lastNudge?.key === key && now - lastNudge.at < 1500;
+  lastNudge = nudge ? { key, at: now } : null;
+  const benches = { ...s.benches, [key]: items };
+  saveBenches(benches, s.burnt);
+  set({ benches, undo: same ? s.undo : { ...s.undo, [key]: [...(s.undo[key] ?? []).slice(-HISTORY), { items: benchOf(s), burnt: burntOf(s) }] }, redo: { ...s.redo, [key]: [] } });
+}
+const secondOf = (items: Item[]) => items.find(it => it.t === 'breadboard');
+/** The pointer drags the second breadboard towards a place on the table. It goes as far as it can without landing on anything. */
+export function dragBreadboard(want: Place) {
+  const s = get(), bb = secondOf(benchOf(s));
+  if (bb?.t !== 'breadboard') return;
+  const to = slide(s.board, benchOf(s), bb.size, s.bbDrag ?? placeOf(bb), want);
+  if (to.x !== s.bbDrag?.x || to.z !== s.bbDrag?.z) set({ bbDrag: to });
+}
+/** The pointer came up: the second breadboard stays where it was dragged. It is not selected, as its card would cover the place it was just put. */
+export function dropBreadboard() {
+  const s = get(), to = s.bbDrag, bench = benchOf(s), k = bench.findIndex(it => it.t === 'breadboard'), bb = bench[k];
+  set({ bbDrag: null });
+  if (!to || bb?.t !== 'breadboard') return;
+  const from = placeOf(bb);
+  if (to.x !== from.x || to.z !== from.z) moveOnTable(bench.map((it, i) => (i === k ? { ...bb, x: to.x, z: to.z } : it)));
+}
+/** The arrow keys move the selected second breadboard a step at a time. */
+export function nudgeBreadboard(dx: number, dz: number) {
+  const s = get(), bench = benchOf(s), bb = secondOf(bench);
+  if (bb?.t !== 'breadboard') return;
+  const from = placeOf(bb), items = movedBreadboard(s.board, bench, { x: from.x + dx, z: from.z + dz });
+  if (items !== bench) moveOnTable(items, true);
+  else say('info', 'The second breadboard cannot go any further that way.', 3000);
+}
+/** Puts the second breadboard back beside the first, where it started. */
+export function homeBreadboard() {
+  const bench = benchOf(get());
+  if (secondOf(bench)) moveOnTable(homedBreadboard(bench));
+}
 
 /* --- moving the end of a wire --- */
 const wireEnds = (name: string) => {
@@ -310,6 +360,21 @@ export function setOhms(ohms: number) {
 export function setLedColor(color: number) {
   set(s => ({ ledColor: color, tool: s.tool?.kind === 'led' ? { ...s.tool, color } : s.tool }));
 }
+/** Picks the size of the second breadboard. Nothing changes on the bench until the tile is pressed. */
+export const setBreadboardSize = (bbSize: BreadboardSize) => set({ bbSize });
+/** Puts a second breadboard of this size on the bench, or makes the one there this size. */
+function placeBreadboard(size: BreadboardSize) {
+  const bench = benchOf(get()), there = bench.find(it => it.t === 'breadboard'), span = `columns ${MAIN_COLS + 1} to ${MAIN_COLS + BREADBOARD_COLS[size]}`;
+  if (!there) {
+    addItem(makeItem({ kind: 'breadboard', size }, bench, 'BB'));
+    say('info', `A ${size} breadboard is on the right of the bench: ${span}. Its rails are its own, so wire them to the first breadboard's rails or to the board.`, 8000);
+  } else if (there.size === size) say('info', `The ${size} breadboard is already on the bench. To take it off, select it and press Remove.`, 6000);
+  else {
+    const r = resizedBreadboard(get().board, bench, size);
+    if ('error' in r) say('warn', r.error, 8000);
+    else { change(r.items); say('info', `The second breadboard is ${size} now: ${span}.`, 6000); }
+  }
+}
 export function pickTool(tool: Tool | null) {
   const part = tool && partOf(tool);
   if (part && !trayParts(missionOf(get()), Object.keys(get().passed)).has(part)) {   // a part that no mission has unlocked yet. The studio has them all.
@@ -320,6 +385,7 @@ export function pickTool(tool: Tool | null) {
   const same = tool && get().tool?.kind === tool.kind && get().tool?.color === tool.color && get().tool?.ohms === tool.ohms && get().tool?.sub === tool.sub;
   if (!tool || same) { set({ tool: null, pending: null, point: null }); return; }
   set(s => ({ tool, pending: null, hot: null, panels: isPhone() ? closePanelIn(s.panels, 'parts') : s.panels }));   // on a phone the drawer would cover the bench
+  if (tool.kind === 'breadboard') { placeBreadboard(tool.size ?? 'short'); set({ tool: null }); return; }   // it lies on the table beside the first one, so it goes there at once
   if (tool.kind === 'pad' || tool.kind === 'lcd') {   // parts that lie at a place of their own on the table go there at once
     const it = makeItem(tool, benchOf(get()), tool.kind === 'pad' ? 'PAD' : 'LCD');
     const err = placementError(get().board, benchOf(get()), it);
@@ -370,7 +436,7 @@ function firstPointError(name: string): string | null {
 export function placeTyped(text: string): string | null {
   const s = get(), tool = s.tool;
   if (!tool) return 'Choose a part first.';
-  const words = text.split(/[\s,]+/).filter(Boolean), want = TWO_POINT.includes(tool.kind) ? 2 : tool.kind === 'pad' || tool.kind === 'lcd' ? 0 : 1;
+  const words = text.split(/[\s,]+/).filter(Boolean), want = TWO_POINT.includes(tool.kind) ? 2 : tool.kind === 'pad' || tool.kind === 'lcd' || tool.kind === 'breadboard' ? 0 : 1;
   if (words.length !== want) return want === 2 ? 'Type two points, such as e10 e11.' : 'Type one hole, such as d24.';
   const pts = words.map(w => parseTerminal(s.board, w, benchOf(s)));
   const bad = pts.findIndex(p => !p);
