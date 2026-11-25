@@ -11,7 +11,7 @@ export default function Scene({ labelLayer }: { labelLayer: RefObject<HTMLDivEle
     <div style={{ position: 'absolute', inset: 0 }} onPointerDown={e => { down.current = [e.clientX, e.clientY]; }}>
       {/* legacy linear flat: plain colours in, plain colours out. The toon look needs no colour management or tone mapping. */}
       <Canvas
-        orthographic legacy linear flat
+        orthographic legacy linear flat shadows="percentage"
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true }}
         camera={{ manual: true, near: 1, far: 4000 }}

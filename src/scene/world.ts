@@ -1,6 +1,9 @@
 /* Builds the 3D bench for one lesson: the board, the breadboard and the wired parts.
    Everything is modelled in millimetres from toon-shaded solids with an ink outline. */
 import * as T from 'three';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import { ESP_FAR, ESP_HOLES, ESP_NEAR } from '../data/boards';
 import { bands, ohmsLabel } from '../data/resistor';
 import { COLS as LCD_COLS, DARK_LCD, LCD_PINS, type LcdView } from '../sim/lcd';
@@ -35,12 +38,17 @@ export interface World {
   markers(hover: string | null, pending: string | null): void;
   /** The middle of the bench's own breadboard in the scene, from which places on the table are measured (src/state/table.ts). */
   origin: T.Vector3;
+  /** The size of the drawing in device pixels and how many of them make a screen pixel, so the ink lines keep their width. */
+  resize(width: number, height: number, pixelRatio: number): void;
+  /** Shadows in the colour that suits the page: warm on the light theme, black on the dark one. */
+  shade(dark: boolean): void;
   dispose(): void;
 }
 
 type Vec = [number, number, number];
 type Solid = T.Mesh<T.BufferGeometry, T.MeshToonMaterial>;
-interface Opt { nh?: number; glow?: number; gi?: number; rx?: number; rz?: number; ax?: 'x' | 'z'; seg?: number; y?: number }
+/** How a solid is made: `nh` leaves out its outline and ink (small details), `own` gives it ink lines of its own because it moves by itself, `plain` keeps its outline but leaves out the ink lines (fine ridges), `ry` turns it about the vertical. */
+interface Opt { nh?: number; glow?: number; gi?: number; rx?: number; ry?: number; rz?: number; ax?: 'x' | 'z'; seg?: number; y?: number; own?: boolean; plain?: boolean }
 interface TextOpt { up?: boolean; color?: string; bold?: boolean; align?: CanvasTextAlign }
 interface Pen {
   text(s: string, x: number, z: number, size: number, o?: TextOpt): void;
@@ -60,9 +68,47 @@ const WIRE: Record<string, number> = { red: 0xd6453d, black: 0x2f353d, orange: 0
 const ROWZ: Record<string, number> = { a: -13.97, b: -11.43, c: -8.89, d: -6.35, e: -3.81, f: 3.81, g: 6.35, h: 8.89, i: 11.43, j: 13.97 };
 const RAILZ: Record<string, number> = { 'T+': -23.5, 'T-': -20.96, 'B-': 20.96, 'B+': 23.5 };
 const HT = 0.32;
+/** Colours used by more than one part: the bright metal of legs and leads, the tan of a resistor, the cream of a breadboard. */
+const LEAD = 0xb8c0c8, TAN = 0xe2c89a, CREAM = 0xf4f1e8;
+/** How wide the ink lines along the hard edges are, in screen pixels. */
+const INK_PX = 1.2;
 
 const grad = new T.DataTexture(new Uint8Array([120, 190, 255]), 3, 1, T.RedFormat);
 grad.minFilter = grad.magFilter = T.NearestFilter; grad.generateMipmaps = false; grad.needsUpdate = true;
+
+/** A flat outline with the corners rounded off, and a ring of teeth (the ridges round a knob), for solids pushed up from a shape. Shapes are drawn seen from above, with y pointing away from the student. */
+function gearShape(outer: number, inner: number, teeth: number): T.Shape {
+  const s = new T.Shape();
+  for (let i = 0; i < teeth * 2; i++) {
+    const a = (i / (teeth * 2)) * Math.PI * 2, r = i % 2 ? inner : outer;
+    if (i) s.lineTo(Math.cos(a) * r, Math.sin(a) * r); else s.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  s.closePath();
+  return s;
+}
+/** A circle of radius r with a straight side cut off at distance `flat` from its middle, on the +x side: an LED's rim, a TO-92 case. */
+function dShape(r: number, flat: number): T.Shape {
+  const a = Math.acos(flat / r), s = new T.Shape();
+  s.absarc(0, 0, r, a, Math.PI * 2 - a, false);
+  s.closePath();
+  return s;
+}
+/** A path through the points with each corner bent round, as a metal leg or lead is. */
+function bendPath(pts: T.Vector3[], round = 0.9): T.Curve<T.Vector3> {
+  const path = new T.CurvePath<T.Vector3>();
+  const line = (a: T.Vector3, b: T.Vector3) => { if (a.distanceTo(b) > 1e-3) path.add(new T.LineCurve3(a, b)); };
+  let from = pts[0].clone();
+  for (let i = 1; i < pts.length - 1; i++) {
+    const p = pts[i], inDir = p.clone().sub(pts[i - 1]), outDir = pts[i + 1].clone().sub(p);
+    const ra = Math.min(round, inDir.length() / 2), rb = Math.min(round, outDir.length() / 2);
+    if (ra < 1e-3 || rb < 1e-3) { line(from, p.clone()); from = p.clone(); continue; }
+    const s = p.clone().addScaledVector(inDir.normalize(), -ra), e = p.clone().addScaledVector(outDir.normalize(), rb);
+    line(from, s); path.add(new T.QuadraticBezierCurve3(s, p.clone(), e)); from = e;
+  }
+  line(from, pts[pts.length - 1].clone());
+  if (!path.curves.length) path.add(new T.LineCurve3(pts[0].clone(), pts[0].clone().setY(pts[0].y + 0.01)));
+  return path;
+}
 
 export function buildWorld(spec: WorldSpec, anisotropy: number): World {
   const world = new T.Group();
@@ -74,15 +120,67 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
   const extraBoards: Partial<Record<BreadboardSize, T.Group>> = {};
   const lcdDraws: Record<string, (v: LcdView) => void> = {};
 
-  /* --- primitives: toon-shaded solids with an ink outline (a slightly larger back-face shell) --- */
+  /* --- primitives: toon-shaded solids with an ink outline (a slightly larger back-face shell) and ink lines along their hard edges, casting soft shadows on the table --- */
   const toon = (color: number, o: Opt = {}) => { const m = new T.MeshToonMaterial({ color, gradientMap: grad }); if (o.glow) { m.emissive.setHex(o.glow); m.emissiveIntensity = o.gi == null ? 1 : o.gi; } return m; };
   const shell = (g: T.Object3D): T.MeshBasicMaterial => g.userData.hm || (g.userData.hm = new T.MeshBasicMaterial({ color: INK, side: T.BackSide }));
   function put(g: T.Object3D, geo: T.BufferGeometry, hullGeo: T.BufferGeometry | null, color: number, o: Opt, x: number, y: number, z: number): Solid {
     const m = new T.Mesh(geo, toon(color, o));
-    m.position.set(x, y, z); if (o.rx) m.rotation.x = o.rx; if (o.rz) m.rotation.z = o.rz;
+    m.position.set(x, y, z); if (o.rx) m.rotation.x = o.rx; if (o.ry) m.rotation.y = o.ry; if (o.rz) m.rotation.z = o.rz;
+    m.castShadow = !o.nh; if (o.own) m.userData.own = true; if (o.plain) m.userData.plain = true;
     g.add(m);
     if (hullGeo) { const h = new T.Mesh(hullGeo, shell(g)); h.position.copy(m.position); h.rotation.copy(m.rotation); g.add(h); m.userData.hull = h; }
     return m;
+  }
+  /** A solid turned on a lathe from a profile of [radius, height] points, its axis upright through (x, y, z) unless turned by o.rx or o.rz. */
+  function lathe(g: T.Object3D, x: number, y: number, z: number, pts: [number, number][], color: number, o: Opt = {}) {
+    const seg = o.seg || 28, shape = (p: [number, number][]) => p.map(([r, h]) => new T.Vector2(r, h));
+    const out = pts.map(([r, h], i): [number, number] => [r > 0 ? r + HT : 0, i === 0 ? h - HT : i === pts.length - 1 ? h + HT : h]);
+    return put(g, new T.LatheGeometry(shape(pts), seg), o.nh ? null : new T.LatheGeometry(shape(out), seg), color, o, x, y, z);
+  }
+  /** A solid pushed `h` up from a flat shape (seen from above, its y pointing away), standing on (x, y, z). */
+  function prism(g: T.Object3D, x: number, y: number, z: number, shape: T.Shape, h: number, color: number, o: Opt = {}) {
+    const geo = new T.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false, curveSegments: o.seg || 24 });
+    geo.rotateX(-Math.PI / 2);
+    let hull: T.BufferGeometry | null = null;
+    if (!o.nh) {   // the outline: the same solid, a hair larger all round
+      geo.computeBoundingBox();
+      const b = geo.boundingBox!, c = b.getCenter(new T.Vector3()), s = b.getSize(new T.Vector3());
+      hull = geo.clone().translate(-c.x, -c.y, -c.z).scale((s.x + 2 * HT) / s.x, (s.y + 2 * HT) / s.y, (s.z + 2 * HT) / s.z).translate(c.x, c.y, c.z);
+    }
+    return put(g, geo, hull, color, o, x, y, z);
+  }
+  /** A thin round wire along a path with its corners bent round: a leg or a lead. */
+  function bent(g: T.Object3D, pts: T.Vector3[], r: number, color: number) {
+    const m = new T.Mesh(new T.TubeGeometry(bendPath(pts), Math.max(12, pts.length * 10), r, 6), toon(color));
+    m.castShadow = true; g.add(m);
+    return m;
+  }
+
+  /* --- ink: the hard edges of every outlined solid, drawn as lines a pixel or so wide, the way an illustration is inked --- */
+  const RES = { value: new T.Vector2(1024, 768) }, WIDTH = { value: INK_PX };
+  const inkOf = new WeakMap<T.Material, LineMaterial>();   // each part's outline material has its line material beside it, so highlighting a part colours both
+  const inkFor = (hm: T.Material): LineMaterial => {
+    let m = inkOf.get(hm);
+    if (!m) { m = new LineMaterial({ color: INK, linewidth: INK_PX }); m.uniforms.resolution = RES; m.uniforms.linewidth = WIDTH; inkOf.set(hm, m); }
+    return m;
+  };
+  /** Draws the edges where faces meet at a corner, for every outlined solid under root. The lines of the solids that share a parent and an outline are merged into one,
+      so a part costs a draw call or two. A solid that moves by itself (a button's cap, a switch's lever) has lines of its own that move with it. */
+  function ink(root: T.Object3D) {
+    const sets = new Map<T.Object3D, Map<LineMaterial, number[]>>(), v = new T.Vector3();
+    root.updateMatrixWorld(true);
+    root.traverse(o => {
+      if (!(o instanceof T.Mesh) || !o.userData.hull || o.userData.plain || o.geometry instanceof T.TubeGeometry || o.geometry instanceof T.SphereGeometry) return;
+      const own = !!o.userData.own, at: T.Object3D = own ? o : o.parent!, mat = inkFor(o.userData.hull.material), edges = new T.EdgesGeometry(o.geometry, 28), p = edges.attributes.position;
+      let byMat = sets.get(at); if (!byMat) sets.set(at, byMat = new Map());
+      let list = byMat.get(mat); if (!list) byMat.set(mat, list = []);
+      for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); if (!own) v.applyMatrix4(o.matrix); list.push(v.x, v.y, v.z); }
+      edges.dispose();
+    });
+    sets.forEach((byMat, at) => byMat.forEach((list, mat) => {
+      const l = new LineSegments2(new LineSegmentsGeometry().setPositions(list), mat);
+      l.raycast = () => {}; at.add(l);
+    }));
   }
   const box = (g: T.Object3D, x: number, y: number, z: number, w: number, h: number, d: number, color: number, o: Opt = {}) =>
     put(g, new T.BoxGeometry(w, h, d), o.nh ? null : new T.BoxGeometry(w + 2 * HT, h + 2 * HT, d + 2 * HT), color, o, x, y + h / 2, z);
@@ -92,9 +190,14 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
   }
   const ball = (g: T.Object3D, x: number, y: number, z: number, r: number, color: number, o: Opt = {}) =>
     put(g, new T.SphereGeometry(r, 20, 14), o.nh ? null : new T.SphereGeometry(r + HT, 20, 14), color, o, x, y, z);
-  function shadow(g: T.Object3D, x: number, z: number, w: number, d: number) {
-    const m = new T.Mesh(new T.PlaneGeometry(w + 5, d + 5), new T.MeshBasicMaterial({ color: INK, transparent: true, opacity: 0.13, depthWrite: false }));
-    m.rotation.x = -Math.PI / 2; m.position.set(x + 3, 0.05, z + 3); m.raycast = () => {}; g.add(m);
+  /** A canvas drawn in millimetres, standing up on a surface that faces the student (+z), its middle at (x, y, z). */
+  function facePrint(g: T.Object3D, W: number, H: number, S: number, x: number, y: number, z: number, draw: (c: CanvasRenderingContext2D, S: number) => void) {
+    const c = document.createElement('canvas'); c.width = Math.round(W * S); c.height = Math.round(H * S);
+    draw(c.getContext('2d')!, S);
+    const tex = new T.CanvasTexture(c); tex.anisotropy = anisotropy;
+    const m = new T.Mesh(new T.PlaneGeometry(W, H), new T.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+    m.position.set(x, y, z); m.raycast = () => {}; g.add(m);
+    return m;
   }
   function printed(g: T.Object3D, W: number, D: number, S: number, y: number, draw: (k: Pen) => void, cx = 0, cz = 0) {   // a canvas drawn in millimetres, laid flat on a surface
     const c = document.createElement('canvas'); c.width = Math.round(W * S); c.height = Math.round(D * S);
@@ -218,11 +321,12 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
 
   /* --- breadboard: rows a to j, a power rail pair on each long side. The bench's own has columns 1 to 30, and a second one is numbered on from there. --- */
   function buildBB(cols = MAIN_COLS, first = 1) {
-    const L = bbLength(cols), Wd = BB_DEPTH, g = new T.Group();
-    box(g, 0, 0, 0, L, BB_HEIGHT, Wd, 0xf4f1e8);
+    const L = bbLength(cols), Wd = BB_DEPTH, g = new T.Group(), gap = 2.6, half = (Wd - gap) / 2;
+    box(g, 0, 0, -(gap + half) / 2, L, BB_HEIGHT, half, CREAM);   // the two halves, with the channel between them that keeps e and f apart
+    box(g, 0, 0, (gap + half) / 2, L, BB_HEIGHT, half, CREAM);
+    box(g, 0, 0, 0, L, BB_HEIGHT - 1.6, gap + 0.1, 0xe4dfd1, { nh: 1 });
     printed(g, L, Wd, 14, BB_HEIGHT + 0.05, k => {
       const cx = L / 2, cz = Wd / 2;
-      k.rect(cx, cz, L, 2.6, '#d9d4c6', true); k.rect(cx, cz, L, 0.5, '#bdb7a6', true);
       k.line([[2, cz + RAILZ['T+'] - 1.5], [L - 2, cz + RAILZ['T+'] - 1.5]], 0.35, '#d6453d'); k.line([[2, cz + RAILZ['T-'] + 1.5], [L - 2, cz + RAILZ['T-'] + 1.5]], 0.35, '#3577d4');
       k.line([[2, cz + RAILZ['B-'] - 1.5], [L - 2, cz + RAILZ['B-'] - 1.5]], 0.35, '#3577d4'); k.line([[2, cz + RAILZ['B+'] + 1.5], [L - 2, cz + RAILZ['B+'] + 1.5]], 0.35, '#d6453d');
       for (let c = 1; c <= cols; c++) {
@@ -234,7 +338,7 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
       Object.entries(ROWZ).forEach(([r, z]) => { k.text(r, 1.6, cz + z, 1.5, { color: '#6d737b' }); k.text(r, L - 1.6, cz + z, 1.5, { color: '#6d737b' }); });
       [['+', 'T+', '#d6453d'], ['−', 'T-', '#3577d4'], ['−', 'B-', '#3577d4'], ['+', 'B+', '#d6453d']].forEach(([s, r, col]) => { k.text(s, 1.6, cz + RAILZ[r], 2, { color: col, bold: true }); k.text(s, L - 1.6, cz + RAILZ[r], 2, { color: col, bold: true }); });
     });
-    shadow(g, 0, 0, L, Wd);
+    ink(g);
     return g;
   }
 
@@ -282,15 +386,18 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
     const m = new T.Mesh(new T.CylinderGeometry(0.3, 0.3, len, 8), toon(0xaab2ba));
     m.position.set((p.x + q.x) / 2, y, (p.z + q.z) / 2); m.rotation.set(0, -Math.atan2(dz, dx), Math.PI / 2, 'YXZ'); g.add(m);
   }
+  /** A jumper wire: a Dupont housing on each end, with a collar in the wire's colour where the wire goes in, and the wire arching between them. */
   function mkWire(it: Of<'wire'>, k: number): Made {
-    const g = new T.Group(), up = 5.4, a = anchor(it.a), b = anchor(it.b);
+    const g = new T.Group(), a = anchor(it.a), b = anchor(it.b), color = WIRE[it.c];
     const p0 = a.clone(), p3 = b.clone();
-    if (it.a !== 'PAD') { box(g, a.x, a.y, a.z, 2.3, up + 0.4, 2.3, DARK); p0.y += up; }
-    if (it.b !== 'PAD') { box(g, b.x, b.y, b.z, 2.3, up + 0.4, 2.3, DARK); p3.y += up; }
+    const plug = (p: T.Vector3) => { box(g, p.x, p.y, p.z, 2.5, 6.6, 2.5, DARK); box(g, p.x, p.y + 6.6, p.z, 1.9, 1.1, 1.9, color); p.y += 7.7; };
+    if (it.a !== 'PAD') plug(p0);
+    if (it.b !== 'PAD') plug(p3);
     const h = 9 + p0.distanceTo(p3) * 0.17 + (k % 5) * 2.4;
     const curve = new T.CubicBezierCurve3(p0, p0.clone().setY(p0.y + h), p3.clone().setY(p3.y + h), p3);
-    g.add(new T.Mesh(new T.TubeGeometry(curve, 32, 0.85, 8), toon(WIRE[it.c])));
-    g.add(new T.Mesh(new T.TubeGeometry(curve, 32, 0.85 + HT, 8), shell(g)));
+    const tube = new T.Mesh(new T.TubeGeometry(curve, 48, 0.85, 10), toon(color));
+    tube.castShadow = true; g.add(tube);
+    g.add(new T.Mesh(new T.TubeGeometry(curve, 48, 0.85 + HT, 10), shell(g)));
     /* beads that carry the current: conventional current, so they run from + towards -, faster when there is more of it */
     const count = Math.max(3, Math.min(14, Math.round(curve.getLength() / 9))), beads: T.Group[] = [], at = new T.Vector3();
     const coreGeo = new T.SphereGeometry(1.5, 10, 8), rimGeo = new T.SphereGeometry(1.5 + HT, 10, 8), coreMat = new T.MeshBasicMaterial({ color: 0xffd21f });
@@ -312,64 +419,134 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
     });
     return { g, set: v => { amps = v; } };
   }
+  /** A 5 mm LED's epoxy, standing on `base`: a rim with one flat side (facing `flat`, the cathode side, as on a real LED), a straight body and a dome. */
+  function lens(g: T.Group, x: number, base: number, z: number, color: number, flat: T.Vector3 | null): Solid[] {
+    const dome: [number, number][] = [[0, 0], [2.5, 0], [2.5, 4.3]];
+    for (let i = 1; i < 8; i++) { const t = (i / 8) * Math.PI / 2; dome.push([2.5 * Math.cos(t), 4.3 + 2.5 * Math.sin(t)]); }
+    dome.push([0, 6.8]);
+    return [prism(g, x, base, z, dShape(2.95, 2.55), 1, color, { ry: flat ? Math.atan2(-flat.z, flat.x) : 0 }), lathe(g, x, base + 1, z, dome, color)];
+  }
+  /** Legs from holes up into a body: each rises from its hole, slants in to its place under the body (`spacing` apart along `along`), and goes straight up to `top`. */
+  function legsUnder(g: T.Group, holes: T.Vector3[], centre: T.Vector3, along: T.Vector3, spacing: number, top: number, colors: number[]) {
+    holes.forEach((p, i) => {
+      const under = centre.clone().addScaledVector(along, (i - (holes.length - 1) / 2) * spacing);
+      bent(g, [p.clone(), p.clone().setY(p.y + 1.6), under.clone().setY(top - 1.8), under.clone().setY(top)], 0.28, colors[i]);
+    });
+  }
+  /** An LED. The long leg (+) is red and the short leg (−) dark, so which way round it is can be read at a glance. */
   function mkLed(it: Of<'led'>): Made {
-    const g = new T.Group(), a = anchor(it.a), k = anchor(it.k), mx = (a.x + k.x) / 2, mz = (a.z + k.z) / 2, y = a.y;
+    const g = new T.Group(), a = anchor(it.a), k = anchor(it.k), y = a.y, mid = a.clone().add(k).multiplyScalar(0.5), base = y + 6.3;
+    const toward = new T.Vector3(k.x - a.x, 0, k.z - a.z), apart = toward.length() > 0.01;
+    if (apart) toward.normalize(); else toward.set(1, 0, 0);
     const dim = new T.Color(it.color).multiplyScalar(0.5).getHex();
-    leg(g, a, 7.6, 0xd6453d); leg(g, k, 6.4, 0x39414c); lead(g, a.clone().setY(y + 7), k.clone().setY(y + 7), y + 7);   // the long leg (+) is red, the short leg (−) is dark
-    const flat = new T.Vector3(k.x - a.x, 0, k.z - a.z);
-    if (flat.length()) { flat.normalize(); box(g, mx + flat.x * 2.9, y + 7, mz + flat.z * 2.9, 1.5, 1.3, 1.5, 0x20252b, { nh: 1 }); }   // the flat side of the rim is the cathode side
-    const ms = [cyl(g, mx, y + 6.5, mz, 3, 1, dim), cyl(g, mx, y + 7.5, mz, 2.5, 4.6, dim), ball(g, mx, y + 12.1, mz, 2.5, dim)];
+    legsUnder(g, [a, k], mid, toward, 2.54, base, [0xd6453d, 0x39414c]);
+    const ms = lens(g, mid.x, base, mid.z, dim, apart ? toward : null);
     const halo = new T.Mesh(new T.SphereGeometry(8, 20, 14), new T.MeshBasicMaterial({ color: it.color, transparent: true, opacity: 0, depthWrite: false }));
-    halo.position.set(mx, y + 11, mz); halo.raycast = () => {}; g.add(halo);
+    halo.position.set(mid.x, base + 5, mid.z); halo.raycast = () => {}; g.add(halo);
     let burnt = false;
     const set = (v: number) => { if (burnt) v = 0; ms.forEach(m => { m.material.emissive.setHex(it.color); m.material.emissiveIntensity = v * 0.9; }); halo.material.opacity = v * 0.3; };
     const burn = () => { burnt = true; set(0); ms.forEach(m => m.material.color.setHex(0x2a2522)); };
-    return { g, set, burn, top: new T.Vector3(mx, y + 15, mz) };
+    return { g, set, burn, top: new T.Vector3(mid.x, base + 8.6, mid.z) };
   }
+  /** A resistor's body: fatter at the ends where the leads go in, as the real ones are, along x and centred on 0. */
+  const RES_BODY: [number, number][] = [[0, -3.3], [0.85, -3.27], [1.25, -3.05], [1.42, -2.6], [1.38, -2.05], [1.12, -1.65], [1.06, -1.2], [1.06, 1.2], [1.12, 1.65], [1.38, 2.05], [1.42, 2.6], [1.25, 3.05], [0.85, 3.27], [0, 3.3]];
+  const resRadius = (h: number) => {
+    for (let i = 1; i < RES_BODY.length; i++) {
+      const [r1, h1] = RES_BODY[i], [r0, h0] = RES_BODY[i - 1];
+      if (h <= h1) return r0 + ((r1 - r0) * (h - h0)) / (h1 - h0 || 1);
+    }
+    return 0;
+  };
+  /** A resistor lying above the breadboard, its leads bent down into the two holes. The bands spell its value: the digits and the multiplier from the left, the tolerance on its own at the right. */
   function mkRes(it: Of<'res'>): Made {
-    const g = new T.Group(), a = anchor(it.a), b = anchor(it.b), y = a.y + 3.2, dx = b.x - a.x, dz = b.z - a.z;
+    const g = new T.Group(), a = anchor(it.a), b = anchor(it.b), y = a.y + 3.4, mid = a.clone().add(b).multiplyScalar(0.5);
+    const dir = new T.Vector3(b.x - a.x, 0, b.z - a.z);
+    if (dir.length() < 0.01) dir.set(1, 0, 0); else dir.normalize();
+    const end = (s: number) => mid.clone().addScaledVector(dir, s * 3.2).setY(y);
+    bent(g, [a.clone(), a.clone().setY(y), end(-1)], 0.28, LEAD); bent(g, [b.clone(), b.clone().setY(y), end(1)], 0.28, LEAD);
+    const body = new T.Group(); body.position.set(mid.x, 0, mid.z); body.rotation.y = -Math.atan2(dir.z, dir.x); g.add(body);
+    lathe(body, 0, y, 0, RES_BODY, TAN, { rz: Math.PI / 2, seg: 24 });
     const colors = bands(it.ohms ?? 220).map(c => parseInt(c.slice(1), 16)), n = colors.length;   // four bands, or five for a value with three digits
-    leg(g, a, 3.4); leg(g, b, 3.4); lead(g, a, b, y);
-    const body = new T.Group(); body.position.set((a.x + b.x) / 2, 0, (a.z + b.z) / 2); body.rotation.y = -Math.atan2(dz, dx); g.add(body);
-    cyl(body, 0, y, 0, 1.25, 6.4, 0xdcbd8e, { ax: 'x' });
-    colors.forEach((c, i) => cyl(body, i === n - 1 ? 2.3 : -2.5 + i * 0.95, y, 0, 1.32, 0.6, c, { ax: 'x', nh: 1 }));   // the digits and the multiplier on the left, the tolerance on its own at the end
-    return { g, top: new T.Vector3((a.x + b.x) / 2, y + 2, (a.z + b.z) / 2) };
+    colors.forEach((c, i) => {
+      const h = i === n - 1 ? 2.45 : -2.5 + i * 0.82, r = Math.max(resRadius(h - 0.24), resRadius(h + 0.24)) + 0.04;
+      cyl(body, h, y, 0, r, 0.48, c, { ax: 'x', nh: 1, seg: 24 });
+    });
+    return { g, top: new T.Vector3(mid.x, y + 2, mid.z) };
   }
+  /** A 6 mm push button across the middle gap: a black base on four bent legs, a metal plate with a dimple in each corner, and a round cap that sinks while it is held. */
   function mkButton(it: Of<'button'>): Made {
     const g = new T.Group(), p = anchor('e' + it.col), q = anchor('f' + (it.col + 2)), cx = (p.x + q.x) / 2, cz = (p.z + q.z) / 2, y = p.y;
-    [[p.x, p.z], [q.x, p.z], [p.x, q.z], [q.x, q.z]].forEach(([x, z]) => box(g, x, y, z, 0.7, 1.6, 0.5, 0xaab2ba, { nh: 1 }));
-    box(g, cx, y + 0.5, cz, 6.2, 3.3, 6.2, 0x2b3038); box(g, cx, y + 3.8, cz, 6.2, 0.35, 6.2, METAL, { nh: 1 });
-    const cap = cyl(g, cx, y + 4.1, cz, 1.9, 1.9, 0xe2572b), capY = cap.position.y;
+    [[p.x, p.z], [q.x, p.z], [p.x, q.z], [q.x, q.z]].forEach(([x, z]) => {
+      const s = Math.sign(z - cz);
+      bent(g, [new T.Vector3(x, y, z), new T.Vector3(x, y + 0.9, z), new T.Vector3(x, y + 0.9, cz + s * 2.6), new T.Vector3(x, y + 1.4, cz + s * 2.6)], 0.26, LEAD);
+    });
+    box(g, cx, y + 0.5, cz, 6.2, 3.3, 6.2, 0x2b3038); box(g, cx, y + 3.8, cz, 6.2, 0.35, 6.2, METAL);
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sz]) => cyl(g, cx + sx * 2.35, y + 4.15, cz + sz * 2.35, 0.5, 0.1, 0x5b636d, { nh: 1 }));
+    const cap = lathe(g, cx, y + 4.15, cz, [[0, 0], [1.95, 0], [1.95, 1.3], [1.75, 1.72], [1.2, 1.95], [0, 1.95]], 0xe2572b, { own: true }), capY = cap.position.y;
     const set = (on: number) => { cap.position.y = cap.userData.hull.position.y = capY - (on ? 1.1 : 0); };
     return { g, set, top: new T.Vector3(cx, y + 6.5, cz) };
   }
+  /** A knob (potentiometer): a blue body on three legs, a metal bushing, and a ridged dark knob with a white line on top showing which way it points. */
   function mkPot(it: Of<'pot'>): Made {
     const g = new T.Group(), p = anchor(it.row + (it.col + 1)), y = p.y;
-    box(g, p.x, y + 0.8, p.z, 9.6, 6.4, 9.6, 0x2f6db5);
-    for (let i = -1; i <= 1; i++) box(g, p.x + i * 2.54, y, p.z, 0.7, 0.9, 0.5, 0xaab2ba, { nh: 1 });
-    const knob = new T.Group(); knob.userData.hm = shell(g); knob.position.set(p.x, y + 7.2, p.z); g.add(knob);
-    cyl(knob, 0, 0, 0, 3.3, 6, 0xe6e9ec); box(knob, 0, 6, -1.9, 0.9, 0.12, 2.6, DARK, { nh: 1 });
+    for (let i = -1; i <= 1; i++) box(g, p.x + i * 2.54, y, p.z, 0.7, 0.9, 0.5, LEAD, { nh: 1 });
+    box(g, p.x, y + 0.8, p.z, 9.6, 5.4, 9.6, 0x2f6db5);
+    cyl(g, p.x, y + 6.2, p.z, 2.6, 1.2, METAL);
+    const knob = new T.Group(); knob.userData.hm = shell(g); knob.position.set(p.x, y + 7.4, p.z); g.add(knob);
+    prism(knob, 0, 0, 0, gearShape(3.55, 3.15, 18), 5.2, 0x353b44, { plain: true });   // the ridges are too fine to ink one by one
+    cyl(knob, 0, 5.2, 0, 3.05, 0.5, 0x454c56);
+    box(knob, 0, 5.7, -1.45, 0.7, 0.14, 2.7, 0xf2f2ee, { nh: 1 });
     const set = (v: number) => { knob.rotation.y = (0.5 - v) * 4.7; };
     return { g, set, top: new T.Vector3(p.x, y + 14.5, p.z) };
   }
+  /** A buzzer: a black can with a rounded rim and a sound hole in its top, a red + printed on the side of its + leg. It throbs while it sounds. */
   function mkBuzzer(it: Of<'buzzer'>): Made {
     const g = new T.Group(), a = anchor(it.a), b = anchor(it.b), cx = (a.x + b.x) / 2, cz = (a.z + b.z) / 2, y = a.y;
     let freq = 0;
     leg(g, a, 0.8, 0xd6453d); leg(g, b, 0.8, 0x39414c); lead(g, a.clone().setY(y + 0.8), b.clone().setY(y + 0.8), y + 0.8);   // red + leg, dark − leg
     const toward = new T.Vector3(a.x - b.x, 0, a.z - b.z); toward.length() ? toward.normalize() : toward.set(1, 0, 0);
-    const mx = cx + toward.x * 3.4, mz = cz + toward.z * 3.4;   // a red + printed on the top, on the positive side, as on a real buzzer
-    box(g, mx, y + 9.4, mz, 2.6, 0.25, 0.7, 0xd6453d, { nh: 1 }); box(g, mx, y + 9.4, mz, 0.7, 0.25, 2.6, 0xd6453d, { nh: 1 });
-    const body = cyl(g, cx, y + 0.7, cz, 6, 8.6, 0x2b3038); cyl(g, cx, y + 9.3, cz, 1.2, 0.08, 0x8d97a1, { nh: 1 });
+    const mx = cx + toward.x * 3.4, mz = cz + toward.z * 3.4;
+    box(g, mx, y + 9.3, mz, 2.6, 0.12, 0.7, 0xd6453d, { nh: 1 }); box(g, mx, y + 9.3, mz, 0.7, 0.12, 2.6, 0xd6453d, { nh: 1 });
+    const body = lathe(g, cx, y + 0.7, cz, [[0, 0], [6, 0], [6, 8.0], [5.5, 8.6], [1.4, 8.6], [1.4, 8.2], [0, 8.2]], 0x2b3038, { own: true, seg: 32 });
     itemAnim.push(t => { const s = freq ? 1 + 0.04 * Math.sin(t / 16) : 1; body.scale.set(s, 1, s); body.userData.hull.scale.set(s, 1, s); });
     return { g, set: f => { freq = f; }, top: new T.Vector3(cx, y + 11, cz) };
   }
+  /** An HC-SR04: a blue board standing on its four pins, two silver transducers with dark mesh fronts, a crystal between them, and its labels printed on the front.
+      In front of it stands the wall it measures the distance to. */
   function mkSonar(it: Of<'sonar'>): Made {
     const g = new T.Group(), p = anchor(it.row + it.col), cx = p.x + 3.81, z = p.z, y = p.y;
     for (let i = 0; i < 4; i++) box(g, p.x + i * 2.54, y, z, 0.6, 3.4, 0.6, GOLD, { nh: 1 });
+    box(g, cx, y + 0.4, z, 10.4, 2.3, 2.5, DARK);
     box(g, cx, y + 3, z, 45, 20, 1.5, 0x2a62b8);
-    [-1, 1].forEach(s => { cyl(g, cx + s * 13, y + 13, z + 6.75, 8, 12, 0xcfd4d9, { ax: 'z' }); cyl(g, cx + s * 13, y + 13, z + 12.85, 6.4, 0.3, 0x3a4048, { ax: 'z', nh: 1 }); });
-    box(g, cx, y + 19.5, z + 0.75, 7, 2.6, 1.6, 0xd5d9dd, { nh: 1 });
-    const wall = new T.Group(); box(wall, cx, 0, 0, 48, 30, 5, 0xe2572b); shadow(wall, cx, 0, 48, 5); g.add(wall);
+    facePrint(g, 45, 20, 18, cx, y + 13, z + 0.77, (c, S) => {
+      c.fillStyle = '#e8eef7'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.font = `700 ${2 * S}px "JetBrains Mono", monospace`; c.fillText('HC-SR04', 22.5 * S, 2.2 * S);
+      c.font = `700 ${1.6 * S}px "JetBrains Mono", monospace`; c.fillText('T', 3 * S, 3 * S); c.fillText('R', 42 * S, 3 * S);
+      c.font = `600 ${1.25 * S}px "JetBrains Mono", monospace`; ['Vcc', 'Trig', 'Echo', 'Gnd'].forEach((s, i) => c.fillText(s, (22.5 + (i - 1.5) * 2.54 * 1.2) * S, 18.4 * S));
+      c.strokeStyle = '#c9d3e3'; c.lineWidth = 0.35 * S; [[2, 2], [43, 2], [2, 18], [43, 18]].forEach(([x, yy]) => { c.beginPath(); c.arc(x * S, yy * S, 1 * S, 0, 7); c.stroke(); });
+    });
+    [-1, 1].forEach(s => {
+      cyl(g, cx + s * 13, y + 13, z + 6.75, 8, 12, 0xd3d8dd, { ax: 'z', seg: 32 });
+      cyl(g, cx + s * 13, y + 13, z + 12.7, 6.6, 0.25, 0x343a42, { ax: 'z', nh: 1, seg: 32 });
+      facePrint(g, 13.2, 13.2, 14, cx + s * 13, y + 13, z + 12.86, (c, S) => {   // the mesh over the front of the transducer
+        c.save(); c.beginPath(); c.arc(6.6 * S, 6.6 * S, 6.5 * S, 0, 7); c.clip();
+        c.fillStyle = '#2b3038'; c.fillRect(0, 0, 13.2 * S, 13.2 * S);
+        c.fillStyle = '#59616b'; for (let i = 0; i < 13; i++) for (let j = 0; j < 13; j++) { c.beginPath(); c.arc((0.6 + i + (j % 2) * 0.5) * S, (0.6 + j) * S, 0.3 * S, 0, 7); c.fill(); }
+        c.restore();
+      });
+    });
+    const crystal = cyl(g, cx, y + 18.6, z + 1.45, 1.2, 1.4, METAL, { ax: 'z' });
+    crystal.scale.x = crystal.userData.hull.scale.x = 2.4;
+    const wall = new T.Group(); g.add(wall);   // a little brick wall
+    box(wall, cx, 0, 0, 48, 30, 6, 0xb5543d);
+    facePrint(wall, 48, 30, 10, cx, 15, 3.02, (c, S) => {
+      c.fillStyle = '#e6d6c3'; c.fillRect(0, 0, 48 * S, 30 * S);
+      const tones = ['#b5543d', '#a84b36', '#bf5f45', '#ad5039'];
+      for (let row = 0; row < 6; row++) for (let i = -1; i < 5; i++) {
+        const x = i * 12 + (row % 2 ? 6 : 0), w = 11.2;
+        c.fillStyle = tones[(row * 3 + i + 4) % tones.length]; c.fillRect((x + 0.4) * S, (row * 5 + 0.4) * S, w * S, 4.2 * S);
+      }
+    });
     const set = (cm: number) => { wall.position.z = z + 17 + cm * 0.6; };
     set(30);
     return { g, set, top: new T.Vector3(cx, y + 25, z) };
@@ -380,22 +557,31 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
     const away = it.row <= 'e' ? -1 : 1, bodyZ = away * 46, bodyX = mid.x;
     legs.forEach(p => box(g, p.x, y, p.z, 0.6, 2.6, 0.6, GOLD, { nh: 1 }));
     box(g, mid.x, y + 2.6, mid.z, 7.6, 6, 2.6, DARK);   // the plug on the end of the lead
-    const LEAD = [0x7a4a21, 0xd6453d, 0xf08a24];   // brown GND, red +, orange signal
+    const WIRES = [0x7a4a21, 0xd6453d, 0xf08a24];   // brown GND, red +, orange signal
     legs.forEach((p, i) => {
       const s = new T.Vector3(p.x, y + 8.6, p.z), e = new T.Vector3(bodyX - 2.6 + i * 2.6, 9, bodyZ - away * 6.2);
       const curve = new T.CubicBezierCurve3(s, s.clone().setY(s.y + 8), e.clone().add(new T.Vector3(0, 10, -away * 10)), e);
-      g.add(new T.Mesh(new T.TubeGeometry(curve, 20, 0.6, 6), toon(LEAD[i])));
-      g.add(new T.Mesh(new T.TubeGeometry(curve, 20, 0.6 + HT, 6), shell(g)));
+      const wire = new T.Mesh(new T.TubeGeometry(curve, 24, 0.6, 6), toon(WIRES[i])); wire.castShadow = true; g.add(wire);
+      g.add(new T.Mesh(new T.TubeGeometry(curve, 24, 0.6 + HT, 6), shell(g)));
     });
     box(g, bodyX, 0, bodyZ, 23, 22.5, 12.2, 0x2f6db5);   // the case
-    box(g, bodyX, 15.5, bodyZ, 32.5, 2.4, 12.2, 0x2f6db5);   // mounting tabs
+    box(g, bodyX, 15.5, bodyZ, 32.5, 2.4, 12.2, 0x2f6db5);   // mounting tabs, with a screw hole in each
+    [-1, 1].forEach(s => cyl(g, bodyX + s * 14.1, 17.9, bodyZ, 1.1, 0.08, 0x1b2430, { nh: 1 }));
+    facePrint(g, 17, 7.5, 16, bodyX - 1.5, 8.5, bodyZ + 6.12, (c, S) => {   // its label
+      c.fillStyle = '#e9edf2'; c.fillRect(0, 0, 17 * S, 7.5 * S);
+      c.fillStyle = '#2f6db5'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.font = `700 ${2.6 * S}px "JetBrains Mono", monospace`; c.fillText('SERVO', 8.5 * S, 2.9 * S);
+      c.font = `600 ${1.6 * S}px "JetBrains Mono", monospace`; c.fillText('9 g · 180°', 8.5 * S, 5.6 * S);
+    });
     const shaftX = bodyX + 5.6, topY = 22.5;
     cyl(g, shaftX, topY, bodyZ, 5.8, 1.6, 0x2a5ea0);
+    cyl(g, shaftX - 7, topY, bodyZ, 3, 1, 0x2a5ea0);   // the bump over the gears
     const arm = new T.Group(); arm.userData.hm = shell(g); arm.position.set(shaftX, topY + 1.6, bodyZ); g.add(arm);
     cyl(arm, 0, 0, 0, 3.2, 2.6, 0xf2f2ee);
     box(arm, 8, 0.6, 0, 16, 1.6, 4.2, 0xf2f2ee);   // the horn, pointing along +x at 0°
     cyl(arm, 15, 0.6, 0, 2.1, 1.6, 0xf2f2ee);
-    shadow(g, bodyX, bodyZ, 32, 12);
+    [4, 8, 12].forEach(x => cyl(arm, x, 2.2, 0, 0.45, 0.06, 0x9aa3ad, { nh: 1 }));   // its holes
+    cyl(arm, 0, 2.6, 0, 1, 0.06, 0x9aa3ad, { nh: 1 });
     let target = 90, shown = 90;
     const turn = () => { arm.rotation.y = (shown * Math.PI) / 180; };   // 0° points right, 90° points away across the table, 180° points left
     turn();
@@ -415,9 +601,11 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
   /** A TMP36 in its TO-92 case: a black half-round body on three legs. It warms to red as the temperature rises. */
   function mkTemp(it: Of<'temp'>): Made {
     const g = new T.Group(), legs = [0, 1, 2].map(i => anchor(`${it.row}${it.col + i}`)), mid = legs[1], y = mid.y;
-    legs.forEach((p, i) => box(g, p.x, y, p.z, 0.55, 5, 0.55, i === 0 ? 0xd6453d : i === 2 ? 0x39414c : 0xaab2ba, { nh: 1 }));   // red + leg, dark − leg, bare output leg
-    const body = cyl(g, mid.x, y + 4.5, mid.z, 2.9, 5.6, 0x2b3038, { seg: 18 });
-    box(g, mid.x, y + 4.5, mid.z + 1.2, 5.6, 5.6, 1.5, 0x2b3038);   // the flat face
+    legs.forEach((p, i) => box(g, p.x, y, p.z, 0.5, 4.6, 0.5, i === 0 ? 0xd6453d : i === 2 ? 0x39414c : LEAD, { nh: 1 }));   // red + leg, dark − leg, bare output leg
+    const body = prism(g, mid.x, y + 4.4, mid.z, dShape(2.9, 1.4), 5.4, 0x2b3038, { ry: -Math.PI / 2 });   // the TO-92 case, its flat face towards the student
+    facePrint(g, 4.8, 2.4, 40, mid.x, y + 7.6, mid.z + 1.42, (c, S) => {
+      c.fillStyle = '#d7dce2'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = `700 ${0.95 * S}px "JetBrains Mono", monospace`; c.fillText('TMP36', 2.4 * S, 1.2 * S);
+    });
     const set = (c: number) => { const warm = Math.min(1, Math.max(0, (c - 20) / 30)); body.material.emissive.setHex(0xff5a1f); body.material.emissiveIntensity = warm * 0.8; };
     set(25);
     return { g, set, top: new T.Vector3(mid.x, y + 12, mid.z) };
@@ -426,11 +614,11 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
   function mkRgb(it: Of<'rgb'>): Made {
     const g = new T.Group(), legs = [0, 1, 2, 3].map(i => anchor(`${it.row}${it.col + i}`)), mx = (legs[0].x + legs[3].x) / 2, z = legs[0].z, y = legs[0].y;
     const LEG = [0xd6453d, 0x39414c, 0x3aa655, 0x3577d4];   // red, the shared − leg (the long one), green, blue
-    legs.forEach((p, i) => leg(g, p, i === 1 ? 7.4 : 6.2, LEG[i]));
-    box(g, mx, y + 6, z, 9, 0.7, 1.3, 0x8d97a1, { nh: 1 });
-    const ms = [cyl(g, mx, y + 6.5, z, 3.4, 1, 0xdfe4e8), cyl(g, mx, y + 7.5, z, 2.9, 5, 0xdfe4e8), ball(g, mx, y + 12.5, z, 2.9, 0xdfe4e8)];
+    const base = y + 6.3;
+    legsUnder(g, legs, new T.Vector3(mx, y, z), new T.Vector3(1, 0, 0), 1.25, base, LEG);   // four legs fanning in to the case
+    const ms = lens(g, mx, base, z, 0xdfe4e8, null);
     const halo = new T.Mesh(new T.SphereGeometry(8.5, 20, 14), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }));
-    halo.position.set(mx, y + 11.5, z); halo.raycast = () => {}; g.add(halo);
+    halo.position.set(mx, base + 5, z); halo.raycast = () => {}; g.add(halo);
     const mix = new T.Color();
     let burnt = false;
     const set = (packed: number) => {
@@ -441,7 +629,7 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
       halo.material.color.copy(mix); halo.material.opacity = top * 0.3;
     };
     const burn = () => { burnt = true; set(0); ms.forEach(m => m.material.color.setHex(0x2a2522)); };
-    return { g, set, burn, top: new T.Vector3(mx, y + 16, z) };
+    return { g, set, burn, top: new T.Vector3(mx, base + 9.5, z) };
   }
   /** A slide switch: a small black body on three legs, with a lever that sits to the left or to the right. */
   function mkSlide(it: Of<'slide'>): Made {
@@ -482,7 +670,10 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
     const shown = (o: T.Object3D, on: boolean) => { o.visible = on; };
     let set: (v: number) => void;
     if (it.kind === 'pir') {
-      const dome = ball(g, x, y + 12, face + 0.6, 5.4, 0xf2f2ee);
+      const fresnel: [number, number][] = [[0, 0]];   // the faceted Fresnel lens, standing out from the front of the board
+      for (let i = 0; i <= 4; i++) { const t = (i / 4) * Math.PI / 2; fresnel.push([5.4 * Math.cos(t), 5.4 * Math.sin(t)]); }
+      fresnel[fresnel.length - 1] = [0, 5.4];
+      const dome = lathe(g, x, y + 12, face - 0.2, fresnel, 0xf2f2ee, { rx: Math.PI / 2, seg: 10 });
       set = v => glow(dome, 0xff5a3c, v > 0.5 ? 0.7 : 0);
     } else if (it.kind === 'ir') {
       cyl(g, x - 3.2, y + 18, face + 2.6, 1.5, 5.2, 0xe9ecef, { ax: 'z' }); cyl(g, x + 3.2, y + 18, face + 2.6, 1.5, 5.2, 0x1b1e23, { ax: 'z' });
@@ -631,9 +822,13 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
   const isUno = spec.board === 'uno';
   bb = buildBB(); bb.position.set(isUno ? 50 : 0, 0, 0); world.add(bb);
   const b = isUno ? (uno = buildUno()) : buildEsp();
-  if (isUno) { b.group.position.set(bb.position.x + UNO_AT.x, 1.6, UNO_AT.z); shadow(world, b.group.position.x, 0, b.W, b.D); }
+  if (isUno) b.group.position.set(bb.position.x + UNO_AT.x, 1.6, UNO_AT.z);
   else b.group.position.set(colX(4) + b.W / 2 - 8.24, BB_HEIGHT + 4.1, 0);
-  world.add(b.group); cable(b);
+  world.add(b.group); cable(b); ink(b.group);
+  // the table: it shows nothing itself, only the soft shadows everything casts on it, warm brown on paper and black on the chalkboard
+  const tableShade = new T.ShadowMaterial({ color: 0x3a2c1c, opacity: 0.3 }), table = new T.Mesh(new T.PlaneGeometry(6000, 6000), tableShade);
+  table.rotation.x = -Math.PI / 2; table.receiveShadow = true; table.raycast = () => {}; table.userData.nofit = true; world.add(table);
+
   Object.assign(groups, b.parts); devs.builtin = b.setLed;
   if (spec.parts) for (const id of Object.keys(spec.parts)) { const h = b.hot[id]; if (h) addHot(id, spec.parts[id][0], new T.Vector3(...h).add(b.group.position)); }
   padPos = new T.Vector3(bb.position.x + PAD_AT.x, 0.8, PAD_AT.z);
@@ -647,13 +842,14 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
   function setCircuit(items: Item[], burnt: string[]) {
     placed.forEach(g => { world.remove(g); if (!g.userData.keep) free(g); });
     placedIds.forEach(id => { delete devs[id]; delete groups[id]; delete burners[id]; delete tops[id]; delete lcdDraws[id]; });
-    placed = []; placedIds = []; itemAnim.length = 0; hots.length = boardHots; burntSet = new Set(burnt); lit.forEach(m => m.color.setHex(INK)); lit = [];
+    placed = []; placedIds = []; itemAnim.length = 0; hots.length = boardHots; burntSet = new Set(burnt); lit.forEach(m => { m.color.setHex(INK); inkOf.get(m)?.color.setHex(INK); }); lit = [];
     const second = items.find(it => it.t === 'breadboard');   // first, so the parts plugged into it know where its holes are
     extra = second?.t === 'breadboard' ? { g: extraBoard(second), cols: BREADBOARD_COLS[second.size] } : null;
     items.forEach((it, k) => {
       let made: Made;
       try { made = make(it, k); } catch { return; }   // a point that is not on this bench is skipped
       const id = itemId(it, k);
+      if (!made.g.userData.keep) ink(made.g);   // a kept second breadboard was inked when it was built
       made.g.userData.pick = id;
       world.add(made.g); groups[id] = made.g; placed.push(made.g); placedIds.push(id);
       if (made.set) devs[id] = made.set;
@@ -691,11 +887,12 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
     set(id, value) { devs[id]?.(value); },
     lcd(id, view) { lcdDraws[id]?.(view); },
     highlight(id) {
-      lit.forEach(m => m.color.setHex(INK));
+      const paint = (hex: number) => lit.forEach(m => { m.color.setHex(hex); inkOf.get(m)?.color.setHex(hex); });   // the outline and the ink lines together
+      paint(INK);
       lit = [];
       const g = id ? groups[id] : null; if (!g) return;
       g.traverse(o => { const hm: T.MeshBasicMaterial | undefined = o.userData.hm; if (hm && !lit.includes(hm)) lit.push(hm); });
-      lit.forEach(m => m.color.setHex(HILITE));
+      paint(HILITE);
     },
     animate(t) { itemAnim.forEach(f => f(t)); stepFx(t); },
     setCircuit,
@@ -707,6 +904,8 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
     puff,
     anchor: safeAnchor,
     origin: bb.position.clone(),
+    resize(width, height, pixelRatio) { RES.value.set(width, height); WIDTH.value = INK_PX * pixelRatio; },
+    shade(dark) { tableShade.color.setHex(dark ? 0x000000 : 0x3a2c1c); tableShade.opacity = dark ? 0.42 : 0.3; },
     markers(hover, pending) {
       const place = (r: T.Mesh, name: string | null) => { const p = name ? safeAnchor(name) : null; r.visible = !!p; if (p) r.position.set(p.x, p.y + 0.4, p.z); return p; };
       const h = place(hoverRing, hover), q = place(pendRing, pending);

@@ -6,18 +6,21 @@ import { BOARDS, ITEM_INFO } from '../data/boards';
 import { setTone } from '../sim/audio';
 import { RGB_CHANNELS } from '../sim/circuit';
 import { DARK_LCD } from '../sim/lcd';
-import { beginMove, currentReadout, dragBreadboard, dropBreadboard, finishMove, isWireEnd, moveTo, nudgeBreadboard, pressPoint, releasePoint, selectHot, setPoint, setProbe } from '../state/actions';
-import { allTerminals, holesOf, movedWire } from '../state/bench';
+import { beginMove, currentReadout, dragBreadboard, dragPart, dropBreadboard, dropPart, finishMove, isWireEnd, moveTo, nudgeBreadboard, nudgePart, pressPoint, releasePoint, selectHot, setPoint, setProbe } from '../state/actions';
+import { allTerminals, holeOffset, isHole, movable, movedPart, movedWire } from '../state/bench';
 import { benchOf, burntOf, keyOf, missionOf, useLab } from '../state/store';
 import { BB_HEIGHT, PITCH, placeOf, type Place } from '../state/table';
-import { itemId, onExtraBoard } from '../types';
+import { itemId, type Item } from '../types';
 import { view } from './view';
 import { buildWorld } from './world';
 
 const VIEW_DIR = new T.Vector3(-0.42, 0.78, 1).normalize(), TOP_DIR = new T.Vector3(0, 1, 0.001).normalize(), projected = new T.Vector3();
+/** Where the shadows are cast from: high up, behind and to the right, so each one falls a little way in front of what casts it, where the camera sees it. */
+const SUN_DIR = new T.Vector3(0.45, 1, -0.35).normalize();
 const ray = new T.Raycaster(), ndc = new T.Vector2(), hit = new T.Vector3(), TOP_PLANE = new T.Plane(new T.Vector3(0, 1, 0), -BB_HEIGHT);
-/** Is this the second breadboard, by its id? */
+/** Is this the second breadboard, by its id? Is it a placed part that can be moved to other holes? */
 const isSecond = (id: string | null) => !!id && benchOf(useLab.getState()).some((it, k) => it.t === 'breadboard' && itemId(it, k) === id);
+const isMovable = (id: string | null) => !!id && benchOf(useLab.getState()).some((it, k) => movable(it) && itemId(it, k) === id);
 
 function pickOf(o: T.Object3D | null): string | null {
   for (; o; o = o.parent) if (o.userData.pick) return o.userData.pick;
@@ -30,17 +33,19 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
   const camera = useThree(s => s.camera) as T.OrthographicCamera;
   const board = useLab(s => s.board), hot = useLab(s => s.hot), showParts = useLab(s => !!missionOf(s).showParts);
   const probed = useLab(s => s.probe?.name ?? null), nav = useLab(s => s.nav), bench = useLab(benchOf), burnt = useLab(burntOf), point = useLab(s => s.point), pending = useLab(s => s.pending), sparks = useLab(s => s.sparks);
-  const drag = useLab(s => s.drag), bbDrag = useLab(s => s.bbDrag), panels = useLab(s => s.panels), widths = useLab(s => s.widths);
+  const drag = useLab(s => s.drag), bbDrag = useLab(s => s.bbDrag), partDrag = useLab(s => s.partDrag), panels = useLab(s => s.panels), widths = useLab(s => s.widths);
   const second = useLab(s => { const bb = benchOf(s).find(it => it.t === 'breadboard'); return bb?.t === 'breadboard' ? bb.size : null; });
   const insets = useRef({ l: 0, r: 0 });   // how much of the left and right of the screen a panel covers
   const controls = useRef<ComponentRef<typeof OrbitControls>>(null);
-  // while a wire end is being dragged, the wire is drawn plugged into the point under the pointer; while the second breadboard is, it is drawn where it has got to, with its parts on it
+  // While something is being dragged it is drawn where it would go: a wire end plugged into the point under the pointer, a part in the holes it has been dragged to
+  // (or where it was, while those holes will not take it), and the second breadboard where it has got to, with its parts on it.
   const shown = useMemo(() => {
-    const items = bbDrag ? bench.map(it => (it.t === 'breadboard' ? { ...it, ...bbDrag } : it)) : bench;
+    let items = bbDrag ? bench.map(it => (it.t === 'breadboard' ? { ...it, ...bbDrag } : it)) : bench;
+    if (partDrag) { const r = movedPart(board, items, partDrag.id, partDrag.rows, partDrag.cols); if ('items' in r) items = r.items; }
     if (!drag?.to) return items;
     const r = movedWire(board, items, drag.id, drag.end, drag.to);
     return 'items' in r ? r.items : items;
-  }, [bench, board, drag, bbDrag]);
+  }, [bench, board, drag, bbDrag, partDrag]);
   const viewH = useRef(200);   // world millimetres visible top to bottom at zoom 1
   const labelEls = useRef<HTMLButtonElement[]>([]);
 
@@ -51,7 +56,29 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
   useEffect(() => () => world.dispose(), [world]);
 
   /* the student's parts and wires */
-  useLayoutEffect(() => { world.setCircuit(shown, useLab.getState().burnt[keyOf(useLab.getState())] ?? []); }, [world, shown, board]);
+  const sun = useRef<T.DirectionalLight>(null);
+  /** Points the light's shadow camera at the whole bench, so everything on it casts a crisp, soft-edged shadow on the table. */
+  const aimSun = () => {
+    const light = sun.current, box = new T.Box3();
+    world.group.children.forEach(o => { if (!o.userData.nofit && o.visible) box.expandByObject(o); });
+    if (!light || box.isEmpty()) return;
+    const c = box.getCenter(new T.Vector3()), r = box.getSize(new T.Vector3()).length() / 2 + 40, cam = light.shadow.camera;
+    light.target.position.copy(c); light.target.updateMatrixWorld();
+    light.position.copy(c).addScaledVector(SUN_DIR, 800);
+    cam.left = -r; cam.right = r; cam.top = r; cam.bottom = -r; cam.near = 1; cam.far = 1800; cam.updateProjectionMatrix();
+  };
+  useLayoutEffect(() => { world.setCircuit(shown, useLab.getState().burnt[keyOf(useLab.getState())] ?? []); aimSun(); }, [world, shown, board]);
+  if (import.meta.env.DEV) (window as unknown as { __three: unknown }).__three = { gl, sun, world };
+  useLayoutEffect(() => { const dpr = gl.getPixelRatio(); world.resize(size.width * dpr, size.height * dpr, dpr); }, [world, size, gl]);
+  useEffect(() => {   // shadows follow the theme: the toggle's choice, or the system's when none has been made
+    const system = matchMedia('(prefers-color-scheme: dark)');
+    const apply = () => world.shade((document.documentElement.dataset.theme ?? (system.matches ? 'dark' : 'light')) === 'dark');
+    apply();
+    const watch = new MutationObserver(apply);
+    watch.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    system.addEventListener('change', apply);
+    return () => { watch.disconnect(); system.removeEventListener('change', apply); };
+  }, [world]);
   useEffect(() => { burnt.forEach(id => world.burn(id)); }, [world, burnt]);
   const firstSpark = useRef(sparks);
   useEffect(() => {
@@ -75,7 +102,7 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
     world.highlight(hot);
     labelEls.current.forEach((el, i) => el.setAttribute('aria-pressed', String(world.hots[i].id === hot)));
   }, [world, hot, shown]);
-  useEffect(() => { world.markers(drag?.to ?? point ?? probed, pending); }, [world, point, pending, probed, drag?.to]);
+  useEffect(() => { world.markers(drag?.to ?? partDrag?.to ?? point ?? probed, pending); }, [world, point, pending, probed, drag?.to, partDrag?.to]);
 
   /* placing parts: the pointer picks the nearest hole or pin on screen, so tiny holes stay easy to hit */
   useEffect(() => {
@@ -91,7 +118,20 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
       }
       return best;
     };
-    /* the second breadboard: press on it (or on a part standing in it) and drag. A press that does not move is a click, which selects as before. */
+    /** The breadboard hole nearest the pointer on screen, however far: a part being dragged follows the pointer hole by hole. */
+    const holes = spots.filter(s => isHole(s.name));
+    const nearestHole = (e: PointerEvent): string | null => {
+      const r = el.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+      let best: string | null = null, bestD = Infinity;
+      for (const s of holes) {
+        projected.copy(s.at).project(camera);
+        const d = Math.hypot((projected.x * 0.5 + 0.5) * r.width - x, (-projected.y * 0.5 + 0.5) * r.height - y);
+        if (d < bestD) { bestD = d; best = s.name; }
+      }
+      return best;
+    };
+    /* Press on a placed part and drag to move it to other holes, or on the second breadboard to move that around the table. A press that does not move is a click, which selects as before. */
+    let piece: { id: string; from: string; x: number; y: number; moving: boolean } | null = null;
     let board2: { x: number; y: number; off: Place; moving: boolean } | null = null;
     const aim = (e: PointerEvent) => {
       const r = el.getBoundingClientRect();
@@ -102,27 +142,37 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
       aim(e);
       return ray.ray.intersectPlane(TOP_PLANE, hit) ? { x: hit.x - world.origin.x, z: hit.z - world.origin.z } : null;
     };
-    const onSecond = (e: PointerEvent): boolean => {
+    const under = (e: PointerEvent): { id: string; it: Item } | null => {   // the placed part or breadboard the pointer is on, nearest first
       aim(e);
-      const id = pickOf(ray.intersectObject(world.group, true).find(h => pickOf(h.object))?.object ?? null), k = bench.findIndex((it, i) => itemId(it, i) === id), it = bench[k];
-      return !!it && (it.t === 'breadboard' || (it.t !== 'wire' && holesOf(it).length > 0 && holesOf(it).every(onExtraBoard)));
+      const id = pickOf(ray.intersectObject(world.group, true).find(h => pickOf(h.object))?.object ?? null), k = bench.findIndex((it, i) => itemId(it, i) === id);
+      return id && k >= 0 ? { id, it: bench[k] } : null;
     };
+    const hold = () => { setProbe(null); if (controls.current) controls.current.enabled = false; };
     const down = (e: PointerEvent) => {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
-      if (!useLab.getState().tool) {   // with no part in hand, a wire end can be picked up and moved, and so can the second breadboard
+      if (!useLab.getState().tool) {   // with no part in hand: a part can be picked up and moved, and so can a wire end and the second breadboard
+        const got = under(e), from = got && movable(got.it) ? nearestHole(e) : null;
+        if (got && from) { piece = { id: got.id, from, x: e.clientX, y: e.clientY, moving: false }; hold(); return; }
         const name = nearest(e);
-        if (name && beginMove(name)) { grabbed = true; setProbe(null); if (controls.current) controls.current.enabled = false; return; }
-        const bb = bench.find(it => it.t === 'breadboard'), at = bb?.t === 'breadboard' && onSecond(e) ? tableAt(e) : null;
-        if (bb?.t === 'breadboard' && at) {
-          const p = placeOf(bb);
+        if (name && beginMove(name)) { grabbed = true; hold(); return; }
+        const at = got?.it.t === 'breadboard' ? tableAt(e) : null;
+        if (got?.it.t === 'breadboard' && at) {
+          const p = placeOf(got.it);
           board2 = { x: e.clientX, y: e.clientY, off: { x: p.x - at.x, z: p.z - at.z }, moving: false };
-          if (controls.current) controls.current.enabled = false;
+          hold();
         }
         return;
       }
       if (pressPoint(nearest(e))) { grabbed = true; if (controls.current) controls.current.enabled = false; }
     };
     const move = (e: PointerEvent) => {
+      if (piece) {
+        if (!piece.moving && Math.hypot(e.clientX - piece.x, e.clientY - piece.y) < 5) return;
+        piece.moving = true; el.style.cursor = 'grabbing';
+        const to = nearestHole(e), by = to && holeOffset(piece.from, to);
+        if (to && by) dragPart(piece.id, by[0], by[1], to);
+        return;
+      }
       if (board2) {
         if (!board2.moving && Math.hypot(e.clientX - board2.x, e.clientY - board2.y) < 5) return;
         board2.moving = true; setProbe(null); el.style.cursor = 'grabbing';
@@ -139,6 +189,13 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
     };
     const leave = () => { setProbe(null); setPoint(null); };
     const up = (e: PointerEvent) => {
+      if (piece) {
+        const moved = piece.moving;
+        piece = null;
+        if (controls.current) controls.current.enabled = true;
+        if (moved) { el.style.cursor = 'grab'; dropPart(); }
+        return;
+      }
       if (board2) {
         const moved = board2.moving;
         board2 = null;
@@ -214,11 +271,12 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
       if (!dir || e.ctrlKey || e.metaKey || e.altKey || (e.target as HTMLElement).closest('input, textarea, select, [role="tab"], [role="slider"]') || !controls.current) return;
       e.preventDefault();
       const right = new T.Vector3().setFromMatrixColumn(camera.matrixWorld, 0), up = new T.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
-      if (isSecond(useLab.getState().hot)) {   // the selected second breadboard moves instead of the view: one hole along, or ten with Shift, along whichever edge of the table points most the way of the arrow on screen
-        const way = right.clone().multiplyScalar(dir[0]).addScaledVector(up, dir[1]), step = PITCH * (e.shiftKey ? 10 : 1);
-        if (Math.abs(way.x) >= Math.abs(way.z)) nudgeBreadboard(Math.sign(way.x) * step, 0); else nudgeBreadboard(0, Math.sign(way.z) * step);
-        return;
-      }
+      // A selected part or second breadboard moves instead of the view, along whichever edge of the table points most the way of the arrow on screen:
+      // a part one hole (five with Shift), the breadboard one hole's width (ten with Shift).
+      const hot = useLab.getState().hot, way = right.clone().multiplyScalar(dir[0]).addScaledVector(up, dir[1]), along = Math.abs(way.x) >= Math.abs(way.z);
+      const sx = along ? Math.sign(way.x) : 0, sz = along ? 0 : Math.sign(way.z);
+      if (isSecond(hot)) { const step = PITCH * (e.shiftKey ? 10 : 1); nudgeBreadboard(sx * step, sz * step); return; }
+      if (isMovable(hot)) { const n = e.shiftKey ? 5 : 1; nudgePart(hot!, sz * n, sx * n); return; }   // across the table is along the columns, away and towards is across the rows
       const step = (e.shiftKey ? 60 : 20) / camera.zoom;
       const move = right.multiplyScalar(dir[0] * step).addScaledVector(up, dir[1] * step);
       controls.current.target.add(move); camera.position.add(move); controls.current.update();
@@ -253,6 +311,8 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
     <>
       <hemisphereLight args={[0xffffff, 0x9aa6b2, 0.46 * Math.PI]} />
       <directionalLight args={[0xffffff, 0.56 * Math.PI]} position={[-70, 150, 110]} />
+      {/* casts the shadows and lights nothing: shadows from the main light would fall straight behind everything, out of sight of the camera beside it */}
+      <directionalLight ref={sun} args={[0xffffff, 0]} castShadow shadow-mapSize={[2048, 2048]} shadow-radius={5} shadow-bias={-0.0004} shadow-normalBias={0.4} />
       <OrbitControls ref={controls} enableDamping zoomToCursor screenSpacePanning
         mouseButtons={{ LEFT: nav === 'pan' ? T.MOUSE.PAN : T.MOUSE.ROTATE, MIDDLE: T.MOUSE.DOLLY, RIGHT: nav === 'pan' ? T.MOUSE.ROTATE : T.MOUSE.PAN }}
         touches={{ ONE: nav === 'pan' ? T.TOUCH.PAN : T.TOUCH.ROTATE, TWO: T.TOUCH.DOLLY_PAN }} maxPolarAngle={Math.PI * 0.47} minZoom={0.5} maxZoom={6} />
@@ -260,7 +320,7 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
         key={world.group.uuid}
         object={world.group}
         onClick={(e: ThreeEvent<MouseEvent>) => { e.stopPropagation(); if (e.delta < 5 && !useLab.getState().tool) selectHot(pickOf(e.object)); }}
-        onPointerMove={(e: ThreeEvent<PointerEvent>) => { e.stopPropagation(); const st = useLab.getState(); gl.domElement.style.cursor = st.drag || st.bbDrag ? 'grabbing' : st.tool ? 'crosshair' : (st.probe && isWireEnd(st.probe.name)) || isSecond(pickOf(e.object)) ? 'grab' : pickOf(e.object) ? 'pointer' : ''; }}
+        onPointerMove={(e: ThreeEvent<PointerEvent>) => { e.stopPropagation(); const st = useLab.getState(); gl.domElement.style.cursor = st.drag || st.bbDrag || st.partDrag ? 'grabbing' : st.tool ? 'crosshair' : (st.probe && isWireEnd(st.probe.name)) || isSecond(pickOf(e.object)) || isMovable(pickOf(e.object)) ? 'grab' : pickOf(e.object) ? 'pointer' : ''; }}
         onPointerOut={() => { gl.domElement.style.cursor = ''; }}
       />
     </>

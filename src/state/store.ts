@@ -47,6 +47,8 @@ export interface LabState {
   drag: { id: string; end: 'a' | 'b'; to: string | null } | null;
   /** Where the second breadboard is while it is being dragged around the table. It is put down there when the pointer comes up. */
   bbDrag: Place | null;
+  /** A placed part being dragged to other holes: how many rows and columns it has moved, and the hole under the pointer. */
+  partDrag: { id: string; rows: number; cols: number; to: string } | null;
   /** A message about the last thing that happened on the bench. */
   notice: Notice | null;
   /** Which panels are open over the bench, and the panel the student just asked for, which should take the keyboard focus. */
@@ -147,7 +149,7 @@ export function saveWidths(widths: Widths) {
 const saved = loadBenches();
 export const useLab = create<LabState>(() => ({
   page: 'home', labSeen: false, board: 'uno', mission: 0, tab: 'mission', panels: NO_PANELS, focusPanel: null, widths: loadWidths(), help: false, guide: null, hot: null, edits: loadSketches(), ...saved, undo: {}, redo: {},
-  tool: null, pending: null, point: null, notice: null, drag: null, bbDrag: null, sparks: 0, paused: false, line: null, cursor: null, frameTick: 0, probe: null,
+  tool: null, pending: null, point: null, notice: null, drag: null, bbDrag: null, partDrag: null, sparks: 0, paused: false, line: null, cursor: null, frameTick: 0, probe: null,
   inputs: {}, ...loadProgress(), results: null, checking: false, asking: null,
   sound: false, ohms: 220, ledColor: LED_COLORS.red, bbSize: 'short', nav: 'pan', labels: true, running: false, errLine: null, serial: '',
 }));
