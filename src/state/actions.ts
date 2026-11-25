@@ -273,6 +273,29 @@ export function removeItem(id: string) {
 export function flipItem(id: string) {
   change(benchOf(get()).map((it, k) => (itemId(it, k) === id ? flipped(it) : it)));
 }
+
+/* --- changing a placed part: an LED's colour, a resistor's value, the second breadboard's size. The next one placed takes the same. --- */
+/** Changes one placed part. A quick run of changes to the same part, such as dragging a resistor's value along, is one undo step. */
+function editPart(id: string, edit: (it: Item) => Item) {
+  const bench = benchOf(get()), items = bench.map((it, k) => (itemId(it, k) === id ? edit(it) : it));
+  if (items.some((it, k) => it !== bench[k])) change(items, burntOf(get()), `edit:${id}`);
+}
+/** Gives a placed LED another colour. */
+export function setPartColor(id: string, color: number) {
+  editPart(id, it => (it.t === 'led' && it.color !== color ? { ...it, color } : it));
+  setLedColor(color);
+}
+/** Gives a placed resistor another value: its bands change with it. */
+export function setPartOhms(id: string, ohms: number) {
+  editPart(id, it => (it.t === 'res' && (it.ohms ?? 220) !== ohms ? { ...it, ohms } : it));
+  setOhms(ohms);
+}
+/** Makes the second breadboard short or long, if what is plugged into it still fits. */
+export function resizeBreadboard(size: BreadboardSize) {
+  placeBreadboard(size);
+  const bb = secondOf(benchOf(get()));
+  if (bb?.t === 'breadboard') setBreadboardSize(bb.size);
+}
 const addItem = (it: Item) => change([...benchOf(get()), it]);
 
 /* --- moving a placed part to other holes --- */
@@ -396,7 +419,7 @@ function placeBreadboard(size: BreadboardSize) {
   if (!there) {
     addItem(makeItem({ kind: 'breadboard', size }, bench, 'BB'));
     say('info', `A ${size} breadboard is on the right of the bench: ${span}. Its rails are its own, so wire them to the first breadboard's rails or to the board.`, 8000);
-  } else if (there.size === size) say('info', `The ${size} breadboard is already on the bench. To take it off, select it and press Remove.`, 6000);
+  } else if (there.size === size) say('info', `The ${size} breadboard is already on the bench. Select it to make it ${size === 'short' ? 'long' : 'short'} or to take it off.`, 6000);
   else {
     const r = resizedBreadboard(get().board, bench, size);
     if ('error' in r) say('warn', r.error, 8000);

@@ -91,11 +91,13 @@ The circuit check explains problems in plain words:
 
 **Placed parts move too.** Drag a part to other holes and it follows the pointer hole by hole, keeping its shape: an LED keeps its two legs the same distance apart, a knob its three columns, and a button stays across the middle gap. It shows in its new holes while they would take it, and a taken or impossible spot is refused with a reason when you let go. With a part selected, the arrow keys move it a hole at a time (five with <kbd>Shift</kbd>), and a quick run of nudges is one Undo step. Wires plugged in beside it stay where they are, as on a real breadboard, so moving a part can change the circuit. The rules are `movedPart` in `src/state/bench.ts`, tested in `tests/moveparts.test.ts`.
 
+**And they change after they are placed.** Select a placed LED to give it another **Colour**, a resistor to change its **Value** with the slider or by typing one (its bands follow), or the second breadboard to make it **Short** or **Long**. The tray's tiles stay simple: each says what it comes as (Red, 220 Ω, Short), which is whatever was last chosen on the bench. A quick run of changes to one part, such as dragging the value slider along, is one Undo step.
+
 A lesson's own `circuit` is the reference answer, shown in the Wiring tab with a **Build it for me** button.
 
 ### 🧱 A second breadboard
 
-Need more room? The **Breadboard** tile in the tray's Wiring group adds a second one to the right of the bench's own. Choose **Short** (30 columns, like the first) or **Long** (63 columns) before pressing the tile, and the view reframes to fit it. It starts to the right of the first one.
+Need more room? The **Breadboard** tile in the tray's Wiring group adds a second one to the right of the bench's own. Select it on the bench to make it **Short** (30 columns, like the first) or **Long** (63 columns), and the view reframes to fit it. It starts to the right of the first one.
 
 | | Short | Long |
 |---|---|---|

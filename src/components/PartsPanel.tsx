@@ -1,13 +1,13 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type RefObject } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { lockedBy, PARTS, STUDIO_PARTS, trayParts, type PartId } from '../data/missions';
 import { PINOUTS } from '../data/pinouts';
-import { nearestStop, ohmsLabel, parseOhms, RESISTOR_STOPS, useFor } from '../data/resistor';
-import { ledDrop } from '../sim/circuit';
-import { pickTool, redo, resetBench, setBreadboardSize, setLedColor, setOhms, undo } from '../state/actions';
-import { sameTool, toolKind } from '../state/bench';
+import { ohmsLabel } from '../data/resistor';
+import { pickTool, redo, resetBench, undo } from '../state/actions';
+import { sameTool, toolKind, type Tool } from '../state/bench';
 import { benchOf, keyOf, missionOf, useLab } from '../state/store';
-import { BREADBOARD_COLS, breadboardName, LED_COLORS, ledColorName, MAIN_COLS, type BoardId, type BreadboardSize } from '../types';
+import { ledColorName } from '../types';
 import { Icon } from './Icons';
+import { hex, named } from './PartOptions';
 import { PartPicture, PictureDefs } from './PartPictures';
 import { Pinout } from './Pinout';
 
@@ -19,10 +19,6 @@ const GROUPS: { name: string; ids: PartId[] }[] = [
   { name: 'Sensors', ids: ['ldr', 'temp', 'sonar', 'pir', 'ir', 'soil', 'water', 'gas', 'flame'] },
 ];
 
-type LedName = keyof typeof LED_COLORS;
-const LED_NAMES = Object.keys(LED_COLORS) as LedName[];
-const hex = (color: number) => `#${color.toString(16).padStart(6, '0')}`;
-const named = (name: string) => name[0].toUpperCase() + name.slice(1);
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 /** A part's pinout, flown out of the tray: a card held over the bench beside the drawer, level with its tile and pointing back at its i,
@@ -90,124 +86,18 @@ function PartInfo({ id, open, onToggle }: { id: PartId; open: boolean; onToggle:
   );
 }
 
-/** What a colour means on this board: the voltage it lights at, and whether a 3.3 V pin lights it well through the usual resistor. */
-function ledNote(color: number, board: BoardId): string {
-  const v = ledDrop(color);
-  if (v < 3) return `Lights from about ${v} V. The usual 220 Ω resistor makes it bright on either board.`;
-  return board === 'esp32'
-    ? `Lights from about ${v} V, so from the ESP32's 3.3 V pins it only glows faintly through 220 Ω. With 100 Ω it lights properly.`
-    : `Lights from about ${v} V, more than a red one needs. The Uno's 5 V pins light it well through 220 Ω.`;
-}
-
-/** The LED tile: pick it up, and choose its colour. Every colour is the same part, so the tile shows the one the next LED placed will be. */
-function LedTile({ locked, board, onInfo, infoOpen }: { locked: boolean; board: BoardId; onInfo: () => void; infoOpen: boolean }) {
-  const tool = useLab(s => s.tool), color = useLab(s => s.ledColor), name = ledColorName(color) ?? 'red';
-  const pick = { ...PARTS.led.tool, color };
-  return (
-    <div className="bin-wrap wide">
-      <div className="choice-tile">
-        <button type="button" className="bin" aria-pressed={locked ? undefined : sameTool(tool, pick)} onClick={() => pickTool(pick)}>
-          <span className="bin-art"><PartPicture kind="led" tint={hex(color)} /></span>
-          <b>{named(name)} LED</b>
-        </button>
-        <fieldset className="picker led-colors">
-          <legend className="sr-only">LED colour</legend>
-          <div className="swatches">
-            {LED_NAMES.map(c => (
-              <label key={c} className="swatch">
-                <input type="radio" name="led-color" value={c} checked={c === name} onChange={() => setLedColor(LED_COLORS[c])} />
-                <i style={{ background: hex(LED_COLORS[c]) }} aria-hidden="true" />
-                <span>{named(c)}</span>
-              </label>
-            ))}
-          </div>
-          <p>{ledNote(color, board)}</p>
-        </fieldset>
-      </div>
-      <PartInfo id="led" open={infoOpen} onToggle={onInfo} />
-    </div>
-  );
-}
-
-const SIZES: BreadboardSize[] = ['short', 'long'];
-
-/** What each size is, and what pressing the tile does with the breadboard already on the bench. */
-function breadboardNote(size: BreadboardSize, there: BreadboardSize | null): string {
-  const span = `${BREADBOARD_COLS[size]} columns, numbered ${MAIN_COLS + 1} to ${MAIN_COLS + BREADBOARD_COLS[size]}`;
-  if (there === size) return `The ${size} one is on the bench: ${span}. To take it off, select it and press Remove.`;
-  if (there) return `${span}. Pressing the tile swaps the ${there} one on the bench for this one.`;
-  return `${span}, to the right of the first breadboard. Its + and − rails are its own: wire them across.`;
-}
-
-/** The breadboard tile: choose short or long, then press it to put a second breadboard beside the first. It goes on the bench at once, as there is only one place for it. */
-function BreadboardTile({ onInfo, infoOpen }: { onInfo: () => void; infoOpen: boolean }) {
-  const size = useLab(s => s.bbSize), on = useLab(s => { const bb = benchOf(s).find(it => it.t === 'breadboard'); return bb?.t === 'breadboard' ? bb.size : null; });
-  return (
-    <div className="bin-wrap wide">
-      <div className="choice-tile">
-        <button type="button" className="bin" onClick={() => pickTool({ ...PARTS.breadboard.tool, size })}>
-          <span className="bin-art"><PartPicture kind="breadboard" size={size} /></span>
-          <b>{breadboardName(size)}</b>
-        </button>
-        <fieldset className="picker bb-sizes">
-          <legend className="sr-only">Breadboard size</legend>
-          <div className="sizes">
-            {SIZES.map(s => (
-              <label key={s} className="size">
-                <input type="radio" name="bb-size" value={s} checked={s === size} onChange={() => setBreadboardSize(s)} />
-                <span>{named(s)}<small>{BREADBOARD_COLS[s]} columns</small></span>
-              </label>
-            ))}
-          </div>
-          <p>{breadboardNote(size, on)}</p>
-        </fieldset>
-      </div>
-      <PartInfo id="breadboard" open={infoOpen} onToggle={onInfo} />
-    </div>
-  );
-}
-
-/** The resistor tile: pick it up, and choose its value with the slider or by typing it. The bands change with the value, as on a real resistor. */
-function ResistorTile({ locked, onInfo, infoOpen }: { locked: boolean; onInfo: () => void; infoOpen: boolean }) {
-  const tool = useLab(s => s.tool), ohms = useLab(s => s.ohms), [text, setText] = useState(ohmsLabel(ohms)), [bad, setBad] = useState(false);
-  useEffect(() => { setText(ohmsLabel(ohms)); setBad(false); }, [ohms]);
-  const type = (e: FormEvent) => {
-    e.preventDefault();
-    const v = parseOhms(text);
-    if (v == null) { setBad(true); return; }
-    setOhms(v);
-  };
-  const pick = { ...PARTS.resistor.tool, ohms };
-  return (
-    <div className="bin-wrap wide">
-      <div className="choice-tile">
-        <button type="button" className="bin" aria-pressed={locked ? undefined : sameTool(tool, pick)} onClick={() => pickTool(pick)}>
-          <span className="bin-art"><PartPicture kind="res" ohms={ohms} /></span>
-          <b>Resistor <span className="ohms">{ohmsLabel(ohms)}</span></b>
-        </button>
-        <div className="picker">
-          <label className="slide">
-            <span className="sr-only">Resistor value</span>
-            <input type="range" min={0} max={RESISTOR_STOPS.length - 1} step={1} value={nearestStop(ohms)} aria-valuetext={ohmsLabel(ohms)} onChange={e => setOhms(RESISTOR_STOPS[+e.target.value])} />
-            <span className="ends" aria-hidden="true"><span>{ohmsLabel(RESISTOR_STOPS[0])}</span><span>{ohmsLabel(RESISTOR_STOPS[RESISTOR_STOPS.length - 1])}</span></span>
-          </label>
-          <form onSubmit={type} className="exact">
-            <label>or type a value <input value={text} onChange={e => { setText(e.target.value); setBad(false); }} onBlur={type} inputMode="decimal" spellCheck={false} autoComplete="off" aria-invalid={bad || undefined} aria-describedby="ohm-help" placeholder="4.7k" /></label>
-          </form>
-          <p id="ohm-help" className={bad ? 'bad' : undefined} role={bad ? 'alert' : undefined}>{bad ? 'Type a value from 1 Ω to 10 MΩ, such as 330, 4.7k or 1M.' : useFor(ohms)}</p>
-        </div>
-      </div>
-      <PartInfo id="resistor" open={infoOpen} onToggle={onInfo} />
-    </div>
-  );
-}
-
 /** The parts drawer: every part as a tile you pick and then place on the bench. A part that is still locked says which mission opens it. In the studio nothing is locked. */
 export function PartsPanel() {
   const board = useLab(s => s.board), tool = useLab(s => s.tool), passed = useLab(s => s.passed), mission = useLab(missionOf);
   const canUndo = useLab(s => !!s.undo[keyOf(s)]?.length), canRedo = useLab(s => !!s.redo[keyOf(s)]?.length), hasParts = useLab(s => benchOf(s).length > 0);
   const have = useMemo(() => trayParts(mission, Object.keys(passed)), [mission, passed]);
+  const ohms = useLab(s => s.ohms), ledColor = useLab(s => s.ledColor), bbSize = useLab(s => s.bbSize);
   const [info, setInfo] = useState<PartId | null>(null);
+  /** What a tile picks up. An LED, a resistor and the second breadboard come as the last one was set on its card on the bench. */
+  const toolOf = (id: PartId): Tool =>
+    id === 'led' ? { ...PARTS.led.tool, color: ledColor } : id === 'resistor' ? { ...PARTS.resistor.tool, ohms } : id === 'breadboard' ? { ...PARTS.breadboard.tool, size: bbSize } : PARTS[id].tool;
+  /** The colour, value or size it comes in, under its name. */
+  const noteOf = (id: PartId) => (id === 'led' ? named(ledColorName(ledColor) ?? 'red') : id === 'resistor' ? ohmsLabel(ohms) : id === 'breadboard' ? named(bbSize) : null);
   const fits = (id: PartId) => (!PARTS[id].only || PARTS[id].only === board) && (!PARTS[id].studio || !!mission.sandbox);   // a part made for the other board is left out, and so is one only the studio has
   const groups = GROUPS.map(g => ({ ...g, ids: g.ids.filter(fits) })).filter(g => g.ids.length);
   const extra = STUDIO_PARTS.filter(id => !PARTS[id].only || PARTS[id].only === board).length;
@@ -216,25 +106,22 @@ export function PartsPanel() {
     <>
       <div className="parts-scroll" onKeyDown={e => { if (info && e.key === 'Escape') { e.stopPropagation(); setInfo(null); } }}>   {/* Esc shuts an open pinout before the drawer */}
         <PictureDefs />
-        <p className="parts-lede">Pick a part, then click the holes on the bench where it goes. Press <kbd>Esc</kbd> to put it down.</p>
+        <p className="parts-lede">Pick a part, then click the holes on the bench where it goes. Press <kbd>Esc</kbd> to put it down. Select a placed LED, resistor or breadboard to change its colour, value or size.</p>
         {groups.map(g => (
           <section key={g.name} className="bin-group" aria-label={g.name}>
             <h3>{g.name}</h3>
             <div className="bins">
               {g.ids.map(id => {
-                if (id === 'resistor') return <ResistorTile key={id} locked={!have.has(id)} infoOpen={info === id} onInfo={() => setInfo(info === id ? null : id)} />;
-                if (id === 'led') return <LedTile key={id} locked={!have.has(id)} board={board} infoOpen={info === id} onInfo={() => setInfo(info === id ? null : id)} />;
-                if (id === 'breadboard') return <BreadboardTile key={id} infoOpen={info === id} onInfo={() => setInfo(info === id ? null : id)} />;
-                const p = PARTS[id], locked = !have.has(id), by = lockedBy(id);
+                const p = PARTS[id], t = toolOf(id), locked = !have.has(id), by = lockedBy(id), note = noteOf(id);
                 return (
                   <div key={id} className="bin-wrap">
                     <button
-                      type="button" className={locked ? 'bin locked' : 'bin'} aria-pressed={locked ? undefined : sameTool(tool, p.tool)} aria-disabled={locked || undefined}
-                      title={locked && by ? `Locked. Pass “${by.mission.title}” to unlock it.` : undefined} onClick={() => pickTool(p.tool)}
+                      type="button" className={locked ? 'bin locked' : 'bin'} aria-pressed={locked || id === 'breadboard' ? undefined : sameTool(tool, t)} aria-disabled={locked || undefined}
+                      title={locked && by ? `Locked. Pass “${by.mission.title}” to unlock it.` : undefined} onClick={() => pickTool(t)}
                     >
-                      <span className="bin-art"><PartPicture kind={toolKind(p.tool)} /></span>
+                      <span className="bin-art"><PartPicture kind={toolKind(t)} tint={hex(ledColor)} ohms={ohms} size={bbSize} /></span>
                       <b>{p.label}</b>
-                      {locked && <small><Icon name="lock" />{by ? `Pass “${by.mission.title}”` : 'Locked'}</small>}
+                      {locked ? <small><Icon name="lock" />{by ? `Pass “${by.mission.title}”` : 'Locked'}</small> : note && <small className={id === 'resistor' ? 'ohms' : undefined}>{note}</small>}
                     </button>
                     <PartInfo id={id} open={info === id} onToggle={() => setInfo(info === id ? null : id)} />
                   </div>

@@ -5,12 +5,13 @@ import { view } from '../scene/view';
 import { analyze } from '../sim/circuit';
 import { DARK_LCD, type LcdView } from '../sim/lcd';
 import { isHome } from '../state/table';
-import { cancelTool, currentReadout, dismissNotice, escapePanel, flipItem, homeBreadboard, moveWireTyped, placeTyped, removeItem, requestRun, resumeRun, selectHot, setHelp, setInput, setNav, showGuide, stepOnce, stopRun, toggleLabels, togglePanel, toggleSound, redo, undo } from '../state/actions';
+import { cancelTool, currentReadout, dismissNotice, escapePanel, flipItem, homeBreadboard, moveWireTyped, placeTyped, removeItem, requestRun, resizeBreadboard, resumeRun, selectHot, setHelp, setInput, setNav, setPartColor, setPartOhms, showGuide, stepOnce, stopRun, toggleLabels, togglePanel, toggleSound, redo, undo } from '../state/actions';
 import { TWO_POINT, type ToolKind } from '../state/bench';
 import { benchOf, boardOf, missionOf, useLab } from '../state/store';
-import { breadboardName, itemId, kindOf, onExtraBoard, type Item, type PartKind } from '../types';
+import { breadboardName, itemId, kindOf, ledColorName, onExtraBoard, type Item, type PartKind } from '../types';
 import { Boundary, isLoadError } from './Boundary';
 import { Icon } from './Icons';
+import { BreadboardSizes, LedColours, named, ResistorValue } from './PartOptions';
 import { Pinout } from './Pinout';
 
 /** The 3D view and three.js come in their own file, fetched when the bench first shows. */
@@ -119,8 +120,10 @@ function WireEnds({ id, a, b }: { id: string; a: string; b: string }) {
   );
 }
 
+/** The card of the selected part: what it is, its pinout, and what can be changed about it. An LED's colour, a resistor's value and the
+    second breadboard's size are changed here, on the part already placed, and the next one placed takes the same. */
 function PartCard() {
-  const hot = useLab(s => s.hot), board = useLab(boardOf), bench = useLab(benchOf);
+  const hot = useLab(s => s.hot), board = useLab(boardOf), boardId = useLab(s => s.board), bench = useLab(benchOf);
   if (!hot) return null;
   const at = bench.findIndex((it, k) => itemId(it, k) === hot), item = at >= 0 ? bench[at] : null;
   const info = board.parts[hot] ?? (item && ITEM_INFO[kindOf(item)]);
@@ -128,8 +131,11 @@ function PartCard() {
   return (
     <div className="card">
       <button type="button" className="x" aria-label="Close" onClick={() => selectHot(null)}>×</button>
-      <b>{item?.t === 'res' ? `${ohmsLabel(item.ohms ?? 220)} resistor` : item?.t === 'breadboard' ? breadboardName(item.size) : info[0]}</b>
+      <b>{item?.t === 'res' ? `${ohmsLabel(item.ohms ?? 220)} resistor` : item?.t === 'breadboard' ? breadboardName(item.size) : item?.t === 'led' ? `${named(ledColorName(item.color) ?? 'red')} LED` : info[0]}</b>
       <p>{info[1]}</p>
+      {item?.t === 'led' && <LedColours color={item.color} board={boardId} onPick={c => setPartColor(hot, c)} />}
+      {item?.t === 'res' && <ResistorValue ohms={item.ohms ?? 220} onPick={o => setPartOhms(hot, o)} />}
+      {item?.t === 'breadboard' && <BreadboardSizes size={item.size} onPick={resizeBreadboard} />}
       {item && <details className="pinout-more"><summary><span className="i-badge" aria-hidden="true">i</span>Pinout</summary><Pinout kind={kindOf(item)} ohms={item.t === 'res' ? item.ohms ?? 220 : undefined} /></details>}
       {item?.t === 'wire' && <WireEnds id={hot} a={item.a} b={item.b} />}
       {item && (
