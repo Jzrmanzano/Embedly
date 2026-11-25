@@ -7,13 +7,14 @@ import { LED_COLORS, type BoardId, type Item } from '../types';
 
 /* --- the parts tray --- */
 export type PartId = 'led' | 'resistor' | 'wire' | 'button' | 'knob' | 'buzzer' | 'sonar' | 'pad' | 'servo' | 'ldr' | 'temp'
-  | 'rgb' | 'slide' | 'tilt' | 'reed' | 'pir' | 'ir' | 'soil' | 'water' | 'gas' | 'flame' | 'joystick' | 'lcd';
+  | 'rgb' | 'slide' | 'tilt' | 'reed' | 'pir' | 'ir' | 'soil' | 'water' | 'gas' | 'flame' | 'joystick' | 'lcd' | 'breadboard';
 /** Every part of the tray. A `studio` part is one no mission unlocks yet: it is in the Open Studio's tray and nowhere else.
-    The LED is one part in every colour, and the resistor one part of every value: the drawer picks which, and the tool carries it. */
+    The LED is one part in every colour, the resistor one part of every value and the breadboard one part in both sizes: the drawer picks which, and the tool carries it. */
 export const PARTS: Record<PartId, { label: string; tool: Tool; only?: BoardId; studio?: true }> = {
   led: { label: 'LED', tool: { kind: 'led', color: LED_COLORS.red } },
   resistor: { label: 'Resistor', tool: { kind: 'res', ohms: 220 } },
   wire: { label: 'Wire', tool: { kind: 'wire' } },
+  breadboard: { label: 'Breadboard', tool: { kind: 'breadboard', size: 'short' } },
   button: { label: 'Button', tool: { kind: 'button' } },
   knob: { label: 'Knob', tool: { kind: 'pot' } },
   buzzer: { label: 'Buzzer', tool: { kind: 'buzzer' } },
@@ -37,8 +38,8 @@ export const PARTS: Record<PartId, { label: string; tool: Tool; only?: BoardId; 
 };
 /** The parts that only the Open Studio has. */
 export const STUDIO_PARTS = (Object.keys(PARTS) as PartId[]).filter(id => PARTS[id].studio);
-/** What the tray holds before any mission has been passed. */
-export const BASE_PARTS: PartId[] = ['led', 'resistor', 'wire'];
+/** What the tray holds before any mission has been passed. A second breadboard is there from the start: it only makes room. */
+export const BASE_PARTS: PartId[] = ['led', 'resistor', 'wire', 'breadboard'];
 
 export function partIdOf(it: Item): PartId {
   switch (it.t) {
@@ -46,7 +47,7 @@ export function partIdOf(it: Item): PartId {
     case 'res': return 'resistor';
     case 'pot': return 'knob';
     case 'joy': return 'joystick';
-    case 'rgb': case 'slide': case 'lcd': return it.t;
+    case 'rgb': case 'slide': case 'lcd': case 'breadboard': return it.t;
     case 'contact': case 'module': return it.kind;
     case 'wire': case 'button': case 'buzzer': case 'sonar': case 'pad': case 'servo': case 'ldr': case 'temp': return it.t;
   }
@@ -1595,9 +1596,9 @@ void loop() {
   }
 }`,
     circuit: [
-      ...espLed, { t: 'wire', a: 'E:VIN', b: 'B+34', c: 'red' },
-      { t: 'module', kind: 'pir', id: 'pir', row: 'g', col: 30, ctl: 'Movement' },
-      { t: 'wire', a: 'j30', b: 'B+30', c: 'red' }, { t: 'wire', a: 'j31', b: 'E:D18', c: 'yellow' }, { t: 'wire', a: 'j32', b: 'B-32', c: 'black' },
+      ...espLed, { t: 'wire', a: 'E:VIN', b: 'B+24', c: 'red' },
+      { t: 'module', kind: 'pir', id: 'pir', row: 'g', col: 28, ctl: 'Movement' },
+      { t: 'wire', a: 'j28', b: 'B+28', c: 'red' }, { t: 'wire', a: 'j29', b: 'E:D18', c: 'yellow' }, { t: 'wire', a: 'j30', b: 'B-30', c: 'black' },
     ],
     answer: `const int PIR_PIN = 18;    // HIGH while the sensor sees movement
 const int LED_PIN = 5;

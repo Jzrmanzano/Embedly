@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BASE_PARTS, isAvailable, lockedBy, missionKey, MISSIONS, partIdOf, PARTS, STUDIO_PARTS, trayParts, unlockedParts, type Mission } from '../src/data/missions';
 import { observe, runChecks } from '../src/sim/check';
+import { placementError } from '../src/state/bench';
 import type { BoardId, Item } from '../src/types';
 
 const BOARD_IDS: BoardId[] = ['uno', 'esp32'];
@@ -107,6 +108,10 @@ test('every mission: the intended build and sketch pass every check', () => forE
   const r = await runChecks(board, m.circuit, m.answer, m.checks);
   assert.deepEqual(failures(r), [], `${r.length} results`);
   assert.ok(r.length >= 3, 'a wiring check and at least two others');
+}));
+
+test('every mission: the intended build can be put together by hand on the bench as it opens, with no second breadboard', () => forEvery(graded, label, ({ board, m }) => {
+  m.circuit.forEach((it, k) => assert.equal(placementError(board, m.circuit.slice(0, k), it), null, JSON.stringify(it)));   // nothing off the end of the breadboard, under the ESP32 or in a taken hole
 }));
 
 test('every mission: the starter sketch is not enough', () => forEvery(graded, label, async ({ board, m }) => {
@@ -244,7 +249,7 @@ const wrongWiring: [BoardId, string, string, (it: Item) => Item | null][] = [
   ['uno', 'greenhouse', 'has the soil sensor on the wrong pin', it => (it.t === 'wire' && it.b === 'U:A0' ? { ...it, b: 'U:A1' } : it)],
   ['esp32', 'stairs', 'powers the motion sensor from 3V3', it => (it.t === 'wire' && it.a === 'E:VIN' ? { ...it, a: 'E:3V3' } : it)],
   ['esp32', 'stairs', 'has the motion sensor on the wrong pin', it => (it.t === 'wire' && it.b === 'E:D18' ? { ...it, b: 'E:D19' } : it)],
-  ['esp32', 'stairs', 'has no ground on the motion sensor', it => (it.t === 'wire' && it.a === 'j32' ? null : it)],
+  ['esp32', 'stairs', 'has no ground on the motion sensor', it => (it.t === 'wire' && it.a === 'j30' ? null : it)],
   ['uno', 'colddoor', 'leaves the reed switch\'s other leg unconnected', it => (it.t === 'wire' && it.a === 'a22' ? null : it)],
   ['uno', 'colddoor', 'wires the reed switch to 5V instead of GND', it => (it.t === 'wire' && it.a === 'a22' ? { ...it, b: 'T+22' } : it)],
   ['uno', 'colddoor', 'has the reed switch on the wrong pin', it => (it.t === 'wire' && it.a === 'U:2' ? { ...it, a: 'U:3' } : it)],

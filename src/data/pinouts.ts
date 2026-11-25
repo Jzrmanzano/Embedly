@@ -45,6 +45,16 @@ export const PINOUTS: Record<PartKind, Pinout> = {
     ],
     tip: 'Red is for power and black for GND, which makes a circuit easy to read. The simulator colours them for you.',
   },
+  breadboard: {
+    title: 'Breadboard',
+    legs: [
+      { name: 'a–e', tone: 'free', note: 'The five holes a to e of one column are joined underneath.' },
+      { name: 'f–j', tone: 'free', note: 'The five holes f to j of the same column are joined too, but not to a to e: the gap keeps them apart.' },
+      { name: '+', tone: 'plus', note: 'The red rails run the whole length. Wire one to 5V (3V3 or VIN on the ESP32), or to the first breadboard\'s + rail.' },
+      { name: '−', tone: 'minus', note: 'The blue rails run the whole length. Wire one to GND, or to the first breadboard\'s − rail.' },
+    ],
+    tip: 'Short is 30 columns, numbered 31 to 60 on the bench. Long is 63, numbered 31 to 93. Its rails are not joined to the first breadboard\'s until a wire joins them.',
+  },
   button: {
     title: 'Push button',
     legs: [

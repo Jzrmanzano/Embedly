@@ -1,11 +1,12 @@
 /* The rules of placing parts on the bench: which connection points exist, which are taken, and what a part needs. No 3D and no React in here. */
 import { ESP_HOLES } from '../data/boards';
 import { LCD_PINS, lcdPoint } from '../sim/lcd';
-import { itemId, kindOf, type BoardId, type ContactKind, type Item, type ModuleKind, type PartKind, type WireColor } from '../types';
+import { fits, placeOf, slide, type Place } from './table';
+import { BREADBOARD_COLS, extraColumns, itemId, kindOf, MAIN_COLS, onExtraBoard, type BoardId, type BreadboardSize, type ContactKind, type Item, type ModuleKind, type PartKind, type WireColor } from '../types';
 
 export type ToolKind = Item['t'];
-/** The part in hand. `sub` says which sensor module or which contact it is. */
-export interface Tool { kind: ToolKind; color?: number; ohms?: number; sub?: ModuleKind | ContactKind }
+/** The part in hand. `sub` says which sensor module or which contact it is, and `size` how long a breadboard is. */
+export interface Tool { kind: ToolKind; color?: number; ohms?: number; sub?: ModuleKind | ContactKind; size?: BreadboardSize }
 /** Which kind of part a tool places, named as kindOf names the item it makes. */
 export const toolKind = (tool: Tool): PartKind => (tool.kind === 'module' || tool.kind === 'contact' ? tool.sub ?? (tool.kind === 'module' ? 'pir' : 'tilt') : tool.kind);
 /** Are these the same part of the tray? A resistor of any value is the resistor, and an LED of any colour is the LED. */
@@ -15,7 +16,8 @@ export const sameTool = (a: Tool | null | undefined, b: Tool | null | undefined)
 export const TWO_POINT: ToolKind[] = ['led', 'res', 'buzzer', 'wire', 'ldr', 'contact'];
 /** How many holes side by side the legs of a part take, for the parts that stand in one row. */
 export const WIDTH: Partial<Record<Item['t'], number>> = { pot: 3, servo: 3, temp: 3, slide: 3, module: 3, sonar: 4, rgb: 4, joy: 5 };
-export const COLS = 30;
+export const COLS = MAIN_COLS;
+const RAILS = ['T+', 'T-', 'B+', 'B-'];
 /** Columns 1 to 21 of the breadboard are under the ESP32. Its own pins take their place. */
 const ESP_FIRST_FREE = 22;
 const UNO_PINS = [...Array.from({ length: 14 }, (_, i) => String(i)), 'A0', 'A1', 'A2', 'A3', 'A4', 'A5', '5V', '3V3', 'GND', 'GND2', 'GNDb', 'VIN'];
@@ -29,7 +31,9 @@ export function allTerminals(board: BoardId, items: Item[]): string[] {
   const out: string[] = [];
   const first = board === 'esp32' ? ESP_FIRST_FREE : 1;
   for (let c = first; c <= COLS; c++) for (const r of 'abcdefghij') out.push(r + c);
-  for (let c = 1; c <= COLS; c++) for (const r of ['T+', 'T-', 'B+', 'B-']) out.push(r + c);
+  for (let c = 1; c <= COLS; c++) for (const r of RAILS) out.push(r + c);
+  const extra = extraColumns(items);
+  if (extra) for (let c = extra[0]; c <= extra[1]; c++) for (const r of [...'abcdefghij', ...RAILS]) out.push(r + c);
   if (board === 'uno') out.push(...UNO_PINS.map(p => 'U:' + p));
   else out.push(...Object.keys(ESP_HOLES).filter(p => p !== 'EN').map(p => 'E:' + p));
   if (items.some(it => it.t === 'pad')) out.push('PAD');
@@ -44,13 +48,13 @@ export function holesOf(it: Item): string[] {
     case 'led': return [it.a, it.k];
     case 'button': return [`e${it.col}`, `e${it.col + 1}`, `e${it.col + 2}`, `f${it.col}`, `f${it.col + 1}`, `f${it.col + 2}`];   // the body covers the middle column too, though no leg goes in it
     case 'pot': case 'servo': case 'temp': case 'sonar': case 'rgb': case 'slide': case 'module': case 'joy': return Array.from({ length: WIDTH[it.t]! }, (_, i) => `${it.row}${it.col + i}`);
-    case 'pad': case 'lcd': return [];   // they lie on the table, not in the breadboard
+    case 'pad': case 'lcd': case 'breadboard': return [];   // they lie on the table, not in the breadboard
   }
 }
 
 const NAMES: Record<PartKind, string> = {
   led: 'LED', res: 'resistor', buzzer: 'buzzer', wire: 'wire', button: 'button', pot: 'knob', sonar: 'distance sensor', pad: 'touch pad', servo: 'servo', ldr: 'light sensor', temp: 'temperature sensor', lcd: 'LCD display',
-  rgb: 'RGB LED', slide: 'slide switch', joy: 'joystick', tilt: 'tilt switch', reed: 'reed switch',
+  rgb: 'RGB LED', slide: 'slide switch', breadboard: 'breadboard', joy: 'joystick', tilt: 'tilt switch', reed: 'reed switch',
   pir: 'motion sensor', ir: 'obstacle sensor', soil: 'soil moisture sensor', water: 'water level sensor', gas: 'gas sensor', flame: 'flame sensor',
 };
 const COUNT = ['', 'one', 'two', 'three', 'four', 'five'];
@@ -60,17 +64,24 @@ const withArticle = (what: string) => `${/^([aeio]|LED|RGB)/.test(what) ? 'An' :
 /** Why an item cannot go on the bench as it is, or null when it can. */
 export function placementError(board: BoardId, items: Item[], it: Item): string | null {
   const valid = new Set(allTerminals(board, items)), used = new Set(items.flatMap(holesOf)), leads = holesOf(it), what = NAMES[kindOf(it)];
-  const wide = it.t === 'button' ? 3 : WIDTH[it.t];
-  if (wide && 'col' in it && it.col + wide - 1 > COLS) return `${withArticle(what)} needs ${COUNT[wide]} columns. Pick a column further left.`;
+  const wide = it.t === 'button' ? 3 : WIDTH[it.t], extra = extraColumns(items);
+  if (wide && 'col' in it && valid.has(leads[0]) && it.col + wide - 1 > (it.col > COLS && extra ? extra[1] : COLS)) return `${withArticle(what)} needs ${COUNT[wide]} columns${it.col <= COLS && extra ? ' on one breadboard' : ''}. Pick a column further left.`;
   if (new Set(leads).size < leads.length) return 'Pick two different points.';
   for (const p of leads) {
     if (it.t !== 'wire' && !isHole(p)) return `${withArticle(what)} goes into the breadboard, not a board pin. Use a wire to reach the pin.`;
-    if (!valid.has(p)) return /^[a-j]\d+$/.test(p) && board === 'esp32' ? 'That spot is under the ESP32. Use the free holes on the right, or its pins.' : `${p} is not a place on this bench.`;
+    if (!valid.has(p)) {
+      if (/^[a-j]\d+$/.test(p) && board === 'esp32' && colOf(p) < ESP_FIRST_FREE) return 'That spot is under the ESP32. Use the free holes on the right, or its pins.';
+      if (onExtraBoard(p)) return extra ? `${p} is past the end of the second breadboard, which has columns ${extra[0]} to ${extra[1]}.` : `${p} is not on this bench. The breadboard has columns 1 to ${COLS}. For more, add a second breadboard from the tray.`;
+      return `${p} is not a place on this bench.`;
+    }
     if (used.has(p)) return `${p} is already taken. Each hole holds one leg or wire end.`;
   }
   if (WIDTH[it.t] && 'col' in it && board === 'esp32' && it.col < ESP_FIRST_FREE) return 'That spot is under the ESP32. Use the free holes on the right.';
   if (it.t === 'pad' && items.some(x => x.t === 'pad')) return 'There is only one touch pad.';
   if (it.t === 'lcd' && items.some(x => x.t === 'lcd')) return 'There is only one LCD display.';
+  const second = items.find(x => x.t === 'breadboard');   // the LCD and the touch pad each have a place of their own on the table, which the second breadboard may have been moved onto
+  if ((it.t === 'lcd' || it.t === 'pad') && second?.t === 'breadboard' && !fits(board, [...items, it], second.size, placeOf(second))) return `The second breadboard is lying where the ${what} goes. Drag it out of the way first.`;
+  if (it.t === 'breadboard' && items.some(x => x.t === 'breadboard')) return 'The bench has room for one more breadboard, and it is already there.';
   return null;
 }
 
@@ -120,7 +131,33 @@ export function makeItem(tool: Tool, items: Item[], a: string, b?: string): Item
     case 'contact': { const kind = toolKind(tool) as ContactKind; return { t: 'contact', kind, id: nextId(items, kind), a, b: b!, ctl: DEFAULT_CTL[kind]! }; }
     case 'module': { const kind = toolKind(tool) as ModuleKind; return { t: 'module', kind, id: nextId(items, kind), row, col, ctl: DEFAULT_CTL[kind]! }; }
     case 'lcd': return { t: 'lcd', id: nextId(items, 'lcd') };
+    case 'breadboard': return { t: 'breadboard', id: nextId(items, 'breadboard'), size: tool.size ?? 'short' };
   }
+}
+
+/** The bench without its second breadboard, and without the parts and wires plugged into it, which come off with it. */
+export const withoutBreadboard = (items: Item[]): Item[] => items.filter(it => it.t !== 'breadboard' && !holesOf(it).some(onExtraBoard));
+
+/** Makes the second breadboard short or long, keeping its left end where it is. A long one only becomes short when nothing is plugged in past the short one's
+    last column, and a short one only becomes long when there is room on the table for the extra length. */
+export function resizedBreadboard(board: BoardId, items: Item[], size: BreadboardSize): { items: Item[] } | { error: string } {
+  const last = COLS + BREADBOARD_COLS[size], beyond = items.flatMap(holesOf).find(p => onExtraBoard(p) && colOf(p) > last);
+  if (beyond) return { error: `A short breadboard ends at column ${last}, and ${beyond} is in use. Move what is plugged in past column ${last} first.` };
+  const there = items.find(it => it.t === 'breadboard');
+  if (there && !fits(board, items, size, placeOf(there))) return { error: `There is no room for a ${size} breadboard where it lies now. Drag it somewhere clearer first.` };
+  return { items: items.map(it => (it.t === 'breadboard' ? { ...it, size } : it)) };
+}
+
+/** Moves the second breadboard towards a place on the table, as far as it will go (see `slide`). Gives back the bench as it was when there is none, or it does not move. */
+export function movedBreadboard(board: BoardId, items: Item[], want: Place): Item[] {
+  const k = items.findIndex(it => it.t === 'breadboard'), bb = items[k];
+  if (!bb || bb.t !== 'breadboard') return items;
+  const from = placeOf(bb), to = slide(board, items, bb.size, from, want);
+  return to.x === from.x && to.z === from.z ? items : items.map((it, i) => (i === k ? { ...bb, x: to.x, z: to.z } : it));
+}
+/** Puts the second breadboard back beside the first, where it started. */
+export function homedBreadboard(items: Item[]): Item[] {
+  return items.map(it => { if (it.t !== 'breadboard') return it; const { x: _x, z: _z, ...rest } = it; return rest; });
 }
 
 /** Turns what a student typed ("e10", "t+5", "13", "gnd", "d5") into a connection point name, or null. */

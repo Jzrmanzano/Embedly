@@ -63,7 +63,7 @@ Pages must be switched on once: **Settings → Pages → Build and deployment �
 
 | | |
 |---|---|
-| 🧱 **Build real circuits** | Breadboard, wires, LEDs, resistors, buttons, knobs, buzzers, a distance sensor, servos, a touch pad, a light sensor and a temperature sensor. |
+| 🧱 **Build real circuits** | Breadboard (and a second one, short or long), wires, LEDs, resistors, buttons, knobs, buzzers, a distance sensor, servos, a touch pad, a light sensor and a temperature sensor. |
 | 🧠 **Run real-looking code** | Write Arduino-style C++ and watch it drive the board. |
 | 🔬 **See inside the wires** | Glowing beads, live voltages, a step debugger and a rewindable timeline. |
 | 📐 **Get a free schematic** | The circuit you build is redrawn as an electronics diagram, live. |
@@ -90,6 +90,25 @@ The circuit check explains problems in plain words:
 **Editing is forgiving.** Undo, redo and Reset bench live in the tray (<kbd>Ctrl</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd>, <kbd>Esc</kbd> and <kbd>Delete</kbd> work too). Drag either end of a wire (the cursor turns into a ✋) to replug it: the wire follows the pointer, and a taken or impossible spot is refused with a reason. Selecting a wire also shows **From** and **To** boxes to type new places.
 
 A lesson's own `circuit` is the reference answer, shown in the Wiring tab with a **Build it for me** button.
+
+### 🧱 A second breadboard
+
+Need more room? The **Breadboard** tile in the tray's Wiring group adds a second one to the right of the bench's own. Choose **Short** (30 columns, like the first) or **Long** (63 columns) before pressing the tile, and the view reframes to fit it. It starts to the right of the first one.
+
+| | Short | Long |
+|---|---|---|
+| Columns | 31 to 60 | 31 to 93 |
+| Holes | `a31` … `j60` | `a31` … `j93` |
+| Rails | `T+31` … `B-60` | `T+31` … `B-93` |
+
+- 🔢 Its columns **carry on from the first one's**, so every hole on the bench has a name of its own.
+- 🔌 **Its rails are its own**, as on two real breadboards. A wire such as `T+30` to `T+31` joins them.
+- ✋ **Drag it anywhere on the table** (the cursor turns into a ✋ over it), and everything plugged into it comes along, wires and all. It stops against the first breadboard, the Uno, the LCD and the touch pad and slides along them instead of landing on them. A press that does not move still just selects it.
+- ⌨️ With it selected, the **arrow keys move it** one hole at a time (ten with <kbd>Shift</kbd>), and quick nudges in a row are one Undo step. **Put it back** in its card returns it to where it started. Moving it never stops a running sketch: the circuit is the same wherever it lies.
+- 🔁 Pick the other size and press the tile again to **swap** it, keeping its left end where it is. A long one only becomes short when nothing is plugged in past column 60, and a short one only becomes long when there is room.
+- 🗑️ **Removing it takes off everything plugged into it**, and Undo puts it all back.
+
+The rules live in `src/state/bench.ts` (`withoutBreadboard`, `resizedBreadboard`, `movedBreadboard`), where things lie on the table and how the breadboard slides in `src/state/table.ts`, the separate rails in `holeNode` in `src/sim/circuit.ts`, and `tests/breadboard.test.ts` covers them.
 
 ---
 
@@ -328,6 +347,7 @@ Then `npm test` proves that:
 | `E:D5` | ESP32 pin D5 |
 | `a10` | breadboard hole a10 |
 | `T-15` | power rail |
+| `a45`, `T+45` | a hole or rail on the second breadboard (columns 31 and up) |
 
 ---
 

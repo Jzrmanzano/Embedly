@@ -89,7 +89,7 @@ export function layoutSchematic(board: BoardId, items: Item[]): Schematic {
       case 'rgb': { const l = rgbLegs(it); blocks.push({ id, kind: 'box', title: 'RGB LED', box: 'RGB LED', legs: [{ name: 'R', net: net(l.r) }, { name: '−', net: net(l.com) }, { name: 'G', net: net(l.g) }, { name: 'B', net: net(l.b) }] }); break; }
       case 'joy': { const l = joyLegs(it); blocks.push({ id, kind: 'box', title: 'joystick', box: 'Joystick', legs: [{ name: 'GND', net: net(l.gnd) }, { name: '+', net: net(l.vcc) }, { name: 'VRx', net: net(l.x) }, { name: 'VRy', net: net(l.y) }, { name: 'SW', net: net(l.sw) }] }); break; }
       case 'lcd': blocks.push({ id, kind: 'box', title: 'LCD display', box: 'LCD 16×2', legs: LCD_PINS.map(name => ({ name, net: net(lcdPoint(name)) })) }); break;
-      case 'wire': break;
+      case 'wire': case 'breadboard': break;
     }
   });
   const touched = new Set<string>();   // nets that a wire end or a leg is on

@@ -2,8 +2,9 @@
    No React and no storage in here: store.ts keeps the data in the browser, and this file only reads and checks it. */
 import { isAvailable, missionKey, MISSIONS, type Mission } from '../data/missions';
 import { CARDS, type CardId } from '../data/boardchoice';
-import { CONTACT_KINDS, MODULE_KINDS, type BoardId, type Item } from '../types';
+import { BREADBOARD_COLS, CONTACT_KINDS, MODULE_KINDS, type BoardId, type Item } from '../types';
 import type { PassRecord, PredictionRecord } from './store';
+import { REACH } from './table';
 
 /** What a backup file holds: everything the browser remembers about the student's work. */
 export interface Progress {
@@ -63,13 +64,15 @@ const FIELDS: Record<Item['t'], { s: string[]; n: string[] }> = {
   servo: { s: ['id', 'row'], n: ['col'] }, ldr: { s: ['id', 'a', 'b', 'ctl'], n: [] }, temp: { s: ['id', 'row', 'ctl'], n: ['col'] },
   rgb: { s: ['id', 'row'], n: ['col'] }, slide: { s: ['id', 'row', 'ctl'], n: ['col'] }, joy: { s: ['id', 'row', 'ctl'], n: ['col'] },
   contact: { s: ['id', 'kind', 'a', 'b', 'ctl'], n: [] }, module: { s: ['id', 'kind', 'row', 'ctl'], n: ['col'] }, lcd: { s: ['id'], n: [] },
+  breadboard: { s: ['id', 'size'], n: [] },
 };
 /** The kinds a part with a `kind` may be. */
 const KINDS: Partial<Record<Item['t'], readonly string[]>> = { contact: CONTACT_KINDS, module: MODULE_KINDS };
+const SIZES = Object.keys(BREADBOARD_COLS);
 export function isItem(v: unknown): v is Item {
   if (!isObject(v) || typeof v.t !== 'string' || !Object.hasOwn(FIELDS, v.t)) return false;
   const f = FIELDS[v.t as Item['t']];
-  return f.s.every(k => str(v[k])) && f.n.every(k => num(v[k])) && (v.ohms === undefined || num(v.ohms)) && (KINDS[v.t as Item['t']]?.includes(v.kind as string) ?? true);
+  return f.s.every(k => str(v[k])) && f.n.every(k => num(v[k])) && (v.ohms === undefined || num(v.ohms)) && (KINDS[v.t as Item['t']]?.includes(v.kind as string) ?? true) && (v.t !== 'breadboard' || (SIZES.includes(v.size as string) && [v.x, v.z].every(n => n === undefined || (num(n) && Math.abs(n) <= REACH))));
 }
 
 function pick<T>(from: unknown, ok: (v: unknown) => T | null): Record<string, T> {

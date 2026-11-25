@@ -577,6 +577,7 @@ void loop() {
         'Each hole holds one leg or one wire end. Use another hole in the same column to join more.',
         'The ESP32 is plugged into the breadboard itself, so the holes under it are taken. Click its pins directly and build in the free columns to the right.',
       ] },
+      { tip: 'Run out of room? The tray has a <b>second breadboard</b>, short (30 columns) or long (63). It starts to the right of the first, and you can drag it anywhere on the table. Its columns carry on from the first one\'s: its first hole is <code>a31</code>. <b>Its rails are its own</b>, as on two real breadboards, so join them with a wire, such as <code>T+30</code> to <code>T+31</code>, before taking power from them.' },
       { p: 'On the bench, pick a part from the tray and click the holes, or type them, such as <code>e10 e11</code>.' },
     ],
   },
