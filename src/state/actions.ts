@@ -8,7 +8,7 @@ import { run as runSketch, SimError, type RunControl } from '../sim/interpreter'
 import { pushFrame, type Frame } from '../sim/timeline';
 import { BREADBOARD_COLS, itemId, MAIN_COLS, type BoardId, type BreadboardSize, type Item } from '../types';
 import { clampWidth, closePanel as closePanelIn, closeTop, isOpen, openPanel as openPanelIn, widestPanel, type Panel, type Side } from './panels';
-import { flipped, holesOf, homedBreadboard, inputsOf, makeItem, movedBreadboard, movedWire, parseTerminal, placementError, resizedBreadboard, sameTool, TWO_POINT, withoutBreadboard, type Tool } from './bench';
+import { flipped, holesOf, homedBreadboard, inputsOf, makeItem, movedBreadboard, movedPart, movedWire, parseTerminal, placementError, resizedBreadboard, sameTool, TWO_POINT, withoutBreadboard, type Tool } from './bench';
 import { placeOf, slide, type Place } from './table';
 import { guideHash, parseHash } from './route';
 import { cardOf, fitsAll, type CardId } from '../data/boardchoice';
@@ -192,7 +192,7 @@ export function openFromHash() {
   const choosing = !home && !!MISSIONS[board][mission].choice;
   set(s => {
     const open = home || isPhone() ? s.panels : openPanelIn(s.panels, 'brief', isNarrow());   // a new mission opens its brief, except on a phone where it would cover the bench
-    return { page: home ? 'home' : 'lab', labSeen: s.labSeen || !home, board, mission, hot: null, serial: '', errLine: null, tool: null, pending: null, point: null, notice: null, results: null, asking: null, checking: false, drag: null, bbDrag: null, panels: choosing ? closePanelIn(closePanelIn(open, 'code'), 'parts') : home || isNarrow() || open.right ? open : openPanelIn(open, 'parts', false) };   // choosing a board needs no code or parts, and on a wide screen the parts are at hand
+    return { page: home ? 'home' : 'lab', labSeen: s.labSeen || !home, board, mission, hot: null, serial: '', errLine: null, tool: null, pending: null, point: null, notice: null, results: null, asking: null, checking: false, drag: null, bbDrag: null, partDrag: null, panels: choosing ? closePanelIn(closePanelIn(open, 'code'), 'parts') : home || isNarrow() || open.right ? open : openPanelIn(open, 'parts', false) };   // choosing a board needs no code or parts, and on a wide screen the parts are at hand
   });
   syncInputs();
 }
@@ -207,15 +207,23 @@ export const goTo = (board: BoardId, missionId: string) => { location.hash = `${
 
 /* --- editing the bench --- */
 const HISTORY = 60;
-/** Replaces the bench with a new one, remembering the old one for undo, and says so if the new one is a short circuit. */
-function change(items: Item[], burnt = burntOf(get())) {
+/** The last nudge with the arrow keys, so a quick run of them on the same thing is one undo step. */
+let lastNudge: { what: string; at: number } | null = null;
+/** Does this change join the undo step before it? Only a nudge of the same thing, a moment after the last one, does. Any other change ends the run. */
+function joinsLast(nudge?: string): boolean {
+  const what = nudge ? `${keyOf(get())}:${nudge}` : null, now = Date.now(), same = !!what && lastNudge?.what === what && now - lastNudge.at < 1500;
+  lastNudge = what ? { what, at: now } : null;
+  return same;
+}
+/** Replaces the bench with a new one, remembering the old one for undo, and says so if the new one is a short circuit. `nudge` names what an arrow key moved. */
+function change(items: Item[], burnt = burntOf(get()), nudge?: string) {
   const s = get(), key = keyOf(s), before = { items: benchOf(s), burnt: burntOf(s) };
   stopRun(); forgetRun();
   const benches = { ...s.benches, [key]: items }, burntAll = { ...s.burnt, [key]: burnt };
   saveBenches(benches, burntAll);
   set({
     benches, burnt: burntAll,
-    undo: { ...s.undo, [key]: [...(s.undo[key] ?? []).slice(-HISTORY), before] }, redo: { ...s.redo, [key]: [] }, results: null,
+    undo: joinsLast(nudge) ? s.undo : { ...s.undo, [key]: [...(s.undo[key] ?? []).slice(-HISTORY), before] }, redo: { ...s.redo, [key]: [] }, results: null,
   });
   syncInputs();
   const short = analyze(s.board, items).issues.find(i => i.kind === 'short');
@@ -226,7 +234,7 @@ function restore(from: 'undo' | 'redo') {
   const s = get(), key = keyOf(s), stack = s[from][key];
   if (!stack?.length) return;
   const snap = stack[stack.length - 1], other = from === 'undo' ? 'redo' : 'undo', here = { items: benchOf(s), burnt: burntOf(s) };
-  stopRun(); forgetRun();
+  stopRun(); forgetRun(); lastNudge = null;
   const benches = { ...s.benches, [key]: snap.items }, burnt = { ...s.burnt, [key]: snap.burnt };
   saveBenches(benches, burnt);
   const stacks = { undo: s.undo, redo: s.redo };
@@ -265,17 +273,60 @@ export function removeItem(id: string) {
 export function flipItem(id: string) {
   change(benchOf(get()).map((it, k) => (itemId(it, k) === id ? flipped(it) : it)));
 }
+
+/* --- changing a placed part: an LED's colour, a resistor's value, the second breadboard's size. The next one placed takes the same. --- */
+/** Changes one placed part. A quick run of changes to the same part, such as dragging a resistor's value along, is one undo step. */
+function editPart(id: string, edit: (it: Item) => Item) {
+  const bench = benchOf(get()), items = bench.map((it, k) => (itemId(it, k) === id ? edit(it) : it));
+  if (items.some((it, k) => it !== bench[k])) change(items, burntOf(get()), `edit:${id}`);
+}
+/** Gives a placed LED another colour. */
+export function setPartColor(id: string, color: number) {
+  editPart(id, it => (it.t === 'led' && it.color !== color ? { ...it, color } : it));
+  setLedColor(color);
+}
+/** Gives a placed resistor another value: its bands change with it. */
+export function setPartOhms(id: string, ohms: number) {
+  editPart(id, it => (it.t === 'res' && (it.ohms ?? 220) !== ohms ? { ...it, ohms } : it));
+  setOhms(ohms);
+}
+/** Makes the second breadboard short or long, if what is plugged into it still fits. */
+export function resizeBreadboard(size: BreadboardSize) {
+  placeBreadboard(size);
+  const bb = secondOf(benchOf(get()));
+  if (bb?.t === 'breadboard') setBreadboardSize(bb.size);
+}
 const addItem = (it: Item) => change([...benchOf(get()), it]);
 
+/* --- moving a placed part to other holes --- */
+/** The pointer drags a placed part: it has moved so many rows and columns, and is over the hole `to`. */
+export function dragPart(id: string, rows: number, cols: number, to: string) {
+  const d = get().partDrag;
+  if (d?.id !== id || d.rows !== rows || d.cols !== cols || d.to !== to) set({ partDrag: { id, rows, cols, to } });
+}
+/** The pointer came up: the part goes into the holes it was dragged to, or stays where it was and the student is told why. */
+export function dropPart() {
+  const d = get().partDrag, bench = benchOf(get());
+  set({ partDrag: null });
+  if (!d) return;
+  const r = movedPart(get().board, bench, d.id, d.rows, d.cols);
+  if ('error' in r) say('warn', r.error, 6000);
+  else if (r.items !== bench) { dismissNotice(); change(r.items); }
+}
+/** The arrow keys move the selected part a hole at a time. A quick run of them is one undo step. */
+export function nudgePart(id: string, rows: number, cols: number) {
+  const bench = benchOf(get()), r = movedPart(get().board, bench, id, rows, cols);
+  if ('error' in r) say('warn', r.error, 5000);
+  else if (r.items !== bench) change(r.items, burntOf(get()), `part:${id}`);
+}
+
 /* --- moving the second breadboard around the table --- */
-let lastNudge: { key: string; at: number } | null = null;
-/** Moves something on the table without changing the circuit, so a running sketch keeps running. It is remembered for undo, and a run of quick nudges is one undo step. */
-function moveOnTable(items: Item[], nudge = false) {
-  const s = get(), key = keyOf(s), now = Date.now(), same = nudge && lastNudge?.key === key && now - lastNudge.at < 1500;
-  lastNudge = nudge ? { key, at: now } : null;
+/** Moves something on the table without changing the circuit, so a running sketch keeps running. It is remembered for undo, and a quick run of nudges is one undo step. */
+function moveOnTable(items: Item[], nudge?: string) {
+  const s = get(), key = keyOf(s);
   const benches = { ...s.benches, [key]: items };
   saveBenches(benches, s.burnt);
-  set({ benches, undo: same ? s.undo : { ...s.undo, [key]: [...(s.undo[key] ?? []).slice(-HISTORY), { items: benchOf(s), burnt: burntOf(s) }] }, redo: { ...s.redo, [key]: [] } });
+  set({ benches, undo: joinsLast(nudge) ? s.undo : { ...s.undo, [key]: [...(s.undo[key] ?? []).slice(-HISTORY), { items: benchOf(s), burnt: burntOf(s) }] }, redo: { ...s.redo, [key]: [] } });
 }
 const secondOf = (items: Item[]) => items.find(it => it.t === 'breadboard');
 /** The pointer drags the second breadboard towards a place on the table. It goes as far as it can without landing on anything. */
@@ -298,7 +349,7 @@ export function nudgeBreadboard(dx: number, dz: number) {
   const s = get(), bench = benchOf(s), bb = secondOf(bench);
   if (bb?.t !== 'breadboard') return;
   const from = placeOf(bb), items = movedBreadboard(s.board, bench, { x: from.x + dx, z: from.z + dz });
-  if (items !== bench) moveOnTable(items, true);
+  if (items !== bench) moveOnTable(items, 'breadboard');
   else say('info', 'The second breadboard cannot go any further that way.', 3000);
 }
 /** Puts the second breadboard back beside the first, where it started. */
@@ -368,7 +419,7 @@ function placeBreadboard(size: BreadboardSize) {
   if (!there) {
     addItem(makeItem({ kind: 'breadboard', size }, bench, 'BB'));
     say('info', `A ${size} breadboard is on the right of the bench: ${span}. Its rails are its own, so wire them to the first breadboard's rails or to the board.`, 8000);
-  } else if (there.size === size) say('info', `The ${size} breadboard is already on the bench. To take it off, select it and press Remove.`, 6000);
+  } else if (there.size === size) say('info', `The ${size} breadboard is already on the bench. Select it to make it ${size === 'short' ? 'long' : 'short'} or to take it off.`, 6000);
   else {
     const r = resizedBreadboard(get().board, bench, size);
     if ('error' in r) say('warn', r.error, 8000);

@@ -89,11 +89,15 @@ The circuit check explains problems in plain words:
 
 **Editing is forgiving.** Undo, redo and Reset bench live in the tray (<kbd>Ctrl</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd>, <kbd>Esc</kbd> and <kbd>Delete</kbd> work too). Drag either end of a wire (the cursor turns into a ✋) to replug it: the wire follows the pointer, and a taken or impossible spot is refused with a reason. Selecting a wire also shows **From** and **To** boxes to type new places.
 
+**Placed parts move too.** Drag a part to other holes and it follows the pointer hole by hole, keeping its shape: an LED keeps its two legs the same distance apart, a knob its three columns, and a button stays across the middle gap. It shows in its new holes while they would take it, and a taken or impossible spot is refused with a reason when you let go. With a part selected, the arrow keys move it a hole at a time (five with <kbd>Shift</kbd>), and a quick run of nudges is one Undo step. Wires plugged in beside it stay where they are, as on a real breadboard, so moving a part can change the circuit. The rules are `movedPart` in `src/state/bench.ts`, tested in `tests/moveparts.test.ts`.
+
+**And they change after they are placed.** Select a placed LED to give it another **Colour**, a resistor to change its **Value** with the slider or by typing one (its bands follow), or the second breadboard to make it **Short** or **Long**. The tray's tiles stay simple: each says what it comes as (Red, 220 Ω, Short), which is whatever was last chosen on the bench. A quick run of changes to one part, such as dragging the value slider along, is one Undo step.
+
 A lesson's own `circuit` is the reference answer, shown in the Wiring tab with a **Build it for me** button.
 
 ### 🧱 A second breadboard
 
-Need more room? The **Breadboard** tile in the tray's Wiring group adds a second one to the right of the bench's own. Choose **Short** (30 columns, like the first) or **Long** (63 columns) before pressing the tile, and the view reframes to fit it. It starts to the right of the first one.
+Need more room? The **Breadboard** tile in the tray's Wiring group adds a second one to the right of the bench's own. Select it on the bench to make it **Short** (30 columns, like the first) or **Long** (63 columns), and the view reframes to fit it. It starts to the right of the first one.
 
 | | Short | Long |
 |---|---|---|
@@ -103,7 +107,7 @@ Need more room? The **Breadboard** tile in the tray's Wiring group adds a second
 
 - 🔢 Its columns **carry on from the first one's**, so every hole on the bench has a name of its own.
 - 🔌 **Its rails are its own**, as on two real breadboards. A wire such as `T+30` to `T+31` joins them.
-- ✋ **Drag it anywhere on the table** (the cursor turns into a ✋ over it), and everything plugged into it comes along, wires and all. It stops against the first breadboard, the Uno, the LCD and the touch pad and slides along them instead of landing on them. A press that does not move still just selects it.
+- ✋ **Drag it anywhere on the table** by the board itself (the cursor turns into a ✋ over it; pressing on a part in it moves just that part), and everything plugged into it comes along, wires and all. It stops against the first breadboard, the Uno, the LCD and the touch pad and slides along them instead of landing on them. A press that does not move still just selects it.
 - ⌨️ With it selected, the **arrow keys move it** one hole at a time (ten with <kbd>Shift</kbd>), and quick nudges in a row are one Undo step. **Put it back** in its card returns it to where it started. Moving it never stops a running sketch: the circuit is the same wherever it lies.
 - 🔁 Pick the other size and press the tile again to **swap** it, keeping its left end where it is. A long one only becomes short when nothing is plugged in past column 60, and a short one only becomes long when there is room.
 - 🗑️ **Removing it takes off everything plugged into it**, and Undo puts it all back.
@@ -241,6 +245,20 @@ A part is placed from the keyboard by choosing it in the tray and typing its hol
 ### 🎨 The look
 
 Colour tokens in `src/styles.css` give a **paper-and-pegboard** light theme and a **chalkboard** dark theme (`tests/palette.test.ts` checks every text and control pair is readable in both). Headings are **Zilla Slab**, reading is **Atkinson Hyperlegible**, and the icons are in `src/components/Icons.tsx`.
+
+The 3D bench is drawn like an illustration (`src/scene/world.ts`): toon-shaded solids with an ink outline, ink lines along every hard edge (merged so each part costs a draw call or two), and soft shadows on the table, warm on paper and black on the chalkboard. The shadows come from a light of their own behind and to the right, so they fall in front of things where the camera sees them. The parts are modelled to read as the real ones:
+
+| Part | Detail |
+|---|---|
+| 🔌 Jumper wire | Dupont housing on each end, with a collar in the wire's colour |
+| 💡 LED | Epoxy dome on a rim with a flat on the cathode side, legs bending in under it |
+| 〰️ Resistor | Dog-bone body, fatter where the leads go in, colour bands that follow its shape |
+| 🔘 Button | Metal plate with corner dimples, rounded cap, legs bent under the base |
+| 🎛️ Knob | Ridged dark knob on a metal bushing, with a white pointer line |
+| 📡 HC-SR04 | Silver transducers with mesh fronts, a crystal, printed labels, and a brick wall to measure |
+| 🌡️ TMP36 | D-shaped TO-92 case with its name on the flat face |
+| 🦾 Servo | Label, screw holes in the tabs, holes in the horn |
+| 🧱 Breadboard | A real channel down the middle, notched at each end |
 
 ---
 

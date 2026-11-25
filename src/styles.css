@@ -961,38 +961,27 @@ a.btn, a.toggle { color: var(--ink); text-decoration: none; }
 .i-badge { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: var(--blue); color: var(--bg); font: italic 700 .8rem var(--f-display); }
 .card .pinout figcaption { font-size: .82rem; } .card .pinout-more { max-height: none; }
 
-/* --- the resistor and LED tiles: one part each, with a value or a colour to choose --- */
-.bin-wrap.wide { grid-column: 1 / -1; }
-.choice-tile { flex: 1; display: flex; flex-direction: column; gap: 0; border: 1.5px solid transparent; border-radius: var(--r); background: var(--tile); overflow: hidden; }
-.choice-tile .bin { border: 0; border-radius: 0; min-height: 0; flex-direction: row; justify-content: center; gap: 12px; padding: 10px 40px 8px 12px; background: transparent; }
-.choice-tile .bin:hover { transform: none; background: var(--panel-2); }
-.choice-tile .bin[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 12%, var(--bg)); box-shadow: none; }
-.choice-tile:has(.bin[aria-pressed="true"]) { border-color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
-.choice-tile .bin b { font-size: .95rem; }
-.choice-tile .bin-art { width: auto; flex: none; }
-.choice-tile .bin-art .pic { width: auto; max-width: none; height: 58px; margin: 0; }
-.choice-tile .bin-art .pic-res { width: 118px; height: auto; }
-.choice-tile .bin-art .pic-breadboard { height: 50px; }
-.led-colors { margin: 0; min-width: 0; border-width: 1px 0 0; }
+/* --- what a placed part lets the student change, on its card on the bench (PartOptions.tsx): an LED's colour, a resistor's value, the second breadboard's size --- */
+.options { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+.options fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+.options legend, .options-label { display: block; padding: 0; margin: 0 0 4px; font-weight: 700; font-size: .86rem; color: var(--ink); }
 .swatches { display: flex; gap: 4px; }
 .swatch { position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 2px 5px; border-radius: 8px; color: var(--muted); font-size: .78rem; cursor: pointer; }
 .swatch:hover { background: var(--panel-2); }
 .swatch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
 .swatch i { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--edge); }
 .swatch:has(input:checked) { color: var(--ink); font-weight: 700; }
-.swatch input:checked + i { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--ink); }
+.swatch input:checked + i { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--ink); }
 .swatch input:focus-visible + i { outline: 3px solid var(--blue); outline-offset: 4px; }
-.ohms { font-family: var(--f-mono); font-weight: 700; }
-.picker { padding: 8px 12px 10px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
-.picker .slide { display: flex; flex-direction: column; gap: 2px; }
-.picker input[type="range"] { width: 100%; accent-color: var(--accent); margin: 2px 0 0; }
-.picker .ends { display: flex; justify-content: space-between; color: var(--muted); font: .72rem var(--f-mono); }
-.picker .exact label { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: .84rem; }
-.picker .exact input { width: 11ch; font: .88rem var(--f-mono); padding: 4px 8px; border: 1px solid var(--edge); border-radius: 8px; background: var(--panel); color: var(--ink); text-align: right; }
-.picker .exact input[aria-invalid="true"] { border-color: var(--pwr); }
-.picker p { margin: 0; color: var(--muted); font-size: .82rem; line-height: 1.35; }
-.picker p.bad { color: var(--pwr); font-weight: 700; }
-.bb-sizes { margin: 0; min-width: 0; border-width: 1px 0 0; }
+.ohms { font-family: var(--f-mono); font-weight: 700; white-space: nowrap; }
+.options .slide { display: flex; flex-direction: column; gap: 2px; }
+.options input[type="range"] { width: 100%; accent-color: var(--accent); margin: 2px 0 0; }
+.options .ends { display: flex; justify-content: space-between; color: var(--muted); font: .72rem var(--f-mono); }
+.options .exact label { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: .84rem; }
+.options .exact input { width: 11ch; font: .88rem var(--f-mono); padding: 4px 8px; border: 1px solid var(--edge); border-radius: 8px; background: var(--bg); color: var(--ink); text-align: right; }
+.options .exact input[aria-invalid="true"] { border-color: var(--pwr); }
+.options p { margin: 0; color: var(--muted); font-size: .82rem; line-height: 1.35; }
+.options p.bad { color: var(--pwr); font-weight: 700; }
 .sizes { display: flex; gap: 6px; }
 .size { position: relative; flex: 1 1 0; min-width: 0; display: flex; cursor: pointer; }
 .size input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }

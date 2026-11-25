@@ -9,7 +9,7 @@ const KEYS: [string[], string][] = [
   [['P'], 'Open or close the parts drawer'],
   [['C'], 'Open or close the code'],
   [['Ctrl', 'Enter'], 'Run the sketch, or stop it (works inside the editor too)'],
-  [['←', '↑', '→', '↓'], 'Slide the view. Hold Shift to go faster. With the second breadboard selected, they move it instead, one hole at a time (ten with Shift)'],
+  [['←', '↑', '→', '↓'], 'Slide the view. Hold Shift to go faster. With a part selected, they move it to the next holes instead (five holes with Shift), and the second breadboard too (ten with Shift)'],
   [['+', '−'], 'Zoom in and out'],
   [['0'], 'Reset the view'],
   [['T'], 'Look straight down at the bench'],

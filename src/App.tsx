@@ -25,7 +25,7 @@ const ALL_BOARDS = Object.values(BOARDS);
 const GRADED = Object.entries(MISSIONS).flatMap(([board, list]) => list.filter(m => !m.sandbox && !m.repair).map(m => `${board}-${m.id}`));   // the main quest; side quests are extra
 
 const PANELS: [Panel, string, IconName, string][] = [['map', 'Map', 'map', 'M'], ['brief', 'Brief', 'brief', 'B'], ['parts', 'Parts', 'parts', 'P'], ['code', 'Code', 'code', 'C']];
-const HOME_TITLE = 'Embedly · Learn to build IoT devices, machines and robots';
+const HOME_TITLE = 'Embedly · Learn to build Arduino based projects';
 
 /** The buttons that open the panels, and the link to the guide (a page of its own): in the top bar on a wide screen, along the bottom on a phone. */
 function PanelToggles({ nav = false }: { nav?: boolean }) {

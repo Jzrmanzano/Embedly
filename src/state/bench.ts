@@ -155,6 +155,47 @@ export function movedBreadboard(board: BoardId, items: Item[], want: Place): Ite
   const from = placeOf(bb), to = slide(board, items, bb.size, from, want);
   return to.x === from.x && to.z === from.z ? items : items.map((it, i) => (i === k ? { ...bb, x: to.x, z: to.z } : it));
 }
+/* --- moving a placed part to other holes --- */
+/** The rows of a breadboard from its far edge to its near one: the far rails, a to j, and the near rails. */
+const ROWS = ['T+', 'T-', ...'abcdefghij', 'B-', 'B+'];
+/** Can this part be picked up and put in other holes? A wire moves by its ends, and the touch pad, the LCD and the second breadboard lie on the table. */
+export const movable = (it: Item) => it.t !== 'wire' && it.t !== 'pad' && it.t !== 'lcd' && it.t !== 'breadboard';
+const rowCol = (p: string): [number, number] | null => { const m = /^([a-j]|[TB][+-])(\d+)$/.exec(p); return m ? [ROWS.indexOf(m[1]), +m[2]] : null; };
+/** How many rows and columns it is from one hole to another, or null when either is not a breadboard hole. */
+export function holeOffset(from: string, to: string): [rows: number, cols: number] | null {
+  const a = rowCol(from), b = rowCol(to);
+  return a && b ? [b[0] - a[0], b[1] - a[1]] : null;
+}
+/** The hole so many rows and columns away, or null when that is past an edge. */
+function shiftedHole(p: string, rows: number, cols: number): string | null {
+  const at = rowCol(p), row = at && ROWS[at[0] + rows];
+  return at && row && at[1] + cols >= 1 ? row + (at[1] + cols) : null;
+}
+/** The same part, so many rows and columns away. A part in a row stays in rows a to j, and a button always sits across the middle gap, so it only moves along. Null when it would leave the breadboard. */
+export function shiftedPart(it: Item, rows: number, cols: number): Item | null {
+  const hole = (p: string) => shiftedHole(p, rows, cols);
+  switch (it.t) {
+    case 'led': { const a = hole(it.a), k = hole(it.k); return a && k ? { ...it, a, k } : null; }
+    case 'res': case 'buzzer': case 'ldr': case 'contact': { const a = hole(it.a), b = hole(it.b); return a && b ? { ...it, a, b } : null; }
+    case 'button': return it.col + cols >= 1 ? { ...it, col: it.col + cols } : null;
+    case 'pot': case 'servo': case 'temp': case 'sonar': case 'rgb': case 'slide': case 'module': case 'joy': {
+      const row = ROWS[ROWS.indexOf(it.row) + rows];
+      return row && /^[a-j]$/.test(row) && it.col + cols >= 1 ? { ...it, row, col: it.col + cols } : null;
+    }
+    default: return null;
+  }
+}
+/** Moves a placed part so many rows and columns, keeping its shape, its id and everything else about it. Gives back the new bench, or why it cannot go there. Its own old holes do not count as taken. */
+export function movedPart(board: BoardId, items: Item[], id: string, rows: number, cols: number): { items: Item[] } | { error: string } {
+  const k = items.findIndex((it, i) => itemId(it, i) === id), it = items[k];
+  if (!it || !movable(it)) return { error: 'That cannot be moved to other holes.' };
+  if (!rows && !cols) return { items };
+  const next = shiftedPart(it, rows, cols);
+  if (!next) return { error: `That would take the ${NAMES[kindOf(it)]} off the breadboard.` };
+  const error = placementError(board, items.filter((_, i) => i !== k), next);
+  return error ? { error } : { items: items.map((x, i) => (i === k ? next : x)) };
+}
+
 /** Puts the second breadboard back beside the first, where it started. */
 export function homedBreadboard(items: Item[]): Item[] {
   return items.map(it => { if (it.t !== 'breadboard') return it; const { x: _x, z: _z, ...rest } = it; return rest; });
