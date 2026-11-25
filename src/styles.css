@@ -846,19 +846,34 @@ a.btn, a.toggle { color: var(--ink); text-decoration: none; }
 .bin-group { margin-top: 18px; }
 .bin-group h3 { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; font: 700 1.02rem var(--f-display); }
 .bin-group h3::after { content: ""; flex: 1; border-top: 2px solid var(--line); }
-.bins { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 7px; }
-.bin { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; min-height: 80px; padding: 6px 6px 8px; background: var(--bg); border: 1.5px solid var(--edge); border-radius: var(--r); color: var(--ink); text-align: center; font: inherit; cursor: pointer; transition: transform .1s, border-color .1s; }
-.bin:hover { border-color: var(--ink); transform: translateY(-1px); }
-.bin b { font-size: .88rem; line-height: 1.2; }
-.bin-art { display: block; width: 100%; color: var(--blue); }
-.bin-art .sym { width: 56px; height: 32px; }
+/* the tiles are a parts catalogue: a soft plate for each part, its picture large, its name under it */
+.parts-scroll { --tile: color-mix(in srgb, var(--panel-2) 62%, var(--panel)); }
+.bins { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+.bin { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; padding: 24px 8px 10px; background: var(--tile); border: 1.5px solid transparent; border-radius: var(--r); color: var(--ink); text-align: center; font: inherit; cursor: pointer; transition: transform .1s, border-color .1s; }
+.bin:hover { border-color: var(--edge); transform: translateY(-1px); }
+.bin b { font-size: .86rem; font-weight: 600; line-height: 1.2; }
+.bin-art { display: block; width: 100%; }
+.bin-art .pic { display: block; width: 100%; max-width: 116px; height: 64px; margin: 0 auto; }   /* starts below the i in the corner */
 .bin small { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: .74rem; line-height: 1.2; }
 .bin small .icon { width: .95em; height: .95em; flex: none; }
-.bin[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-.bin[aria-pressed="true"] .bin-art { color: var(--accent-ink) !important; }
-.bin.locked { border-style: dashed; background: transparent; cursor: not-allowed; }
+/* the part in hand: ringed and tinted in the accent, so its drawing keeps its own colours */
+.bin[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 12%, var(--bg)); border-color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.bin[aria-pressed="true"] b { color: var(--accent); }
+.bin.locked { border-style: dashed; border-color: var(--edge); background: transparent; cursor: not-allowed; }
 .bin.locked:hover { transform: none; border-color: var(--edge); }
-.bin.locked .bin-art { opacity: .45; }
+.bin.locked .bin-art { opacity: .5; filter: grayscale(1); }
+
+/* --- the tray's pictures (PartPictures.tsx): each part shaded like a product shot, with a soft shadow under it. On the dark theme a faint light rim keeps the black parts off the dark tiles. --- */
+.pp-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+.pic { overflow: visible; filter: drop-shadow(0 1.5px 1.2px rgb(0 0 0 / .22)); }
+:root[data-theme="dark"] .pic { filter: drop-shadow(0 0 .6px rgb(255 255 255 / .55)) drop-shadow(0 2px 2px rgb(0 0 0 / .5)); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pic { filter: drop-shadow(0 0 .6px rgb(255 255 255 / .55)) drop-shadow(0 2px 2px rgb(0 0 0 / .5)); } }
+.pp-lead, .pp-gleam { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.pp-lead { stroke: #8e959c; }
+.pp-gleam { stroke: #e6e9ec; opacity: .85; }
+.pp-print { font: 700 6px var(--f-mono); fill: #8e959d; }
+.pp-print.light { fill: #fff; opacity: .8; font-size: 6.4px; }
+.pp-lcd { font: 700 9.4px var(--f-mono); letter-spacing: .235px; fill: #233b12; }
 .bin.locked b { color: var(--muted); }
 .parts-count { margin: 18px 0 0; color: var(--muted); font-size: .84rem; }
 .parts-foot { flex: none; display: flex; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--panel); }
@@ -894,11 +909,28 @@ a.btn, a.toggle { color: var(--ink); text-decoration: none; }
 .bin-wrap .bin { flex: 1; }
 .bin-i { position: absolute; top: 5px; right: 5px; width: 22px; height: 22px; padding: 0; display: grid; place-items: center; border-radius: 50%; border: 1.5px solid var(--edge); background: var(--panel); color: var(--muted); font: italic 700 .82rem var(--f-display); line-height: 1; cursor: pointer; }
 .bin-i:hover, .bin-i.on { background: var(--blue); border-color: var(--blue); color: var(--bg); }
-.bin[aria-pressed="true"] + .bin-i { border-color: var(--accent-ink); }
-.pinout-card { margin: 10px 0 4px; padding: 10px 12px 12px; background: var(--bg); border: 2px solid var(--blue); border-radius: var(--r); }
-.pinout-card header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.pinout-card h3 { margin: 0; font: 700 1.05rem var(--f-display); }
-.pinout-card header button { border: 0; background: none; padding: 4px; cursor: pointer; color: var(--ink); }
+.bin[aria-pressed="true"] + .bin-i { border-color: var(--accent); }
+/* --- a part's pinout, flown out of the tray: a card held over the bench beside the drawer, its notch pointing back at the tile's i --- */
+.flyout { position: fixed; z-index: 3; top: 0; left: 0; width: 320px; background: var(--panel); color: var(--ink); border: 2px solid var(--ink); border-radius: 14px; box-shadow: 6px 6px 0 var(--ink); animation: fly-left .16s ease-out; }
+.flyout[data-side="left"] { box-shadow: -6px 6px 0 var(--ink); }   /* lifted off the tray towards the bench, leaving the notch side clean */
+.flyout[data-side="above"] { animation-name: fly-up; }
+.flyout::after { content: ""; position: absolute; width: 14px; height: 14px; background: var(--panel); border: solid var(--ink); border-width: 2px 2px 0 0; }
+.flyout[data-side="left"]::after { top: var(--notch, 30px); right: -9px; transform: translateY(-50%) rotate(45deg); }
+.flyout[data-side="above"]::after { left: var(--notch, 50%); bottom: -9px; transform: translateX(-50%) rotate(135deg); }
+.flyout[data-lost]::after { display: none; }
+.flyout-body { overflow-y: auto; padding: 10px 14px 14px; border-radius: 12px; scrollbar-width: thin; }
+.flyout header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.flyout h3 { margin: 0; font: 700 1.1rem var(--f-display); }
+.flyout h3 .ohms { font-weight: 400; color: var(--muted); }
+.flyout header button { flex: none; display: grid; place-items: center; border: 0; background: none; padding: 5px; border-radius: 8px; cursor: pointer; color: var(--ink); }
+.flyout header button:hover { background: var(--panel-2); }
+.flyout .pinout svg { max-width: 230px; }
+.flyout[data-side="above"] .flyout-body { padding: 8px 12px 12px; }
+.flyout[data-side="above"] .pinout svg { max-width: 150px; }   /* the room above the sheet is short, so the drawing gives way to the legs */
+@keyframes fly-left { from { opacity: 0; translate: 10px 0; } }
+@keyframes fly-up { from { opacity: 0; translate: 0 10px; } }
+@media (prefers-reduced-motion: reduce) { .flyout { animation: none; } }
+@media (forced-colors: active) { .flyout::after { display: none; } }
 .pinout { margin: 6px 0 0; }
 .pinout svg { display: block; width: 100%; max-width: 210px; height: auto; margin: 0 auto; overflow: visible; }
 .pinout figcaption { margin-top: 8px; color: var(--muted); font-size: .86rem; line-height: 1.45; }
@@ -931,12 +963,16 @@ a.btn, a.toggle { color: var(--ink); text-decoration: none; }
 
 /* --- the resistor and LED tiles: one part each, with a value or a colour to choose --- */
 .bin-wrap.wide { grid-column: 1 / -1; }
-.choice-tile { flex: 1; display: flex; flex-direction: column; gap: 0; border: 1.5px solid var(--edge); border-radius: var(--r); background: var(--bg); overflow: hidden; }
+.choice-tile { flex: 1; display: flex; flex-direction: column; gap: 0; border: 1.5px solid transparent; border-radius: var(--r); background: var(--tile); overflow: hidden; }
 .choice-tile .bin { border: 0; border-radius: 0; min-height: 0; flex-direction: row; justify-content: center; gap: 12px; padding: 10px 40px 8px 12px; background: transparent; }
 .choice-tile .bin:hover { transform: none; background: var(--panel-2); }
-.choice-tile .bin[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.choice-tile .bin[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 12%, var(--bg)); box-shadow: none; }
+.choice-tile:has(.bin[aria-pressed="true"]) { border-color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
 .choice-tile .bin b { font-size: .95rem; }
 .choice-tile .bin-art { width: auto; flex: none; }
+.choice-tile .bin-art .pic { width: auto; max-width: none; height: 58px; margin: 0; }
+.choice-tile .bin-art .pic-res { width: 118px; height: auto; }
+.choice-tile .bin-art .pic-breadboard { height: 50px; }
 .led-colors { margin: 0; min-width: 0; border-width: 1px 0 0; }
 .swatches { display: flex; gap: 4px; }
 .swatch { position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 2px 5px; border-radius: 8px; color: var(--muted); font-size: .78rem; cursor: pointer; }
@@ -947,9 +983,6 @@ a.btn, a.toggle { color: var(--ink); text-decoration: none; }
 .swatch input:checked + i { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--ink); }
 .swatch input:focus-visible + i { outline: 3px solid var(--blue); outline-offset: 4px; }
 .ohms { font-family: var(--f-mono); font-weight: 700; }
-.res-art { width: 84px; height: 40px; }
-.res-art .lead { fill: none; stroke: #aab2ba; stroke-width: 2.4; stroke-linecap: round; }
-.res-art .body { fill: #dcbd8e; stroke: var(--ink); stroke-width: 1.4; }
 .picker { padding: 8px 12px 10px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
 .picker .slide { display: flex; flex-direction: column; gap: 2px; }
 .picker input[type="range"] { width: 100%; accent-color: var(--accent); margin: 2px 0 0; }
@@ -959,8 +992,6 @@ a.btn, a.toggle { color: var(--ink); text-decoration: none; }
 .picker .exact input[aria-invalid="true"] { border-color: var(--pwr); }
 .picker p { margin: 0; color: var(--muted); font-size: .82rem; line-height: 1.35; }
 .picker p.bad { color: var(--pwr); font-weight: 700; }
-.pinout-card h3 .ohms { font-weight: 400; color: var(--muted); }
-.choice-tile .bin-art .res-art { width: 110px; height: 48px; }
 .bb-sizes { margin: 0; min-width: 0; border-width: 1px 0 0; }
 .sizes { display: flex; gap: 6px; }
 .size { position: relative; flex: 1 1 0; min-width: 0; display: flex; cursor: pointer; }

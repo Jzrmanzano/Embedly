@@ -1,15 +1,15 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type RefObject } from 'react';
 import { lockedBy, PARTS, STUDIO_PARTS, trayParts, type PartId } from '../data/missions';
 import { PINOUTS } from '../data/pinouts';
-import { bands, nearestStop, ohmsLabel, parseOhms, RESISTOR_STOPS, useFor } from '../data/resistor';
+import { nearestStop, ohmsLabel, parseOhms, RESISTOR_STOPS, useFor } from '../data/resistor';
 import { ledDrop } from '../sim/circuit';
 import { pickTool, redo, resetBench, setBreadboardSize, setLedColor, setOhms, undo } from '../state/actions';
 import { sameTool, toolKind } from '../state/bench';
 import { benchOf, keyOf, missionOf, useLab } from '../state/store';
 import { BREADBOARD_COLS, breadboardName, LED_COLORS, ledColorName, MAIN_COLS, type BoardId, type BreadboardSize } from '../types';
 import { Icon } from './Icons';
+import { PartPicture, PictureDefs } from './PartPictures';
 import { Pinout } from './Pinout';
-import { PartSymbol } from './Symbols';
 
 /** The parts, sorted by what they do on the bench rather than by when they were unlocked. */
 const GROUPS: { name: string; ids: PartId[] }[] = [
@@ -18,20 +18,77 @@ const GROUPS: { name: string; ids: PartId[] }[] = [
   { name: 'Switches and controls', ids: ['button', 'slide', 'knob', 'joystick', 'tilt', 'reed', 'pad'] },
   { name: 'Sensors', ids: ['ldr', 'temp', 'sonar', 'pir', 'ir', 'soil', 'water', 'gas', 'flame'] },
 ];
-/** The drawing each part is shown with (the ones the guide draws). A resistor draws itself, with the bands of its value. */
-const DRAWING: Record<PartId, string> = {
-  wire: 'wire', resistor: 'resistor', led: 'led', buzzer: 'buzzer', servo: 'servo',
-  button: 'button', knob: 'knob', ldr: 'ldr', temp: 'temp', sonar: 'sonar', pad: 'touch',
-  rgb: 'rgb', slide: 'slide', tilt: 'tilt', reed: 'reed', joystick: 'joystick',
-  pir: 'pir', ir: 'ir', soil: 'soil', water: 'water', gas: 'gas', flame: 'flame', lcd: 'lcd', breadboard: 'breadboard',
-};
 
 type LedName = keyof typeof LED_COLORS;
 const LED_NAMES = Object.keys(LED_COLORS) as LedName[];
-/** The colour the LED's drawing is inked in. Yellow and white would vanish on the paper, so those two are drawn a shade darker; the swatches show the LED's own colour. */
-const LED_INK: Record<LedName, string> = { red: '#ff3b30', green: '#2ecc40', yellow: '#d99a00', blue: '#2f7bff', white: '#8d97a1' };
 const hex = (color: number) => `#${color.toString(16).padStart(6, '0')}`;
 const named = (name: string) => name[0].toUpperCase() + name.slice(1);
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+/** A part's pinout, flown out of the tray: a card held over the bench beside the drawer, level with its tile and pointing back at its i,
+    so the list stays where it was. On a phone, where the drawer is a sheet along the bottom, it sits above the sheet. */
+function PinoutFlyout({ id, cardId, anchor, onClose }: { id: PartId; cardId: string; anchor: RefObject<HTMLButtonElement | null>; onClose: () => void }) {
+  const card = useRef<HTMLElement>(null), body = useRef<HTMLDivElement>(null), ohms = useLab(s => s.ohms), kind = toolKind(PARTS[id].tool);
+  useLayoutEffect(() => {
+    const el = card.current, inner = body.current, i = anchor.current, drawer = i?.closest('.drawer'), list = i?.closest('.parts-scroll'), bench = document.getElementById('bench');
+    if (!el || !inner || !i || !drawer || !list || !bench) return;
+    let frame = 0;
+    const place = () => {
+      frame = 0;
+      const d = drawer.getBoundingClientRect(), b = bench.getBoundingClientRect(), a = i.getBoundingClientRect(), l = list.getBoundingClientRect();
+      const top = b.top + 10, bottom = b.bottom - 10, x = a.left + a.width / 2, y = a.top + a.height / 2;
+      el.toggleAttribute('data-lost', y < l.top || y > l.bottom);   // its tile has scrolled out of sight, so there is nothing to point at
+      if (d.top > b.top + 24) {   // the drawer is a sheet along the bottom
+        const w = Math.min(440, window.innerWidth - 20), left = clamp(x - w / 2, 10, window.innerWidth - 10 - w);
+        el.dataset.side = 'above';
+        el.style.width = `${w}px`;
+        inner.style.maxHeight = `${Math.max(140, d.top - 14 - top - 4)}px`;
+        el.style.left = `${left}px`;
+        el.style.top = `${Math.max(top, d.top - 14 - el.offsetHeight)}px`;
+        el.style.setProperty('--notch', `${clamp(x - left, 24, w - 24)}px`);
+      } else {   // beside the drawer, over the bench, clear of the rail on the far side
+        const edge = (document.querySelector('.rail.left')?.getBoundingClientRect().right ?? b.left) + 10;
+        const w = clamp(d.left - 16 - edge, 260, 340), left = Math.max(edge, d.left - 16 - w);
+        el.dataset.side = 'left';
+        el.style.width = `${w}px`;
+        inner.style.maxHeight = `${bottom - top - 4}px`;
+        const h = el.offsetHeight, at = clamp(y - 30, top, bottom - h);
+        el.style.left = `${left}px`;
+        el.style.top = `${at}px`;
+        el.style.setProperty('--notch', `${clamp(y - at, 22, h - 22)}px`);
+      }
+    };
+    const ask = () => { if (!frame) frame = requestAnimationFrame(place); };
+    place();
+    const watch = new ResizeObserver(ask);
+    watch.observe(drawer); watch.observe(inner);
+    list.addEventListener('scroll', ask, { passive: true });
+    window.addEventListener('resize', ask);
+    return () => { cancelAnimationFrame(frame); watch.disconnect(); list.removeEventListener('scroll', ask); window.removeEventListener('resize', ask); };
+  }, [anchor]);
+  return (
+    <section ref={card} id={cardId} className="flyout" aria-labelledby={`${cardId}-title`} onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
+      <div ref={body} className="flyout-body">
+        <header>
+          <h3 id={`${cardId}-title`}>{PINOUTS[kind].title}{id === 'resistor' && <span className="ohms"> · {ohmsLabel(ohms)}</span>}</h3>
+          <button type="button" aria-label="Close the pinout" title="Close (Esc)" onClick={onClose}><Icon name="close" /></button>
+        </header>
+        <Pinout kind={kind} ohms={id === 'resistor' ? ohms : undefined} />
+      </div>
+    </section>
+  );
+}
+
+/** The i on a tile, and the pinout it opens. The card comes right after the i, so the keyboard reaches it next; closing it puts the focus back on the i. */
+function PartInfo({ id, open, onToggle }: { id: PartId; open: boolean; onToggle: () => void }) {
+  const button = useRef<HTMLButtonElement>(null), cardId = `pinout-${id}`;
+  return (
+    <>
+      <button ref={button} type="button" className={open ? 'bin-i on' : 'bin-i'} aria-label={`Pinout of the ${PARTS[id].label}`} aria-expanded={open} aria-controls={open ? cardId : undefined} title="Pinout" onClick={onToggle}>i</button>
+      {open && <PinoutFlyout id={id} cardId={cardId} anchor={button} onClose={() => { onToggle(); button.current?.focus(); }} />}
+    </>
+  );
+}
 
 /** What a colour means on this board: the voltage it lights at, and whether a 3.3 V pin lights it well through the usual resistor. */
 function ledNote(color: number, board: BoardId): string {
@@ -50,7 +107,7 @@ function LedTile({ locked, board, onInfo, infoOpen }: { locked: boolean; board: 
     <div className="bin-wrap wide">
       <div className="choice-tile">
         <button type="button" className="bin" aria-pressed={locked ? undefined : sameTool(tool, pick)} onClick={() => pickTool(pick)}>
-          <span className="bin-art" style={{ color: LED_INK[name] }}><PartSymbol id="led" /></span>
+          <span className="bin-art"><PartPicture kind="led" tint={hex(color)} /></span>
           <b>{named(name)} LED</b>
         </button>
         <fieldset className="picker led-colors">
@@ -67,23 +124,12 @@ function LedTile({ locked, board, onInfo, infoOpen }: { locked: boolean; board: 
           <p>{ledNote(color, board)}</p>
         </fieldset>
       </div>
-      <button type="button" className={infoOpen ? 'bin-i on' : 'bin-i'} aria-label="Pinout of the LED" aria-expanded={infoOpen} title="Pinout" onClick={onInfo}>i</button>
+      <PartInfo id="led" open={infoOpen} onToggle={onInfo} />
     </div>
   );
 }
 
 const SIZES: BreadboardSize[] = ['short', 'long'];
-/** A breadboard from above, as long as the size picked: a long one has twice the columns of a short one. */
-function BreadboardArt({ size }: { size: BreadboardSize }) {
-  const w = size === 'long' ? 44 : 24, x0 = 24 - w / 2, cols = Array.from({ length: size === 'long' ? 9 : 4 }, (_, i) => x0 + 4 + i * 4.5);
-  return (
-    <svg className="sym" viewBox="0 0 48 32" aria-hidden="true">
-      <rect x={x0} y="4" width={w} height="24" rx="2.5" />
-      <path d={`M${x0 + 2} 15.9h${w - 4}`} />
-      {cols.flatMap(x => [8.5, 12, 19.8, 23.3].map(y => <circle key={`${x}-${y}`} cx={x} cy={y} r="1" className="dot" />))}
-    </svg>
-  );
-}
 
 /** What each size is, and what pressing the tile does with the breadboard already on the bench. */
 function breadboardNote(size: BreadboardSize, there: BreadboardSize | null): string {
@@ -100,7 +146,7 @@ function BreadboardTile({ onInfo, infoOpen }: { onInfo: () => void; infoOpen: bo
     <div className="bin-wrap wide">
       <div className="choice-tile">
         <button type="button" className="bin" onClick={() => pickTool({ ...PARTS.breadboard.tool, size })}>
-          <span className="bin-art"><BreadboardArt size={size} /></span>
+          <span className="bin-art"><PartPicture kind="breadboard" size={size} /></span>
           <b>{breadboardName(size)}</b>
         </button>
         <fieldset className="picker bb-sizes">
@@ -116,20 +162,8 @@ function BreadboardTile({ onInfo, infoOpen }: { onInfo: () => void; infoOpen: bo
           <p>{breadboardNote(size, on)}</p>
         </fieldset>
       </div>
-      <button type="button" className={infoOpen ? 'bin-i on' : 'bin-i'} aria-label="Pinout of the breadboard" aria-expanded={infoOpen} title="Pinout" onClick={onInfo}>i</button>
+      <PartInfo id="breadboard" open={infoOpen} onToggle={onInfo} />
     </div>
-  );
-}
-
-/** A resistor lying down, with the bands of its value. */
-function ResistorArt({ ohms }: { ohms: number }) {
-  const colors = bands(ohms);
-  return (
-    <svg className="sym res-art" viewBox="0 0 48 32" aria-hidden="true">
-      <path d="M2 16h8M38 16h8" className="lead" />
-      <rect x="10" y="9" width="28" height="14" rx="7" className="body" />
-      {colors.map((c, i) => <rect key={i} x={(i === colors.length - 1 ? 31 : 14 + i * 5) - 1.5} y="9.5" width="3" height="13" fill={c} stroke="none" />)}
-    </svg>
   );
 }
 
@@ -148,7 +182,7 @@ function ResistorTile({ locked, onInfo, infoOpen }: { locked: boolean; onInfo: (
     <div className="bin-wrap wide">
       <div className="choice-tile">
         <button type="button" className="bin" aria-pressed={locked ? undefined : sameTool(tool, pick)} onClick={() => pickTool(pick)}>
-          <span className="bin-art"><ResistorArt ohms={ohms} /></span>
+          <span className="bin-art"><PartPicture kind="res" ohms={ohms} /></span>
           <b>Resistor <span className="ohms">{ohmsLabel(ohms)}</span></b>
         </button>
         <div className="picker">
@@ -163,31 +197,25 @@ function ResistorTile({ locked, onInfo, infoOpen }: { locked: boolean; onInfo: (
           <p id="ohm-help" className={bad ? 'bad' : undefined} role={bad ? 'alert' : undefined}>{bad ? 'Type a value from 1 Ω to 10 MΩ, such as 330, 4.7k or 1M.' : useFor(ohms)}</p>
         </div>
       </div>
-      <button type="button" className={infoOpen ? 'bin-i on' : 'bin-i'} aria-label="Pinout of the resistor" aria-expanded={infoOpen} title="Pinout" onClick={onInfo}>i</button>
+      <PartInfo id="resistor" open={infoOpen} onToggle={onInfo} />
     </div>
   );
 }
 
 /** The parts drawer: every part as a tile you pick and then place on the bench. A part that is still locked says which mission opens it. In the studio nothing is locked. */
 export function PartsPanel() {
-  const board = useLab(s => s.board), tool = useLab(s => s.tool), passed = useLab(s => s.passed), ohms = useLab(s => s.ohms), mission = useLab(missionOf);
+  const board = useLab(s => s.board), tool = useLab(s => s.tool), passed = useLab(s => s.passed), mission = useLab(missionOf);
   const canUndo = useLab(s => !!s.undo[keyOf(s)]?.length), canRedo = useLab(s => !!s.redo[keyOf(s)]?.length), hasParts = useLab(s => benchOf(s).length > 0);
   const have = useMemo(() => trayParts(mission, Object.keys(passed)), [mission, passed]);
-  const [info, setInfo] = useState<PartId | null>(null), scroller = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (info) scroller.current?.scrollTo({ top: 0 }); }, [info]);   // the pinout opens at the top of the drawer
+  const [info, setInfo] = useState<PartId | null>(null);
   const fits = (id: PartId) => (!PARTS[id].only || PARTS[id].only === board) && (!PARTS[id].studio || !!mission.sandbox);   // a part made for the other board is left out, and so is one only the studio has
   const groups = GROUPS.map(g => ({ ...g, ids: g.ids.filter(fits) })).filter(g => g.ids.length);
   const extra = STUDIO_PARTS.filter(id => !PARTS[id].only || PARTS[id].only === board).length;
   const all = groups.flatMap(g => g.ids), open = all.filter(id => have.has(id)).length;
   return (
     <>
-      <div className="parts-scroll" ref={scroller}>
-        {info && (
-          <section className="pinout-card" aria-label={`Pinout of the ${PARTS[info].label}`}>
-            <header><h3>{PINOUTS[toolKind(PARTS[info].tool)].title}{info === 'resistor' && <span className="ohms"> · {ohmsLabel(ohms)}</span>}</h3><button type="button" aria-label="Close the pinout" onClick={() => setInfo(null)}><Icon name="close" /></button></header>
-            <Pinout kind={toolKind(PARTS[info].tool)} ohms={info === 'resistor' ? ohms : undefined} />
-          </section>
-        )}
+      <div className="parts-scroll" onKeyDown={e => { if (info && e.key === 'Escape') { e.stopPropagation(); setInfo(null); } }}>   {/* Esc shuts an open pinout before the drawer */}
+        <PictureDefs />
         <p className="parts-lede">Pick a part, then click the holes on the bench where it goes. Press <kbd>Esc</kbd> to put it down.</p>
         {groups.map(g => (
           <section key={g.name} className="bin-group" aria-label={g.name}>
@@ -204,11 +232,11 @@ export function PartsPanel() {
                       type="button" className={locked ? 'bin locked' : 'bin'} aria-pressed={locked ? undefined : sameTool(tool, p.tool)} aria-disabled={locked || undefined}
                       title={locked && by ? `Locked. Pass “${by.mission.title}” to unlock it.` : undefined} onClick={() => pickTool(p.tool)}
                     >
-                      <span className="bin-art"><PartSymbol id={DRAWING[id]} /></span>
+                      <span className="bin-art"><PartPicture kind={toolKind(p.tool)} /></span>
                       <b>{p.label}</b>
                       {locked && <small><Icon name="lock" />{by ? `Pass “${by.mission.title}”` : 'Locked'}</small>}
                     </button>
-                    <button type="button" className={info === id ? 'bin-i on' : 'bin-i'} aria-label={`Pinout of the ${p.label}`} aria-expanded={info === id} title="Pinout" onClick={() => setInfo(info === id ? null : id)}>i</button>
+                    <PartInfo id={id} open={info === id} onToggle={() => setInfo(info === id ? null : id)} />
                   </div>
                 );
               })}
