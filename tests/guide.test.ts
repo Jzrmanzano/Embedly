@@ -7,7 +7,9 @@ import { MISSIONS } from '../src/data/missions';
 import { makeHW } from '../src/sim/hardware';
 import { parse, run } from '../src/sim/interpreter';
 
-const examples = GUIDE.flatMap(c => c.blocks.flatMap((b, i) => ('code' in b ? [{ where: `${c.id}, block ${i + 1}`, board: c.id === 'touch' ? 'esp32' as const : 'uno' as const, ...b }] : [])));
+/** The chapters about what only the ESP32 has. Their examples run on it. */
+const ESP32_ONLY = new Set(['touch', 'wifi']);
+const examples = GUIDE.flatMap(c => c.blocks.flatMap((b, i) => ('code' in b ? [{ where: `${c.id}, block ${i + 1}`, board: ESP32_ONLY.has(c.id) ? 'esp32' as const : 'uno' as const, ...b }] : [])));
 const isWhole = (code: string) => code.includes('void setup');
 /** A few lines from a sketch are checked by putting them where they would go: declarations at the top, the rest inside loop(). */
 const asSketch = (code: string) => (isWhole(code) ? code : /^\s*(const |int |float |bool |unsigned )/.test(code) && !code.includes('if (') ? `${code}\nvoid setup() {}\nvoid loop() {}` : `void setup() {}\nvoid loop() {\n${code}\n}`);
@@ -32,7 +34,7 @@ test('every guide example that prints, prints what the guide says', async () => 
     assert.ok(isWhole(ex.code), `${ex.where}: an example that prints is a whole sketch`);
     let serial = '';
     const hw = makeHW(BOARDS[ex.board], [], () => ({}), s => { serial += s; });
-    hw.sleep = () => new Promise<void>(r => setTimeout(r, 0));
+    hw.sleep = ms => { hw.advance(ms); return new Promise<void>(r => setTimeout(r, 0)); };   // a delay() is over at once, but still counts on the clock, so a sketch waiting to join the Wi-Fi gets there
     const ctl = { stop: false, onLoop() { ctl.stop = true; } };
     await run(ex.code, hw, ctl);
     assert.equal(serial, ex.prints, ex.where);
@@ -42,7 +44,7 @@ test('every guide example that prints, prints what the guide says', async () => 
 test('whole sketches in the guide run a pass of loop() on a bare board without an error', async () => {
   for (const ex of examples.filter(e => isWhole(e.code))) {
     const hw = makeHW(BOARDS[ex.board], [], () => ({}), () => {});
-    hw.sleep = () => new Promise<void>(r => setTimeout(r, 0));
+    hw.sleep = ms => { hw.advance(ms); return new Promise<void>(r => setTimeout(r, 0)); };   // a delay() is over at once, but still counts on the clock, so a sketch waiting to join the Wi-Fi gets there
     const ctl = { stop: false, onLoop() { ctl.stop = true; } };
     await assert.doesNotReject(run(ex.code, hw, ctl), ex.where);
   }

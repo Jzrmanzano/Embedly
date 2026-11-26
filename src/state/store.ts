@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { BOARDS } from '../data/boards';
 import { MISSIONS, missionKey } from '../data/missions';
 import type { CheckResult } from '../sim/check';
+import { BOARD_IP, type Answer } from '../sim/network';
 import { LED_COLORS, type BoardId, type BreadboardSize, type Item } from '../types';
 import { NONE as NO_PANELS, USUAL_WIDTHS, type Panel, type Panels, type Widths } from './panels';
 import type { Tool } from './bench';
@@ -19,6 +20,9 @@ export interface PredictionRecord { picked: string; actual: string; right: boole
 /** What the bench held at one moment, for undo. */
 export interface Snap { items: Item[]; burnt: string[] }
 export interface Notice { id: number; tone: 'error' | 'warn' | 'info'; text: string }
+/** The phone beside the bench, on the same Wi-Fi as the ESP32: the address it last opened, what came back (null before anything has), and whether it is still waiting. */
+export interface PhoneState { url: string; answer: Answer | null; loading: boolean }
+export const FRESH_PHONE: PhoneState = { url: `http://${BOARD_IP}/`, answer: null, loading: false };
 
 export interface LabState {
   /** The page showing: the home page (empty address bar hash), the lab, or the guide (#guide). */
@@ -98,6 +102,7 @@ export interface LabState {
   running: boolean;
   errLine: number | null;
   serial: string;
+  phone: PhoneState;
 }
 
 const MISSION_KEY = 'boardlab-missions', BENCH_KEY = 'boardlab-benches';
@@ -151,7 +156,7 @@ export const useLab = create<LabState>(() => ({
   page: 'home', labSeen: false, board: 'uno', mission: 0, tab: 'mission', panels: NO_PANELS, focusPanel: null, widths: loadWidths(), help: false, guide: null, hot: null, edits: loadSketches(), ...saved, undo: {}, redo: {},
   tool: null, pending: null, point: null, notice: null, drag: null, bbDrag: null, partDrag: null, sparks: 0, paused: false, line: null, cursor: null, frameTick: 0, probe: null,
   inputs: {}, ...loadProgress(), results: null, checking: false, asking: null,
-  sound: false, ohms: 220, ledColor: LED_COLORS.red, bbSize: 'short', nav: 'pan', labels: true, running: false, errLine: null, serial: '',
+  sound: false, ohms: 220, ledColor: LED_COLORS.red, bbSize: 'short', nav: 'pan', labels: true, running: false, errLine: null, serial: '', phone: FRESH_PHONE,
 }));
 
 const NONE: Item[] = [], NONE_IDS: string[] = [];

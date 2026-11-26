@@ -5,6 +5,7 @@ import { observe, runChecks } from '../sim/check';
 import { analyze } from '../sim/circuit';
 import { makeHW, makeReadout, type Readout, type VirtualHW } from '../sim/hardware';
 import { run as runSketch, SimError, type RunControl } from '../sim/interpreter';
+import { ANSWER_MS, parseAddress, type Answer } from '../sim/network';
 import { pushFrame, type Frame } from '../sim/timeline';
 import { BREADBOARD_COLS, itemId, MAIN_COLS, type BoardId, type BreadboardSize, type Item } from '../types';
 import { clampWidth, closePanel as closePanelIn, closeTop, isOpen, openPanel as openPanelIn, widestPanel, type Panel, type Side } from './panels';
@@ -12,7 +13,7 @@ import { flipped, holesOf, homedBreadboard, inputsOf, makeItem, movedBreadboard,
 import { placeOf, slide, type Place } from './table';
 import { guideHash, parseHash } from './route';
 import { cardOf, fitsAll, type CardId } from '../data/boardchoice';
-import { benchOf, burntOf, codeOf, keyOf, missionOf, saveBenches, saveProgress, saveSketches, saveWidths, useLab, type Tab } from './store';
+import { benchOf, burntOf, codeOf, FRESH_PHONE, keyOf, missionOf, saveBenches, saveProgress, saveSketches, saveWidths, useLab, type Tab } from './store';
 import { emptyProgress, makeBackup, parseBackup, describe, type Progress } from './progress';
 
 const set = useLab.setState, get = useLab.getState;
@@ -155,6 +156,21 @@ export function startRun(stepFirst = false) {
     })
     .then(() => { hwDone = true; if (active === mine) { active = null; stepping = false; set({ running: false, paused: false, line: null }); } });
 }
+/* --- the phone beside the bench, on the same Wi-Fi as the ESP32. It opens the pages the running sketch serves. --- */
+let phoneAsk = 0, phoneTimer: ReturnType<typeof setTimeout> | undefined;
+/** The phone opens an address: typed into it, or a link or form on the page it shows. The answer, or why there is none, shows on the phone. */
+export function browse(url: string, opts: { method?: 'GET' | 'POST'; form?: [string, string][] } = {}) {
+  const ask = ++phoneAsk, hw = active?.hw, net = hw?.net, at = parseAddress(url)?.href ?? url;
+  clearTimeout(phoneTimer);
+  const show = (answer: Answer, from: string) => { if (ask === phoneAsk) { clearTimeout(phoneTimer); set({ phone: { url: from, answer, loading: false } }); } };   // a newer request has the phone now
+  if (!hw || !net) { show({ kind: 'offline', why: 'stopped' }, at); return; }
+  set({ phone: { url: at, answer: get().phone.answer, loading: true } });   // the old page stays on the screen while the new one comes
+  const now = hw.now(), id = net.visit(at, now, now, { ...opts, done: show });
+  if (ask === phoneAsk && get().phone.loading) phoneTimer = setTimeout(() => net.giveUp(id), ANSWER_MS);
+}
+/** A blank phone for a new mission. */
+function resetPhone() { phoneAsk++; clearTimeout(phoneTimer); set({ phone: FRESH_PHONE }); }
+
 /* --- pages: the address bar hash says which page shows (see route.ts), and in the lab which mission is open (#uno-beacon) --- */
 const passedKeys = () => new Set(Object.keys(get().passed));
 const saveMissionProgress = () => { const { passed, hintsUsed, predictions, picks } = get(); saveProgress({ passed, hintsUsed, predictions, picks }); };
@@ -188,6 +204,7 @@ export function openFromHash() {
   }
   forgetRun();
   serialBuf = '';
+  resetPhone();
   const home = route.page === 'home';
   const choosing = !home && !!MISSIONS[board][mission].choice;
   set(s => {

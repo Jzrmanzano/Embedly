@@ -68,6 +68,7 @@ Pages must be switched on once: **Settings → Pages → Build and deployment �
 | 🔬 **See inside the wires** | Glowing beads, live voltages, a step debugger and a rewindable timeline. |
 | 📐 **Get a free schematic** | The circuit you build is redrawn as an electronics diagram, live. |
 | 🗺️ **Follow a map** | Missions unlock parts, which unlock more missions. |
+| 📶 **Go wireless** | The ESP32 joins the workshop's Wi-Fi and serves web pages to a phone beside the bench. |
 | 📖 **Read the guide** | A built-in textbook for the code and for every part. |
 | 🛒 **Pick the right board** | Five boards on a supply shelf, and a comparison page to match one to a project. |
 
@@ -194,6 +195,39 @@ Checks script them as the `ldr` and `temp` inputs. Missions that use them: **Str
 
 ---
 
+## 📶 Wi-Fi and the phone
+
+The ESP32 can join the workshop's Wi-Fi and run a web server. A **phone** sits beside the bench on the same Wi-Fi: it shows up whenever the ESP32's sketch has a `WebServer`, stays in its pocket while you build, and comes out when the sketch runs.
+
+```
+  phone ──GET /on──▶ Wi-Fi ──▶ server.handleClient() ──▶ handleOn() ──▶ server.send(200, "text/html", page) ──▶ phone
+```
+
+| | |
+|---|---|
+| 📡 **The network** | Called `Workshop`, password `solder123`. Joining takes 1.2 s on the sketch's clock, then the board is at `192.168.1.57`. A wrong name or password never joins, and the phone says which was wrong. |
+| 📱 **The phone** | Type an address and press Go. The page the sketch sends is drawn as a browser would, and its links and forms send the phone's next request to the board. It gives up after 4 s with no answer. |
+| 🚫 **What it cannot do** | Nothing on a page runs (no JavaScript), and the Wi-Fi has no internet: a page cannot fetch anything, and another address says so. Nothing leaves the browser. |
+
+The sketch side covers `WiFi.begin`, `status`, `localIP`, `isConnected`, `SSID`, `RSSI`, `disconnect` and `mode`, and a `WebServer`'s `on` (with or without a method), `onNotFound`, `begin`, `handleClient`, `send`, `sendHeader` (redirects are followed), `arg`, `hasArg`, `args`, `argName`, `uri` and `method`. A handler is named without brackets, as on a real board. An address with no handler gets the library's own `Not found: /path`. Raw strings `R"( … )"`, `PROGMEM` and `F("…")` work, so pages can be written the way tutorials write them.
+
+The **Gate light by phone** mission (ESP32, after the Night light) uses it, and the guide's **WiFi and WebServer** chapter explains it.
+
+<details>
+<summary><b>How it works</b></summary>
+
+<br>
+
+`src/sim/network.ts` is the Wi-Fi: who has joined since when, which ports are listening, and every request from the phone with its answer, all on the sketch's own clock so a check comes out the same every time. The interpreter's `WiFi` and `WebServer` calls go to it through `hw.net`, which only the ESP32's virtual hardware has. A handler runs inside `server.handleClient()`, one request at a time, as on the real board.
+
+The phone is `src/components/Phone.tsx`. A page is shown in a sandboxed frame that cannot run scripts, with a content security policy that blocks every request it could make. Clicks on links and form submissions are caught and sent to the board instead.
+
+A check scripts the phone with `visit` (open an address) and `tap` (tap the link or button with these words on whatever page it shows), and `expect: { page }` judges what the phone shows. `tests/wifi.test.ts` covers the network, the library calls and the checks.
+
+</details>
+
+---
+
 ## 🔧 Repair jobs
 
 > *"It worked yesterday."* 😅
@@ -267,7 +301,7 @@ The 3D bench is drawn like an illustration (`src/scene/world.ts`): toon-shaded s
 The **Guide** (<kbd>G</kbd>) is the textbook next to the missions, on a page of its own: `#guide` for the contents and `#guide/<chapter>` for each chapter, so any chapter can be bookmarked or opened in another tab.
 
 **Part 1: the coding walkthrough** (read in order, drawn as one wire with a numbered pad per step)
-`setup()` and `loop()` → `pinMode` → `digitalWrite` → `delay` → variables → `digitalRead` → `analogRead` and `analogWrite` → `if` and `else` → `switch` and `case` (and when to choose which) → loops → functions → `Serial` → `millis()`
+`setup()` and `loop()` → `pinMode` → `digitalWrite` → `delay` → variables → `digitalRead` → `analogRead` and `analogWrite` → `if` and `else` → `switch` and `case` (and when to choose which) → loops → functions → `Serial` → `millis()` → `WiFi` and `WebServer`
 
 **Part 2: the parts** (looked up, drawn as a drawer of bins, each marked with its circuit symbol)
 what a circuit is · how a breadboard is joined underneath · how an LED works and why it needs a resistor · buttons · knobs · buzzers · the distance sensor · servos · the touch pad
@@ -349,7 +383,7 @@ Add an object to a board's list in `src/data/missions.ts`. It needs:
 - 🔮 a **prediction**
 - 🎯 its **checks**
 
-A check is a scenario made with `phases()`, `blinks()` or `sweeps()` from `src/sim/check.ts`: stretches of time with scripted inputs (a wall that moves, a button that is pressed) and what should be true by the end of each. That can be any LED, the `red` or `green` LED, the buzzer, the Serial Monitor, a PWM duty, or a `servo` angle range.
+A check is a scenario made with `phases()`, `blinks()` or `sweeps()` from `src/sim/check.ts`: stretches of time with scripted inputs (a wall that moves, a button that is pressed) and what should be true by the end of each. That can be any LED, the `red` or `green` LED, the buzzer, the Serial Monitor, a PWM duty, a `servo` angle range, or the `page` the phone shows. On the ESP32 a phase can also `visit` an address on the phone or `tap` a link or button on the page it shows.
 
 Then `npm test` proves that:
 
@@ -398,6 +432,7 @@ Then `npm test` proves that:
 | `src/sim/hardware.ts` | The virtual pins, connected through the student's wiring to the parts. |
 | `src/sim/check.ts` | The mission check engine: runs the student's own sketch on their own build, with scripted inputs, on a virtual clock. |
 | `src/sim/timeline.ts` | The recording of pin states over time that the Timeline draws and replays. |
+| `src/sim/network.ts` | The workshop's Wi-Fi: the board joining it, its web server's requests and answers, and what the phone shows. |
 | `src/sim/schematic.ts` | Lays out the circuit on the bench as a schematic. |
 
 </details>
@@ -438,9 +473,9 @@ Then `npm test` proves that:
 
 The interpreter covers:
 
-> variables · arrays · functions · `if` · `for` · `while` · `switch` · the pin functions · `tone` · `pulseIn` · `touchRead` · `map` · `millis` · `Serial` · the `Servo` library (`attach`, `write`, `writeMicroseconds`, `read`, `attached`, `detach`)
+> variables · arrays · functions · `if` · `for` · `while` · `switch` · the pin functions · `tone` · `pulseIn` · `touchRead` · `map` · `millis` · `Serial` · the `Servo` library (`attach`, `write`, `writeMicroseconds`, `read`, `attached`, `detach`) · `LiquidCrystal_I2C` · on the ESP32, `WiFi` and `WebServer` (see [Wi-Fi and the phone](#-wi-fi-and-the-phone))
 
-Both `#include <Servo.h>` and `<ESP32Servo.h>` work. There are **no other libraries and no Wi-Fi.**
+Both `#include <Servo.h>` and `<ESP32Servo.h>` work. There are **no other libraries**: no Bluetooth, no `WiFiClient` or `HTTPClient` to reach other sites, and no `ESPAsyncWebServer`.
 
 ### 🦾 Wiring a servo
 

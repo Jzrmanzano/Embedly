@@ -180,6 +180,16 @@ const wrong: [BoardId, string, string, string, string][] = [
   ['uno', 'counter', '  lastState = state;\n', '', 'never remembers the last reading, so counts every pass'],
   ['uno', 'counter', 'delay(10);', 'delay(1000);', 'looks at the sensor only once a second, so visitors slip past'],
   ['uno', 'counter', '    count = count + 1;\n    Serial.println(count);', '    count = count + 1;', 'counts but never prints the new total'],
+  ['esp32', 'gatelight', '  server.handleClient();', '  // server.handleClient();', 'never answers the phone'],
+  ['esp32', 'gatelight', 'delay(2);', 'delay(5000);', 'answers the phone too slowly'],
+  ['esp32', 'gatelight', '"solder123"', '"Solder123"', 'has the wrong Wi-Fi password'],
+  ['esp32', 'gatelight', '"Workshop"', '"workshop"', 'has the Wi-Fi\'s name in the wrong case'],
+  ['esp32', 'gatelight', '  server.begin();\n', '', 'never starts the server'],
+  ['esp32', 'gatelight', '  server.on("/on", handleOn);\n', '', 'has nothing to answer /on'],
+  ['esp32', 'gatelight', '  server.on("/off", handleOff);\n', '', 'has nothing to answer /off'],
+  ['esp32', 'gatelight', '  handleRoot();   // send the page back, now saying the light is on\n', '', 'sends nothing back after ON, so there is no OFF to tap'],
+  ['esp32', 'gatelight', 'if (lightOn) {', 'if (!lightOn) {', 'says the light is on when it is off'],
+  ['esp32', 'gatelight', 'lightOn = true;', 'lightOn = false;', 'never says the light is on'],
 ];
 
 test('uno/crossing: a sketch that still blinks with delay() misses taps', async () => {
@@ -256,6 +266,8 @@ const wrongWiring: [BoardId, string, string, (it: Item) => Item | null][] = [
   ['uno', 'counter', 'has the sensor on the wrong pin', it => (it.t === 'wire' && it.b === 'U:7' ? { ...it, b: 'U:6' } : it)],
   ['uno', 'counter', 'has no ground on the sensor', it => (it.t === 'wire' && it.a === 'a24' ? null : it)],
   ['uno', 'counter', 'has the sensor in backwards', it => (it.t === 'wire' && (it.a === 'a22' || it.a === 'a24') ? { ...it, a: it.a === 'a22' ? 'a24' : 'a22' } : it)],
+  ['esp32', 'gatelight', 'has the gate light on the wrong pin', it => (it.t === 'wire' && it.a === 'E:D5' ? { ...it, a: 'E:D18' } : it)],
+  ['esp32', 'gatelight', 'has the gate light in backwards', it => (it.t === 'led' ? { ...it, a: it.k, k: it.a } : it)],
 ];
 test('a bench with any of the plausible wiring mistakes does not pass', () => forEvery(wrongWiring, ([board, id, why]) => `${board}/${id} ${why}`, async ([board, id, why, f]) => {
   const m = get(board, id), r = await runChecks(board, rewire(m.circuit, f), m.answer, m.checks);

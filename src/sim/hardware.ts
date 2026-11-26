@@ -3,6 +3,7 @@ import { analyze, LED_BURN_AMPS, PIN_MAX_AMPS, RGB_CHANNELS, SERVO_MIN_VOLTS, ty
 import type { Hardware } from './interpreter';
 import type { Frame } from './timeline';
 import { applyLcd, freshLcd, LCD_ADDRESS, lcdView, type LcdState, type LcdView } from './lcd';
+import { makeNetwork } from './network';
 
 export interface HWHooks {
   /** LEDs that already burnt out on this bench. They stay open circuits. */
@@ -128,6 +129,7 @@ export function makeHW(board: Board, circuit: Item[], inputs: () => Record<strin
 
   const hw: VirtualHW = {
     consts: board.consts, tones, servos, print, analysis, line: 0, skipDelays: false, serialIn: [],
+    net: board.id === 'esp32' ? makeNetwork() : undefined,   // the ESP32 has Wi-Fi; each run starts off the network
     sleep: ms => { if (hw.skipDelays) { skew += ms; hooks.onChange?.(); return Promise.resolve(); } return new Promise<void>(r => { wake = r; timer = setTimeout(r, ms); }); },
     pause: () => new Promise<void>(r => setTimeout(r, 0)),
     wakeUp() { clearTimeout(timer); wake?.(); },

@@ -1,4 +1,5 @@
 /* An interpreter for the subset of Arduino C++ the lessons use. */
+import { WIFI_CONSTS, type Network, type Visit } from './network';
 
 export interface Hardware {
   consts: Record<string, number>;
@@ -21,6 +22,8 @@ export interface Hardware {
   serialIn?: number[];
   /** Sends a LiquidCrystal_I2C command to whatever display answers at this address on the I2C pins. */
   lcd?(addr: number, op: string, args?: number[]): void;
+  /** The Wi-Fi the board can join, on a board that has Wi-Fi. */
+  net?: Network;
 }
 export interface RunControl {
   stop: boolean;
@@ -41,7 +44,9 @@ type Tok =
 type IdTok = { t: 'id'; v: string; line: number };
 
 /** `chr`: a plain char, which prints as the character it holds (an unsigned char or a byte prints as a number, as on a real board). */
-interface Ty { float: boolean; str: boolean; isVoid: boolean; obj?: 'Servo' | 'LCD'; chr?: boolean }
+interface Ty { float: boolean; str: boolean; isVoid: boolean; obj?: 'Servo' | 'LCD' | 'Server'; chr?: boolean }
+/** The library objects that are made with values in brackets, like "LiquidCrystal_I2C lcd(0x27, 16, 2);" and "WebServer server(80);". */
+const MADE_WITH = new Set<Ty['obj']>(['LCD', 'Server']);
 type Expr =
   | { k: 'num'; v: number; f?: boolean }
   | { k: 'str'; v: string }
@@ -79,15 +84,23 @@ export interface Program { globals: DeclStmt[]; funcs: Map<string, Func> }
 interface ServoObj { servo: true; pin: number; angle: number }
 /** A LiquidCrystal_I2C display as the sketch knows it: the address it talks to, its size, and whether the sketch has asked for the backlight. */
 interface LcdObj { lcd: true; addr: number; cols: number; rows: number; light: boolean }
-type Val = number | string | Val[] | ServoObj | LcdObj;
+/** A WebServer: the port it listens on, the function that answers each address, and the request it is answering right now, if any. */
+interface WebObj { web: true; port: number; routes: { path: string; method: number; fn: string }[]; notFound: string | null; req: Visit | null; sent: boolean; headers: [string, string][] }
+/** A function named without brackets, as in server.on("/", handleRoot): the function itself, to be run later. */
+interface FnRef { fn: string }
+type Val = number | string | Val[] | ServoObj | LcdObj | WebObj | FnRef;
 interface Rec { float: boolean; str: boolean; chr?: boolean; v: Val }
 const isServo = (v: unknown): v is ServoObj => typeof v === 'object' && v !== null && !Array.isArray(v) && (v as ServoObj).servo === true;
 const isLcd = (v: unknown): v is LcdObj => typeof v === 'object' && v !== null && !Array.isArray(v) && (v as LcdObj).lcd === true;
+const isWeb = (v: unknown): v is WebObj => typeof v === 'object' && v !== null && !Array.isArray(v) && (v as WebObj).web === true;
+const isFn = (v: unknown): v is FnRef => typeof v === 'object' && v !== null && !Array.isArray(v) && typeof (v as FnRef).fn === 'string';
+const { HTTP_ANY, HTTP_GET, WL_CONNECTED } = WIFI_CONSTS;
+const NO_WIFI = 'This board has no Wi-Fi. Switch to the ESP32, which has Wi-Fi built in.';
 /** Servo.write() takes degrees but, like the real library, treats big numbers as a pulse width in microseconds. */
 const SERVO_MIN_US = 544, SERVO_MAX_US = 2400;
 const usToDeg = (us: number) => Math.round(Math.min(180, Math.max(0, ((us - SERVO_MIN_US) * 180) / (SERVO_MAX_US - SERVO_MIN_US))));
 
-const TYPES = new Set('int long short float double bool boolean byte char void unsigned signed const static volatile String uint8_t uint16_t uint32_t int8_t int16_t int32_t size_t word Servo LiquidCrystal_I2C LiquidCrystal'.split(' '));
+const TYPES = new Set('int long short float double bool boolean byte char void unsigned signed const static volatile String uint8_t uint16_t uint32_t int8_t int16_t int32_t size_t word Servo LiquidCrystal_I2C LiquidCrystal WebServer IPAddress'.split(' '));
 const FLOATS = new Set(['float', 'double']);
 const FLOAT_FN = new Set(['sqrt', 'pow', 'sin', 'cos', 'tan']);
 const MIXED_FN = new Set(['min', 'max', 'abs', 'constrain']);
@@ -99,7 +112,7 @@ const ESCAPES: Record<string, string> = { n: '\n', t: '\t', r: '\r', 0: '\0' };
 const unesc = (s: string) => s.replace(/\\(.)/g, (_m, c: string) => ESCAPES[c] ?? c);
 
 function lex(src: string, line0 = 1): { toks: Tok[]; lastLine: number } {
-  const re = /\s+|\/\/[^\n]*|\/\*[\s\S]*?\*\/|#[^\n]*|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])'|0[xX][0-9a-fA-F]+|0[bB][01]+|(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?[fFuUlL]*|[A-Za-z_]\w*|<<=|>>=|\+\+|--|&&|\|\||[-+*\/%&|^!=<>]=|<<|>>|[-+*\/%&|^!=<>~?:;,.(){}\[\]]/y;
+  const re = /\s+|\/\/[^\n]*|\/\*[\s\S]*?\*\/|#[^\n]*|R"([^()\\\s"]{0,16})\([\s\S]*?\)\1"|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])'|0[xX][0-9a-fA-F]+|0[bB][01]+|(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?[fFuUlL]*|[A-Za-z_]\w*|<<=|>>=|\+\+|--|&&|\|\||[-+*\/%&|^!=<>]=|<<|>>|[-+*\/%&|^!=<>~?:;,.(){}\[\]]/y;
   const toks: Tok[] = [], defs = new Map<string, Tok[]>();
   let line = line0, pos = 0;
   while (pos < src.length) {
@@ -114,6 +127,8 @@ function lex(src: string, line0 = 1): { toks: Tok[]; lastLine: number } {
       if (d) defs.set(d[1], lex(d[2], line).toks);
     }
     else if (c === '"') toks.push({ t: 'str', v: unesc(s.slice(1, -1)), line });
+    else if (s.startsWith('R"')) { const d = m[1] ?? ''; toks.push({ t: 'str', v: s.slice(3 + d.length, s.length - 2 - d.length), line }); }   // a raw string, R"(...)": taken as it is written, over as many lines as it needs
+    else if (s === 'PROGMEM') { /* where a real board keeps a constant makes no difference here */ }
     else if (c === "'") toks.push({ t: 'chr', v: unesc(s.slice(1, -1)).charCodeAt(0), line });
     else if (/[0-9.]/.test(c) && s !== '.') {
       const hex = /^0[xX]/.test(s), bin = /^0[bB]/.test(s);
@@ -132,9 +147,15 @@ function lex(src: string, line0 = 1): { toks: Tok[]; lastLine: number } {
   return { toks, lastLine: line };
 }
 
+/** Library objects that are easy to reach for, and what to use here instead. */
+const INSTEAD: Record<string, string> = {
+  ESP8266WebServer: 'ESP8266WebServer is for the ESP8266 boards. On the ESP32 it is called WebServer: #include <WebServer.h> and WebServer server(80);',
+  WiFiServer: 'This simulator has the WebServer library, which answers pages for you: #include <WebServer.h> and WebServer server(80);',
+  AsyncWebServer: 'This simulator has the WebServer library instead: #include <WebServer.h> and WebServer server(80);',
+};
 /** "Adafruit_NeoPixel strip;" and the like: a library object the simulator does not have. */
 const unknownType = (name: string, line: number) =>
-  new SimError(`"${name}" is not a type this simulator knows. Check the spelling and capital letters. The library objects it has are Servo and LiquidCrystal_I2C.`, line);
+  new SimError(INSTEAD[name] ?? `"${name}" is not a type this simulator knows. Check the spelling and capital letters. The library objects it has are Servo, LiquidCrystal_I2C and, on the ESP32, WebServer.`, line);
 
 export function parse(src: string): Program {
   const { toks, lastLine } = lex(src);
@@ -165,6 +186,8 @@ export function parse(src: string): Program {
       if (FLOATS.has(w)) ty.float = true; if (w === 'String') ty.str = true; if (w === 'void') ty.isVoid = true; if (w === 'Servo') ty.obj = 'Servo';
       if (w === 'char') ty.chr = true; if (w === 'unsigned') unsigned = true;
       if (w === 'LiquidCrystal_I2C') ty.obj = 'LCD';
+      if (w === 'WebServer') ty.obj = 'Server';
+      if (w === 'IPAddress') ty.str = true;   // an address such as 192.168.1.57, kept as its text
       if (w === 'LiquidCrystal') throw new SimError('This simulator has the I2C display, with four wires: use #include <LiquidCrystal_I2C.h> and LiquidCrystal_I2C lcd(0x27, 16, 2);', toks[i - 1].line);
     }
     while (isOp('*') || isOp('&')) { i++; if (!ty.obj) ty.str = true; }   // a Servo& parameter is still the Servo itself
@@ -179,7 +202,7 @@ export function parse(src: string): Program {
       if (eat('=')) {
         if (eat('{')) { v.list = []; while (!isOp('}')) { v.list.push(assign()); if (!eat(',')) break; } need('}'); }
         else v.init = assign();
-      } else if (isOp('(') && ty.obj === 'LCD') {   // LiquidCrystal_I2C lcd(0x27, 16, 2);
+      } else if (isOp('(') && MADE_WITH.has(ty.obj)) {   // LiquidCrystal_I2C lcd(0x27, 16, 2); or WebServer server(80);
         i++; v.ctor = [];
         while (!isOp(')')) { v.ctor.push(assign()); if (!eat(',')) break; }
         need(')');
@@ -297,7 +320,7 @@ export function parse(src: string): Program {
     if (peek().t === 'id' && peek(1).t === 'id' && !isType()) throw unknownType(peek().v as string, peek().line);
     if (!isType()) throw new SimError(`Expected a declaration such as "int x = 0;" or a function such as "void setup() { }" but found ${show(peek())}`, peek().line);
     const ty = readType(), name = ident();
-    if (isOp('(') && ty.obj !== 'LCD') {   // a function, except that "LiquidCrystal_I2C lcd(0x27, 16, 2);" makes a display
+    if (isOp('(') && !MADE_WITH.has(ty.obj)) {   // a function, except that "LiquidCrystal_I2C lcd(0x27, 16, 2);" makes a display and "WebServer server(80);" a server
       need('('); const params: Func['params'] = [];
       while (!isOp(')')) { if (isId('void') && isOp(')', 1)) { i++; break; } const pt = readType(); const pn = ident(); if (eat('[')) need(']'); params.push({ name: pn.v, ty: pt }); if (!eat(',')) break; }
       need(')');
@@ -359,6 +382,8 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
     if (Array.isArray(v)) return '[array]';
     if (isServo(v)) return '[Servo]';
     if (isLcd(v)) return '[LCD]';
+    if (isWeb(v)) return '[WebServer]';
+    if (isFn(v)) return '[function]';
     if (n && isC(n, env)) return String.fromCharCode(v);
     if (n && isF(n, env)) return Number(v).toFixed(digits == null ? 2 : (digits as number));
     return String(Math.trunc(v));
@@ -388,7 +413,7 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
   /** The String methods that change the String itself and give nothing back, as in Arduino. */
   const CHANGES_STRING = new Set(['trim', 'toLowerCase', 'toUpperCase']);
   const coerce = (rec: { float: boolean; str: boolean }, v: Val): Val => {
-    if (isServo(v) || isLcd(v)) return v;
+    if (isServo(v) || isLcd(v) || isWeb(v) || isFn(v)) return v;
     if (rec.str) return typeof v === 'string' ? v : String(v);
     if (typeof v === 'string') return v;
     if (rec.float) return Number(v);
@@ -424,7 +449,12 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
   async function ev(n: Expr, env: Env): Promise<Val> {
     switch (n.k) {
       case 'num': case 'chr': case 'str': return n.v;
-      case 'id': { const r = env.get(n.name); if (r) return r.v; const c = constOf(n.name); if (c !== undefined) return c; throw err(`"${n.name}" is not defined. Check the spelling, or declare it first.`, n.line); }
+      case 'id': {
+        const r = env.get(n.name); if (r) return r.v;
+        const c = constOf(n.name); if (c !== undefined) return c;
+        if (prog.funcs.has(n.name)) return { fn: n.name };   // a function named without brackets, to be run later: server.on("/", handleRoot)
+        throw err(`"${n.name}" is not defined. Check the spelling, or declare it first.`, n.line);
+      }
       case 'bin': {
         if (n.op === '&&') return (await ev(n.l, env)) && (await ev(n.r, env)) ? 1 : 0;
         if (n.op === '||') return (await ev(n.l, env)) || (await ev(n.r, env)) ? 1 : 0;
@@ -504,6 +534,7 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
       case 'noTone': need(1); hw.noTone(a[0]); return 0;
       case 'pulseIn': need(2); return hw.pulseIn(a[0]);
       case 'touchRead': need(1); return hw.touchRead(a[0]);
+      case 'F': return vals[0] ?? '';   // F("text") keeps text out of a real board's memory; here it is just the text
     }
     throw err(`"${n.name}()" is not a function this simulator knows. Check the spelling and capital letters.`, n.line);
   }
@@ -538,7 +569,27 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
       }
       throw err(`Serial.${n.name}() is not supported in this simulator`, n.line);
     }
+    if (n.obj.k === 'id' && n.obj.name === 'WiFi' && !env.get('WiFi')) {
+      const net = hw.net, now = hw.now();
+      if (!net) throw err(NO_WIFI, n.line);
+      switch (n.name) {
+        case 'begin':
+          if (typeof a[0] !== 'string') throw err('WiFi.begin() needs the Wi-Fi\'s name and its password, each in quotes, like WiFi.begin("Workshop", "solder123")', n.line);
+          net.join(a[0], typeof a[1] === 'string' ? a[1] : '', now);
+          return net.status(now);
+        case 'status': return net.status(now);
+        case 'isConnected': return net.status(now) === WL_CONNECTED ? 1 : 0;
+        case 'localIP': return net.ip(now);
+        case 'SSID': return net.ssid(now);
+        case 'RSSI': return net.status(now) === WL_CONNECTED ? -54 : 0;   // a strong signal: the router is across the room
+        case 'macAddress': return '24:6F:28:5C:3A:91';
+        case 'disconnect': net.leave(now); return 1;
+        case 'mode': case 'setHostname': case 'setSleep': case 'setAutoReconnect': case 'persistent': return 1;
+      }
+      throw err(`WiFi.${n.name}() is not supported in this simulator. It has begin(), status(), localIP(), isConnected(), SSID(), RSSI(), macAddress(), disconnect() and mode().`, n.line);
+    }
     const v = await ev(n.obj, env);
+    if (isWeb(v)) return webCall(v, n, a, env);
     if (isServo(v)) {
       const num = (k: number) => { if (a.length <= k) throw err(`.${n.name}() needs ${k + 1} value(s) inside the brackets`, n.line); return a[k] as number; };
       switch (n.name) {
@@ -606,10 +657,61 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
         case 'endsWith': return v.endsWith(text(0)) ? 1 : 0;
         case 'substring': return v.substring(num(0), a.length > 1 ? num(1) : v.length);
         case 'charAt': { const ix = num(0); return ix >= 0 && ix < v.length ? v.charCodeAt(ix) : 0; }
+        case 'toString': case 'c_str': return v;   // an address from WiFi.localIP() is already text here, and so is a String
       }
-      throw err(`A String has no ".${n.name}()" in this simulator. It has length(), trim(), toLowerCase(), toUpperCase(), toInt(), toFloat(), equals(), equalsIgnoreCase(), indexOf(), lastIndexOf(), startsWith(), endsWith(), substring() and charAt().`, n.line);
+      throw err(`A String has no ".${n.name}()" in this simulator. It has length(), trim(), toLowerCase(), toUpperCase(), toInt(), toFloat(), equals(), equalsIgnoreCase(), indexOf(), lastIndexOf(), startsWith(), endsWith(), substring(), charAt() and c_str().`, n.line);
     }
     throw err(`".${n.name}()" is not supported in this simulator`, n.line);
+  }
+  /** What a WebServer does. Its handlers run inside server.handleClient(), one request at a time, as on the real board. */
+  async function webCall(v: WebObj, n: McallExpr, a: Val[], env: Env): Promise<Val> {
+    const net = hw.net!, line = n.line;
+    const text = (k: number, what: string) => { if (typeof a[k] !== 'string') throw err(`server.${n.name}() needs ${what} in quotes`, line); return a[k] as string; };
+    const handler = (k: number): string => {
+      const f = a[k];
+      if (isFn(f)) return f.fn;
+      throw err(`server.${n.name}() needs the name of the function that answers, such as handleRoot, written without brackets. With brackets, the function runs at once instead of when the phone asks.`, line);
+    };
+    switch (n.name) {
+      case 'on': {
+        if (a.length < 2) throw err('server.on() needs an address and the function that answers it, like server.on("/", handleRoot)', line);
+        const path = text(0, 'the address, such as "/on",');
+        if (!path.startsWith('/')) throw err(`An address on the board starts with "/", like "/${path}"`, line);
+        v.routes.push({ path, method: a.length > 2 ? (a[1] as number) : HTTP_ANY, fn: handler(a.length - 1) });
+        return 0;
+      }
+      case 'onNotFound': v.notFound = handler(0); return 0;
+      case 'begin': net.listen(v.port, hw.now()); return 0;
+      case 'close': case 'stop': net.close(v.port, hw.now()); return 0;
+      case 'handleClient': { const req = net.next(v.port, hw.now()); if (req) await serve(v, req, line); return 0; }
+      case 'send': {
+        if (!v.req) throw err('server.send() answers the phone, so it only works inside a function the server runs for an address. If you wrote server.on("/", handleRoot()), take the brackets off: server.on("/", handleRoot)', line);
+        if (typeof a[0] !== 'number') throw err('server.send() needs a status number first, like server.send(200, "text/html", page)', line);
+        if (!v.sent) net.answer(v.req, { kind: 'page', status: a[0], type: a.length > 1 ? String(a[1]) : 'text/html', body: a.length > 2 ? fmt(a[2], n.args[2], env) : '' }, v.headers, hw.now());
+        v.sent = true;   // a second send() in the same handler goes nowhere: the phone already has its answer
+        return 0;
+      }
+      case 'sendHeader': v.headers.push([text(0, 'the header\'s name'), String(a[1] ?? '')]); return 0;
+      case 'arg': { const args = v.req?.args ?? []; return typeof a[0] === 'number' ? args[a[0]]?.[1] ?? '' : args.find(([k]) => k === a[0])?.[1] ?? ''; }
+      case 'argName': return v.req?.args[a[0] as number]?.[0] ?? '';
+      case 'hasArg': return v.req?.args.some(([k]) => k === a[0]) ? 1 : 0;
+      case 'args': return v.req?.args.length ?? 0;
+      case 'uri': return v.req?.path ?? '';
+      case 'method': return v.req?.method ?? HTTP_GET;
+    }
+    throw err(`A WebServer has no ".${n.name}()" in this simulator. It has on(), onNotFound(), begin(), handleClient(), send(), sendHeader(), arg(), hasArg(), args(), argName(), uri(), method() and close().`, line);
+  }
+  /** Answers one request: runs the handler for its address, or the not-found one, or sends the library's own "Not found" page. */
+  async function serve(v: WebObj, req: Visit, line: number) {
+    const net = hw.net!;
+    v.req = req; v.sent = false; v.headers = [];
+    try {
+      const fn = v.routes.find(r => r.path === req.path && (r.method === HTTP_ANY || r.method === req.method))?.fn ?? v.notFound;
+      if (fn) {
+        await callFn(fn, prog.funcs.get(fn)!, [], line);
+        if (!v.sent) net.answer(req, { kind: 'silent' }, [], hw.now());
+      } else net.answer(req, { kind: 'page', status: 404, type: 'text/html', body: `Not found: ${req.path}` }, [], hw.now());   // the library's own words
+    } finally { v.req = null; }
   }
   async function declare(n: DeclStmt, env: Env): Promise<void> {
     for (const d of n.vars) {
@@ -622,6 +724,14 @@ export async function run(src: string, hw: Hardware, ctl: RunControl): Promise<v
         const nums: number[] = [];
         for (const x of d.ctor.slice(0, 3)) nums.push(Math.trunc((await ev(x, env)) as number));
         rec.v = { lcd: true, addr: nums[0], cols: nums[1], rows: nums[2], light: false };   // the backlight stays off at init() until backlight() is called, as in the library
+        env.m.set(d.name, rec);
+        continue;
+      }
+      if (n.ty.obj === 'Server') {
+        if (!hw.net) throw err(NO_WIFI, d.line);
+        if (d.arr || d.init || d.list) throw err('A web server is made with "WebServer server(80);": the port it listens on, in brackets', d.line);
+        const port = d.ctor?.length ? Math.trunc((await ev(d.ctor[0], env)) as number) : 80;   // 80 is the port a browser asks on when the address names none
+        rec.v = { web: true, port, routes: [], notFound: null, req: null, sent: false, headers: [] };
         env.m.set(d.name, rec);
         continue;
       }

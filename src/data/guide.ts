@@ -507,6 +507,125 @@ void loop() {
       { table: [['The sketch does one thing in order', '<code>delay()</code>: simple and clear'], ['It must react while something else is timed', '<code>millis()</code>']], head: ['When', 'Use'] },
     ],
   },
+  {
+    id: 'wifi', group: 'code', title: 'WiFi and WebServer: a page on a phone', lede: 'The ESP32 joins the Wi-Fi and answers a phone that opens its address.',
+    blocks: [
+      { p: 'The ESP32 has Wi-Fi built in; the Uno has none. Two libraries do the work. <b>WiFi</b> joins a network, and <b>WebServer</b> answers web pages. A phone on the same Wi-Fi opens the board\'s address in its browser, like any website, and the board sends back the page. In the workshop the Wi-Fi is called <b>Workshop</b>, and the <b>phone</b> beside the bench is on it.' },
+      { code: `#include <WiFi.h>
+
+void setup() {
+  Serial.begin(115200);
+  WiFi.begin("Workshop", "solder123");     // the Wi-Fi's name and its password
+  while (WiFi.status() != WL_CONNECTED) {   // joining takes a moment
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+  Serial.println(WiFi.localIP());           // the address the router gave the board
+}
+
+void loop() {
+}` },
+      { table: [
+        ['<code>WiFi.begin(name, password)</code>', 'Starts joining the Wi-Fi. It does not wait, so the sketch carries on at once.'],
+        ['<code>WiFi.status()</code>', 'Says how joining is going. It is <code>WL_CONNECTED</code> once the board is on.'],
+        ['<code>WiFi.localIP()</code>', 'The board\'s address on the Wi-Fi, such as 192.168.1.57. Print it: it is what the phone opens.'],
+      ], head: ['Code', 'What it does'] },
+      { tip: 'Capital letters count in the Wi-Fi\'s name and password. A board that never stops printing dots was given the wrong name or the wrong password. Until it has joined, <code>WiFi.localIP()</code> is 0.0.0.0.' },
+      { p: 'A web server gives each <b>address</b> on the board a function that answers it, called a <b>handler</b>. The address is the part after the board\'s number: <code>/</code> is the main page, and <code>/uptime</code> is another. <code>server.on()</code> pairs an address with its handler, and <code>server.handleClient()</code> in <code>loop()</code> runs the handler when the phone asks for that address.' },
+      { code: `#include <WiFi.h>
+#include <WebServer.h>
+
+WebServer server(80);   // port 80 is the one a browser uses when the address names none
+
+void handleRoot() {
+  server.send(200, "text/html", "<h1>Hello from the ESP32</h1><p><a href=\\"/uptime\\">How long have you been on?</a></p>");
+}
+
+void handleUptime() {
+  String page = "<p>On for ";
+  page += millis() / 1000;
+  page += " seconds.</p><p><a href=\\"/\\">Back</a></p>";
+  server.send(200, "text/html", page);
+}
+
+void setup() {
+  Serial.begin(115200);
+  WiFi.begin("Workshop", "solder123");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+  }
+  Serial.println(WiFi.localIP());
+
+  server.on("/", handleRoot);           // no brackets after the name: the server runs it later
+  server.on("/uptime", handleUptime);
+  server.begin();
+}
+
+void loop() {
+  server.handleClient();   // answer the phone, if it has asked for something
+}` },
+      { table: [
+        ['<code>WebServer server(80);</code>', 'Makes a web server. 80 is the port it listens on.'],
+        ['<code>server.on("/", handleRoot)</code>', 'When the phone asks for <code>/</code>, run <code>handleRoot()</code>.'],
+        ['<code>server.begin()</code>', 'Starts listening. Goes in <code>setup()</code>, after the <code>server.on()</code> lines.'],
+        ['<code>server.handleClient()</code>', 'Answers whatever the phone has asked for. Goes in <code>loop()</code>, on every pass.'],
+        ['<code>server.send(200, "text/html", page)</code>', 'The answer: 200 means "here it is", <code>text/html</code> says it is a web page, then the page itself.'],
+      ], head: ['Code', 'What it does'] },
+      { list: [
+        'Write the handler\'s name <b>without brackets</b> in <code>server.on()</code>. With brackets it would run there and then, in <code>setup()</code>, when nobody has asked for anything.',
+        'Every handler ends with <code>server.send()</code>. One that sends nothing leaves the phone with an empty answer.',
+        'Keep <code>loop()</code> quick. While it sits in a long <code>delay()</code>, <code>handleClient()</code> is not running and the phone waits. After a few seconds it gives up.',
+        'An address with no handler gets the library\'s own page: <code>Not found: /something</code>.',
+      ] },
+      { p: 'A page is only text, so the sketch can build it as it goes, from what it knows right now. Each time the phone opens the page, the handler runs again and the page is new:' },
+      { code: `String page = "<h1>Gate light</h1>";
+if (lightOn) {
+  page += "<p>The light is on.</p>";
+} else {
+  page += "<p>The light is off.</p>";
+}` },
+      { p: 'A link on the page sends the phone to another address, and so does a form, which adds what was typed in it: <code>/set?level=128</code>. The handler reads it with <code>server.arg("level")</code>. A whole page is easiest to write as a <b>raw string</b>, <code>R"( … )"</code>, which takes everything between the brackets as it is, quotes and new lines too.' },
+      { code: `#include <WiFi.h>
+#include <WebServer.h>
+
+const int LED_PIN = 5;
+WebServer server(80);
+
+void handleRoot() {
+  server.send(200, "text/html", R"(
+    <h1>Desk lamp</h1>
+    <form action="/set">
+      <input name="level" type="number" min="0" max="255">
+      <button>Set</button>
+    </form>
+  )");
+}
+
+void handleSet() {
+  int level = server.arg("level").toInt();   // what was typed in the box called level
+  analogWrite(LED_PIN, level);
+  server.sendHeader("Location", "/");         // send the phone back to the first page
+  server.send(303);
+}
+
+void setup() {
+  pinMode(LED_PIN, OUTPUT);
+  WiFi.begin("Workshop", "solder123");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+  }
+  server.on("/", handleRoot);
+  server.on("/set", handleSet);
+  server.begin();
+}
+
+void loop() {
+  server.handleClient();
+}` },
+      { tip: 'The phone in the workshop shows pages as a browser would, but it does not run JavaScript, and its Wi-Fi has no internet. Links and forms are how a page talks to the board here.' },
+    ],
+  },
 
   /* ------------------------------------------------------------ parts ------------------------------------------------------------ */
   {

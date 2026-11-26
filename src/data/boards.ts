@@ -1,3 +1,4 @@
+import { WIFI_CONSTS } from '../sim/network';
 import type { Board, BoardId, Info } from '../types';
 
 const BASE_CONSTS = { HIGH: 1, LOW: 0, INPUT: 0, OUTPUT: 1, INPUT_PULLUP: 2 };
@@ -63,7 +64,7 @@ export const BOARDS: Record<BoardId, Board> = {
 
   esp32: {
     id: 'esp32', name: 'ESP32', adcMax: 4095, builtin: 2,
-    consts: Object.assign({ LED_BUILTIN: 2, T0: 4, T3: 15, T4: 13, T5: 12, T6: 14, T7: 27, T8: 33, T9: 32 }, BASE_CONSTS),
+    consts: Object.assign({ LED_BUILTIN: 2, T0: 4, T3: 15, T4: 13, T5: 12, T6: 14, T7: 27, T8: 33, T9: 32 }, WIFI_CONSTS, BASE_CONSTS),
     parts: {
       module: ['ESP32 module', 'Under the metal shield: a dual-core 240 MHz processor, flash memory, and the Wi-Fi and Bluetooth radio.'],
       antenna: ['Antenna', 'The zigzag copper trace sends and receives Wi-Fi and Bluetooth. Keep metal away from it.'],
