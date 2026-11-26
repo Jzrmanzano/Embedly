@@ -179,6 +179,7 @@ function nameOf(point: string): string {
   if ((m = /^[UE]:(.+)$/.exec(point))) return `Pin ${m[1].replace('GNDf', 'GND').replace(/GND[2b]/, 'GND')}`;
   if ((m = /^([TB])([+-])/.exec(point))) return `${m[2] === '+' ? 'Plus' : 'Minus'} rail, ${m[1] === 'T' ? 'far' : 'near'} side${onExtraBoard(point) ? ', second breadboard' : ''}`;
   if ((m = /^LCD:(.+)$/.exec(point))) return `LCD pin ${m[1]}`;
+  if ((m = /^SOIL:(.+)$/.exec(point))) return `Soil probe pin ${m[1]}`;
   return point === 'PAD' ? 'Touch pad' : `Hole ${point}`;
 }
 

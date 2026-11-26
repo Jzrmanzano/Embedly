@@ -677,7 +677,7 @@ void loop() {
     story: 'The greenhouse dries out over the weekend and the tomato plants suffer. Push a <b>soil moisture sensor</b> into the pot and build a <b>plant-watering alert</b>: when the soil moisture falls below <b>30%</b>, light the alert LED <em>and</em> sound the buzzer. When the soil is moist again, go quiet.',
     goal: 'LED on and buzzer sounding when moisture is under 30%. Dark and silent otherwise.',
     controls: { soil: 'Soil moisture' },
-    how: ['The soil sensor has three pins: <b>+</b> to 5V, <b>OUT</b> in the middle to A0, and <b>GND</b>. The wetter the soil, the higher the voltage on OUT.',
+    how: ['The soil probe stands in the pot, with three pins on its head: <b>VCC</b> to 5V, <b>SIG</b> in the middle to A0, and <b>GND</b>. Wire them to the bench, and drag the pot wherever suits. The wetter the soil, the higher the voltage on SIG.',
       '<code>map(value, 0, 1023, 0, 100)</code> turns a raw reading into a percentage, which is easier to think about.', 'One <code>if</code> can do several things: put them all between the braces.', 'Remember the <code>else</code> side too. An alert that never switches itself off is worse than none.'],
     starter: `// Greenhouse alert
 const int MOISTURE_PIN = A0;
@@ -696,10 +696,11 @@ void loop() {
 
   delay(100);
 }`,
-    circuit: [   // the LED and the buzzer on the far side (pins 13 and 8), the soil sensor on the near side (A0)
+    circuit: [   // the LED and the buzzer on the far side (pins 13 and 8); in front, the potted plant, its probe wired to the near rails and A0
       ...unoLed(13), { t: 'wire', a: 'a15', b: 'T-15', c: 'black' }, ...unoGndFar,
       { t: 'buzzer', id: 'buzz', a: 'e18', b: 'e21' }, { t: 'wire', a: 'U:8', b: 'a18', c: 'purple' }, { t: 'wire', a: 'a21', b: 'T-21', c: 'black' },
-      ...unoPowerNear, ...unoNearSensor({ t: 'module', kind: 'soil', id: 'soil', row: 'g', col: 24, ctl: 'Soil moisture' }),
+      ...unoPowerNear, { t: 'module', kind: 'soil', id: 'soil', ctl: 'Soil moisture', x: 28.6, z: 50.2 },   // the probe's pins in line with columns 24 to 26
+      { t: 'wire', a: 'SOIL:VCC', b: 'B+24', c: 'red' }, { t: 'wire', a: 'SOIL:SIG', b: 'U:A0', c: 'green' }, { t: 'wire', a: 'SOIL:GND', b: 'B-26', c: 'black' },
     ],
     answer: `const int MOISTURE_PIN = A0;
 const int LED_PIN = 13;

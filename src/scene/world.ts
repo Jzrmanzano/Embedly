@@ -7,8 +7,8 @@ import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeome
 import { ESP_FAR, ESP_HOLES, ESP_NEAR } from '../data/boards';
 import { bands, ohmsLabel } from '../data/resistor';
 import { COLS as LCD_COLS, DARK_LCD, LCD_PINS, type LcdView } from '../sim/lcd';
-import { BB_DEPTH, BB_HEIGHT, bbLength, colX, LCD_AT, PAD_AT, placeOf, RAILZ, ROWZ, SERVO_REACH, tableLayout, UNO_AT, UNO_HEADERS, wallZ } from '../state/table';
-import { BREADBOARD_COLS, breadboardName, itemId, kindOf, MAIN_COLS, type BoardId, type BreadboardSize, type Info, type Item } from '../types';
+import { BB_DEPTH, BB_HEIGHT, bbLength, CANDLE_REACH, colX, LCD_AT, PAD_AT, placeOf, plantPlace, probeAt, RAILZ, ROWZ, SERVO_REACH, soilPinXZ, tableLayout, UNO_AT, UNO_HEADERS, wallZ } from '../state/table';
+import { BREADBOARD_COLS, breadboardName, itemId, kindOf, MAIN_COLS, SOIL_PINS, soilPoint, type BoardId, type BreadboardSize, type Info, type Item, type RowModule, type SoilItem } from '../types';
 
 export interface WorldSpec {
   board: BoardId;
@@ -67,6 +67,8 @@ interface Made { g: T.Group; set?: (v: number) => void; more?: Record<string, (v
 const INK = 0x1b2430, HILITE = 0xe2572b, METAL = 0xc9ced3, GOLD = 0xd9b24a, DARK = 0x23272e;
 const WIRE: Record<string, number> = { red: 0xd6453d, black: 0x2f353d, orange: 0xf08a24, yellow: 0xe8c22e, green: 0x3aa655, blue: 0x3577d4, white: 0xe9ecef, purple: 0x8d5bd1 };
 const HT = 0.32;
+/** The potted plant's heights: its pot, the top of the soil, and the tips and the head of the soil probe standing in it. */
+const POT_H = 30, SOIL_TOP = POT_H - 1.6, PROBE_TIP = SOIL_TOP - 22, PROBE_TOP = PROBE_TIP + 51.1;
 /** Colours used by more than one part: the bright metal of legs and leads, the tan of a resistor, the cream of a breadboard. */
 const LEAD = 0xb8c0c8, TAN = 0xe2c89a, CREAM = 0xf4f1e8;
 /** How wide the ink lines along the hard edges are, in screen pixels. */
@@ -113,7 +115,7 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
   const world = new T.Group();
   const devs: Record<string, (v: number) => void> = {}, groups: Record<string, T.Group> = {};
   const hots: Hot[] = [], itemAnim: ((t: number) => void)[] = [];
-  let uno: BuiltBoard | null = null, bb: T.Group | null = null, padPos: T.Vector3 | null = null, lcdPos: T.Vector3 | null = null, lit: T.MeshBasicMaterial[] = [];
+  let uno: BuiltBoard | null = null, bb: T.Group | null = null, padPos: T.Vector3 | null = null, lcdPos: T.Vector3 | null = null, plantAt: { x: number; z: number } | null = null, lit: T.MeshBasicMaterial[] = [];
   /** The second breadboard on the bench now, if there is one, and each size of it once built. */
   let extra: { g: T.Group; cols: number } | null = null;
   const extraBoards: Partial<Record<BreadboardSize, T.Group>> = {};
@@ -347,6 +349,11 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
       const i = (LCD_PINS as readonly string[]).indexOf(m[1]);
       if (i < 0) throw new Error('Unknown LCD pin ' + name);
       return new T.Vector3(lcdPos!.x - 47.5, 3.2, lcdPos!.z + (i - 1.5) * 2.54);
+    }
+    if ((m = /^SOIL:(\w+)$/.exec(name))) {   // the pins on the soil probe's head, where the plugs of the wires sit
+      const p = plantAt && soilPinXZ(plantAt, m[1]);
+      if (!p) throw new Error('Unknown soil probe pin ' + name);
+      return new T.Vector3(bb!.position.x + p.x, PROBE_TOP + 2.5, p.z);
     }
     if ((m = /^([TB][+-])(\d+)$/.exec(name))) return hole(+m[2], RAILZ[m[1]]);
     if ((m = /^([a-j])(\d+)$/.exec(name))) return hole(+m[2], ROWZ[m[1]]);
@@ -656,48 +663,217 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
     magnet.visible = false;
     return { g, set: v => { magnet.visible = v > 0.5; }, top: new T.Vector3(cx, y + 10, cz) };
   }
-  /** A sensor module: a small board standing on its three pins (+, OUT, GND), with what it senses with on the side that faces you. */
-  function mkModule(it: Of<'module'>): Made {
-    const g = new T.Group(), legs = [0, 1, 2].map(i => anchor(`${it.row}${it.col + i}`)), mid = legs[1], x = mid.x, z = mid.z, y = mid.y, face = z + 0.75;
-    const PCB = { pir: 0x2e8b57, ir: 0x2a62b8, soil: 0x23272e, water: 0xb83a32, gas: 0x2a62b8, flame: 0xb83a32 }[it.kind];
-    legs.forEach(p => box(g, p.x, y, p.z, 0.6, 3.4, 0.6, GOLD, { nh: 1 }));
-    box(g, x, y + 3, z, 13, 17, 1.5, PCB);
+  /** A sensor module, built the way the one sold for it looks: its board standing on its three pins (+, OUT, GND) in a black plastic header, with what it
+      senses with on the side that faces you, at the module's real size. The parts on the back of a board are there too, for anyone who turns the view. */
+  function mkModule(it: RowModule): Made {
+    const g = new T.Group(), legs = [0, 1, 2].map(i => anchor(`${it.row}${it.col + i}`)), mid = legs[1], x = mid.x, z = mid.z, y = mid.y, face = z + 0.75, back = z - 0.75;
     const glow = (m: Solid, color: number, v: number) => { m.material.emissive.setHex(color); m.material.emissiveIntensity = v; };
     const shown = (o: T.Object3D, on: boolean) => { o.visible = on; };
-    let set: (v: number) => void;
+    const clamp = (v: number) => Math.min(1, Math.max(0, v));
+    /** The three pins and the black plastic strip that holds them, `lift` tall. Gives the height the board starts at, on top of the strip. */
+    const header = (lift = 2.5) => { legs.forEach(p => box(g, p.x, y, p.z, 0.6, lift + 1, 0.6, GOLD, { nh: 1 })); box(g, x, y, z, 7.9, lift, 2.5, DARK); return y + lift; };
+    /** Small parts soldered on a board's face (or its back): a surface-mount LED, a black chip, a blue trimmer with its brass screw. */
+    const smd = (lx: number, ly: number, color: number, at = face) => box(g, lx, ly, at + 0.35, 1.6, 0.9, 0.7, color, { nh: 1 });
+    const chip = (cx: number, by: number, w: number, h: number, at = face) => box(g, cx, by, at + 0.6, w, h, 1.2, 0x1b1e23);
+    const trimmer = (cx: number, by: number, color = 0x2f6fd6, at = face, dir = 1) => {
+      box(g, cx, by, at + dir * 2, 6.5, 6.5, 4, color);
+      cyl(g, cx, by + 3.25, at + dir * 4.2, 1.3, 0.5, 0xd9b24a, { ax: 'z' });
+    };
+    /** Plated mounting holes and the silkscreen, printed on a board's face. */
+    const silk = (W: number, H: number, by: number, draw: (c: CanvasRenderingContext2D, S: number) => void) => facePrint(g, W, H, 12, x, by + H / 2, face + 0.02, draw);
+    const hole = (c: CanvasRenderingContext2D, S: number, hx: number, hy: number) => {
+      c.fillStyle = '#d9b24a'; c.beginPath(); c.arc(hx * S, hy * S, 1.4 * S, 0, 7); c.fill();
+      c.fillStyle = '#101216'; c.beginPath(); c.arc(hx * S, hy * S, 0.75 * S, 0, 7); c.fill();
+    };
+    const label = (c: CanvasRenderingContext2D, S: number, text: string, lx: number, ly: number, size: number, upsideDown = false) => {
+      c.save(); c.translate(lx * S, ly * S); if (upsideDown) c.rotate(Math.PI);
+      c.fillStyle = '#eef0f2'; c.font = `700 ${size * S}px "JetBrains Mono", monospace`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(text, 0, 0);
+      c.restore();
+    };
+    let set: (v: number) => void, top: number;
+
     if (it.kind === 'pir') {
-      const fresnel: [number, number][] = [[0, 0]];   // the faceted Fresnel lens, standing out from the front of the board
-      for (let i = 0; i <= 4; i++) { const t = (i / 4) * Math.PI / 2; fresnel.push([5.4 * Math.cos(t), 5.4 * Math.sin(t)]); }
-      fresnel[fresnel.length - 1] = [0, 5.4];
-      const dome = lathe(g, x, y + 12, face - 0.2, fresnel, 0xf2f2ee, { rx: Math.PI / 2, seg: 10 });
-      set = v => glow(dome, 0xff5a3c, v > 0.5 ? 0.7 : 0);
-    } else if (it.kind === 'ir') {
+      /* An HC-SR501: a green board 32 × 24 mm with the white Fresnel lens over the sensor, a faceted dome on a square base. Its two orange trimmers
+         (how long it stays on, how far it sees), the jumper that sets how it repeats, and its BISS0001 chip are on the back. */
+      const b = header(5.5), W = 32, H = 24, cy = b + H / 2;
+      box(g, x, b, z, W, H, 1.5, 0x2a8a4f);
+      silk(W, H, b, (c, S) => { [[2.6, 2.6], [W - 2.6, 2.6], [2.6, H - 2.6], [W - 2.6, H - 2.6]].forEach(([hx, hy]) => hole(c, S, hx, hy)); });
+      box(g, x, cy - 11.5, face + 1.3, 23, 23, 2.6, 0xe6e6de);   // the lens's square base
+      const fresnel: [number, number][] = [[0, 0]];
+      for (let i = 0; i <= 4; i++) { const t = (i / 4) * Math.PI / 2; fresnel.push([10.6 * Math.cos(t), 10.6 * Math.sin(t)]); }
+      fresnel[fresnel.length - 1] = [0, 10.6];
+      const dome = lathe(g, x, cy, face + 2.4, fresnel, 0xf4f4ef, { rx: Math.PI / 2, seg: 10 });   // ten facets round, four up: the lens's look
+      [-9, 9].forEach(dx => trimmer(x + dx, b + 13, 0xf08a24, back, -1));
+      chip(x, b + 3.5, 9, 5, back - 1.2);
+      box(g, x - 9, b + 4, back - 1.4, 3.2, 5.6, 2.8, DARK);   // the jumper
+      set = v => glow(dome, 0xff5a3c, v > 0.5 ? 0.6 : 0);
+      top = b + H + 6;
+    } else if (it.kind === 'gas') {
+      /* An MQ-2 module: a blue board 22 × 32 mm. The sensor stands out from it, its heater and tin-oxide element inside a steel cap with a double mesh,
+         on a brown bakelite base. Below it, the power light and the light that comes on when the gas passes the trimmer's limit. */
+      const b = header(), W = 22, H = 32, sy = b + 19.5;
+      box(g, x, b, z, W, H, 1.5, 0x1f63b0);
+      silk(W, H, b, (c, S) => {
+        [[2.6, 2.6], [W - 2.6, 2.6]].forEach(([hx, hy]) => hole(c, S, hx, hy));
+        label(c, S, 'MQ-2', W / 2, 5.4, 2.2);
+        label(c, S, 'VCC AO GND', W / 2, H - 2.6, 1.7);
+      });
+      cyl(g, x, sy, face + 1.6, 10.2, 3.2, 0xb5864f, { ax: 'z' });   // the bakelite base
+      cyl(g, x, sy, face + 6.4, 9.3, 6.4, 0xc9ced3, { ax: 'z' });   // the steel cap
+      const heat = cyl(g, x, sy, face + 9.5, 7.6, 0.3, 0x2b221a, { ax: 'z', nh: 1 });   // the element, seen through the mesh
+      facePrint(g, 17.6, 17.6, 14, x, sy, face + 9.7, (c, S) => {   // the double mesh, with the cap's rim round it
+        const r = 8.8 * S, m = 8.8 * S;
+        c.save(); c.beginPath(); c.arc(m, m, r * 0.92, 0, 7); c.clip();
+        c.strokeStyle = 'rgba(214, 219, 224, 0.95)'; c.lineWidth = 0.32 * S;
+        for (let i = -9; i <= 9; i++) { c.beginPath(); c.moveTo(m + i * 0.95 * S, 0); c.lineTo(m + i * 0.95 * S, 2 * m); c.stroke(); c.beginPath(); c.moveTo(0, m + i * 0.95 * S); c.lineTo(2 * m, m + i * 0.95 * S); c.stroke(); }
+        c.restore();
+        c.strokeStyle = '#8e969e'; c.lineWidth = 1.1 * S; c.beginPath(); c.arc(m, m, r * 0.94, 0, 7); c.stroke();
+      });
+      smd(x - 5, b + 5.5, 0xff4a3d); const alarm = smd(x + 5, b + 5.5, 0x3ddc6a);
+      chip(x, b + 23, 5, 4, back - 1.2); trimmer(x, b + 12, 0x2f6fd6, back, -1);   // the comparator and its trimmer, on the back
+      set = v => { glow(heat, 0xff7a2a, clamp(v) * 0.9); glow(alarm, 0x3ddc6a, v > 0.5 ? 0.9 : 0); };
+      top = b + H + 5;
+    } else if (it.kind === 'flame') {
+      /* An infrared flame module: a red board 14 × 30 mm. Its receiver, a 5 mm photodiode in black epoxy that lets in only infrared, stands on its legs
+         at the top, bent towards where the flame will be. On its face, the blue trimmer that sets how bright a flame must be, the LM393 comparator, and its lights. */
+      const b = header(), W = 14, H = 30, tip = b + H;
+      box(g, x, b, z, W, H, 1.5, 0xb8322b);
+      silk(W, H, b, (c, S) => { hole(c, S, W / 2, 3); label(c, S, 'FLAME', W / 2, H - 2.4, 1.6); });
+      trimmer(x, b + 17.5);
+      chip(x, b + 9, 5.2, 4.2);
+      smd(x - 4.4, b + 3.6, 0xff4a3d); const alarm = smd(x + 4.4, b + 3.6, 0x3ddc6a);
+      const ry = tip + 5, rz = face + 2.2;   // where the receiver's body is
+      [-1.27, 1.27].forEach(dx => bent(g, [new T.Vector3(x + dx, tip, z), new T.Vector3(x + dx, ry, z), new T.Vector3(x + dx, ry, rz)], 0.28, LEAD));
+      cyl(g, x, ry, rz + 0.5, 2.9, 1, 0x1b1e23, { ax: 'z' });   // its rim
+      cyl(g, x, ry, rz + 3.5, 2.5, 5, 0x1b1e23, { ax: 'z' });
+      ball(g, x, ry, rz + 6, 2.5, 0x1b1e23);   // and its dome
+      /* In front of it, a candle for it to watch: unlit while there is no flame, lit with a flame as big as the slider says. The flame is a teardrop in
+         three layers, as a real one is: a blue base where the gas meets the air, a bright yellow middle, an orange tongue outside, with a soft glow round it.
+         It flickers, unless the viewer has asked for less motion. */
+      const cz = z - ROWZ[it.row] + CANDLE_REACH, floor = 0, wickTop = ry - 2;   // on the table just in front of the breadboard (src/state/table.ts keeps others clear of it)
+      const candle = new T.Group(); candle.userData.hm = shell(g); g.add(candle);
+      cyl(candle, x, floor, cz, 4.6, wickTop - 2.2 - floor, 0xf1e6cf);   // the wax
+      cyl(candle, x, wickTop - 2.2, cz, 4.6, 0.25, 0xe2d5b8, { nh: 1 });   // its top, a little melted
+      cyl(candle, x, wickTop - 2.2, cz, 0.35, 2.2, 0x2a2420, { nh: 1 });   // the wick
+      const tear = (h: number, r: number): [number, number][] => [[0, 0], [r * 0.55, h * 0.07], [r * 0.92, h * 0.22], [r, h * 0.38], [r * 0.85, h * 0.58], [r * 0.55, h * 0.78], [r * 0.22, h * 0.93], [0, h]];
+      const flame = new T.Group(); flame.position.set(x, wickTop - 0.6, cz); candle.add(flame);
+      const outer = lathe(flame, 0, 0, 0, tear(12.5, 2.7), 0xff6f1a, { glow: 0xff4a00, gi: 0.9, seg: 24 });
+      const inner = lathe(flame, 0, 1.9, 0, tear(7, 1.6), 0xffe27a, { nh: 1, glow: 0xffc040, gi: 1, seg: 20 });
+      const base = lathe(flame, 0, -0.1, 0, tear(3.8, 1.75), 0x3d8bff, { nh: 1, glow: 0x2a6bff, gi: 0.9, seg: 16 });
+      [outer, inner, base].forEach((m, i) => { m.material.transparent = true; m.material.opacity = [0.78, 0.96, 0.92][i]; m.raycast = () => {}; });
+      const haloCanvas = document.createElement('canvas'); haloCanvas.width = haloCanvas.height = 64;
+      const hc = haloCanvas.getContext('2d')!, warmth = hc.createRadialGradient(32, 32, 2, 32, 32, 32);
+      warmth.addColorStop(0, 'rgba(255, 196, 90, 0.75)'); warmth.addColorStop(0.45, 'rgba(255, 140, 40, 0.28)'); warmth.addColorStop(1, 'rgba(255, 120, 20, 0)');
+      hc.fillStyle = warmth; hc.fillRect(0, 0, 64, 64);
+      const halo = new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(haloCanvas), transparent: true, depthWrite: false }));
+      halo.position.set(0, 4.5, 0); halo.scale.set(20, 22, 1); halo.raycast = () => {}; flame.add(halo);
+      const calm = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+      let size = 0;
+      itemAnim.push(t => {
+        if (!flame.visible) return;
+        const flick = calm ? 0 : Math.sin(t / 83) * 0.06 + Math.sin(t / 31 + 1.7) * 0.04, sway = calm ? 0 : Math.sin(t / 67) * 0.07 + Math.sin(t / 23) * 0.03;
+        flame.scale.set(size * (1 - flick * 0.5), size * (1 + flick), size * (1 - flick * 0.5));
+        flame.rotation.z = sway; flame.rotation.x = calm ? 0 : Math.sin(t / 59 + 0.6) * 0.04;
+        halo.material.opacity = 0.75 + flick * 1.5;
+      });
+      set = v => {
+        const f = clamp(v);
+        shown(flame, f > 0.02); size = 0.55 + 0.75 * f; flame.scale.setScalar(size);
+        glow(alarm, 0x3ddc6a, f > 0.5 ? 0.9 : 0);
+      };
+      top = tip + 13;
+    } else if (it.kind === 'water') {
+      /* The usual water-level sensor: a red board 20 × 62 mm with ten bare traces side by side, every other one joined, so water bridging them lets current
+         through. In a breadboard it stands upside down, so the part that would dip into the water is at the top: the blue shows how much of it is wet. */
+      const b = header(), W = 20, H = 62, wetTop = b + H - 1.5, LEN = 42;
+      box(g, x, b, z, W, H, 1.5, 0xb8322b);
+      silk(W, H, b, (c, S) => {
+        const xs = Array.from({ length: 10 }, (_, i) => 2.4 + i * 1.7);
+        c.strokeStyle = '#d6d8d4'; c.lineWidth = 0.9 * S; c.lineCap = 'round';
+        xs.forEach((tx, i) => { c.beginPath(); c.moveTo(tx * S, (i % 2 ? 2.2 : 1.2) * S); c.lineTo(tx * S, (i % 2 ? LEN + 1.5 : LEN + 0.5) * S); c.stroke(); });
+        c.beginPath(); c.moveTo(xs[1] * S, (LEN + 1.5) * S); c.lineTo(xs[9] * S, (LEN + 1.5) * S); c.moveTo(xs[0] * S, 1.2 * S); c.lineTo(xs[8] * S, 1.2 * S); c.stroke();   // each comb joined at its end
+        label(c, S, 'S  +  -', W / 2, H - 2.2, 1.9, true);
+        hole(c, S, 3, H - 6); hole(c, S, W - 3, H - 6);
+      });
+      chip(x - 4.5, b + 7, 2.8, 2.2); [0, 2.5].forEach(dy => box(g, x + 3.5, b + 6 + dy, face + 0.4, 2.2, 1, 0.8, 0x23272e, { nh: 1 }));   // its transistor and resistors
+      smd(x + 6.8, b + 11, 0xff4a3d);
+      const water = box(g, x, wetTop - LEN, face + 0.35, 18.4, LEN, 0.5, 0x3a8fe0, { nh: 1, glow: 0x1c5fb8, gi: 0.5 });
+      water.material.transparent = true; water.material.opacity = 0.62;
+      set = v => { const lv = clamp(v); shown(water, lv > 0.01); water.scale.y = Math.max(0.01, lv); water.position.y = wetTop - (LEN * lv) / 2; };   // wet from the tip down
+      top = b + H + 5;
+    } else {
+      /* An infrared obstacle sensor: a small blue board with a clear emitter and a dark receiver side by side. */
+      legs.forEach(p => box(g, p.x, y, p.z, 0.6, 3.4, 0.6, GOLD, { nh: 1 }));
+      box(g, x, y + 3, z, 13, 17, 1.5, 0x2a62b8);
       cyl(g, x - 3.2, y + 18, face + 2.6, 1.5, 5.2, 0xe9ecef, { ax: 'z' }); cyl(g, x + 3.2, y + 18, face + 2.6, 1.5, 5.2, 0x1b1e23, { ax: 'z' });
       box(g, x, y + 6, face, 4, 4, 1.4, 0x3aa7b3);
       const wall = new T.Group(); wall.userData.hm = shell(g); g.add(wall);
       box(wall, x, y, face + 11, 13, 15, 2, 0xe2572b);   // something in the way
       set = v => shown(wall, v > 0.5);
-    } else if (it.kind === 'soil') {
-      const prongs = [-3.6, 3.6].map(dx => box(g, x + dx, y + 5, face, 2.8, 13.5, 0.4, GOLD, { nh: 1 }));
-      set = v => prongs.forEach(p => glow(p, 0x2a8cff, Math.min(1, Math.max(0, v)) * 0.9));
-    } else if (it.kind === 'water') {
-      for (let i = -2; i <= 2; i++) box(g, x + i * 2.3, y + 4.5, face, 0.8, 13, 0.3, METAL, { nh: 1 });
-      const water = box(g, x, y + 4, face + 0.5, 12.4, 14, 0.5, 0x3a8fe0, { nh: 1, glow: 0x1c5fb8, gi: 0.5 });
-      set = v => { const lv = Math.min(1, Math.max(0, v)); shown(water, lv > 0.01); water.scale.y = Math.max(0.01, lv); water.position.y = y + 4 + 7 * lv; };
-    } else if (it.kind === 'gas') {
-      const can = cyl(g, x, y + 12, face + 3.4, 5, 6.8, 0xb9c0c7, { ax: 'z' });
-      cyl(g, x, y + 12, face + 7, 3.4, 0.3, 0x6d737b, { ax: 'z', nh: 1 });
-      set = v => glow(can, 0xff7a2a, Math.min(1, Math.max(0, v)) * 0.8);
-    } else {
-      cyl(g, x, y + 17, face + 2.8, 1.6, 5.6, 0x1b1e23, { ax: 'z' });
-      box(g, x, y + 6, face, 4, 4, 1.4, 0x3aa7b3);
-      const fire = new T.Group(); fire.position.set(x, y + 15, face + 14); g.add(fire);
-      ball(fire, 0, 0, 0, 3, 0xff9a2a, { nh: 1, glow: 0xff6a00 }); ball(fire, 0, 3, 0, 1.8, 0xffc23a, { nh: 1, glow: 0xffa000 });
-      fire.children.forEach(c => { c.raycast = () => {}; });
-      set = v => { const f = Math.min(1, Math.max(0, v)); shown(fire, f > 0.02); fire.scale.setScalar(0.45 + f); };
+      top = y + 25;
     }
-    set(it.kind === 'soil' ? 0.5 : 0);
-    return { g, set, top: new T.Vector3(x, y + 25, z) };
+    set(0);
+    return { g, set, top: new T.Vector3(x, top, z) };
+  }
+  /** The soil moisture sensor where it is used: a resistive probe stuck in the soil of a potted plant, which stands on the table wherever it is put.
+      The probe is a black board cut like a fork, 20 × 51 mm, prongs down, with a gold strip bare down each prong so the soil between them carries the
+      current. It stands on the side of the pot towards the bench, with its three pins (VCC, SIG, GND) standing up from its head for the wires.
+      The plant grows on the other side and is bigger than the probe. The soil darkens as it gets wetter. The plant stands up green in damp soil, and
+      as the soil dries it droops away from the probe and yellows, until it hangs over the rim; watered, it stands up again. */
+  function mkPlant(it: SoilItem): Made {
+    const g = new T.Group(), p = plantPlace(it), x = bb!.position.x + p.x, pz = p.z, clamp = (v: number) => Math.min(1, Math.max(0, v));
+    const pot = new T.Group(); pot.userData.hm = shell(g); g.add(pot);
+    lathe(pot, x, 0, pz, [[0, 0], [14, 0], [18.6, POT_H - 2], [0, POT_H - 2]], 0xc8673a);   // the pot, wider at the top
+    lathe(pot, x, 0, pz, [[17.4, POT_H - 4], [20.4, POT_H - 4], [20.4, POT_H + 1], [17.4, POT_H + 1], [17.4, POT_H - 4]], 0xb5582d);   // its rim, a ring round the top
+    const earth = cyl(pot, x, POT_H - 2, pz, 17.3, 0.4, 0x7a5a3a, { nh: 1 });   // the soil, a little below the rim
+
+    const q = probeAt(p), px = bb!.position.x + q.x, qz = q.z, pf = qz + 0.75, head = PROBE_TIP + 33.3;
+    const fork = new T.Shape();
+    [[10, 51.1], [10, 4.4], [6.7, 0], [3.3, 4.4], [3.3, 33.3], [-3.3, 33.3], [-3.3, 4.4], [-6.7, 0], [-10, 4.4], [-10, 51.1]].forEach(([fx, fy], i) => (i ? fork.lineTo(fx, fy) : fork.moveTo(fx, fy)));
+    fork.closePath();
+    prism(g, px, PROBE_TIP, qz - 0.75, fork, 1.5, 0x24282e, { rx: Math.PI / 2 });   // 22 mm of its prongs are in the soil
+    const strips = [-6.7, 6.7].map(dx => box(g, px + dx, PROBE_TIP + 4.6, pf + 0.02, 2.8, 27, 0.12, GOLD, { nh: 1 }));
+    const plated = (c: CanvasRenderingContext2D, S: number, hx: number, hy: number) => {   // a mounting hole
+      c.fillStyle = '#d9b24a'; c.beginPath(); c.arc(hx * S, hy * S, 1.4 * S, 0, 7); c.fill();
+      c.fillStyle = '#101216'; c.beginPath(); c.arc(hx * S, hy * S, 0.75 * S, 0, 7); c.fill();
+    };
+    const printed = (c: CanvasRenderingContext2D, S: number, text: string, lx: number, ly: number, size: number) => {
+      c.fillStyle = '#eef0f2'; c.font = `700 ${size * S}px "JetBrains Mono", monospace`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(text, lx * S, ly * S);
+    };
+    facePrint(g, 20, 17.8, 12, px, head + 8.9, pf + 0.02, (c, S) => { printed(c, S, 'VCC SIG GND', 10, 3.4, 1.5); printed(c, S, 'SOIL', 10, 7.4, 2.2); plated(c, S, 3.2, 14.4); plated(c, S, 16.8, 14.4); });
+    box(g, px + 3, head + 3.4, pf + 0.6, 3, 2.4, 1.2, 0x1b1e23);   // its transistor
+    box(g, px - 4.5, head + 7, pf + 0.35, 1.6, 0.9, 0.7, 0xff4a3d, { nh: 1 });   // and its power light
+    box(g, px, PROBE_TOP, qz, 7.9, 2.5, 2.5, DARK);   // the strip that holds its pins
+    SOIL_PINS.forEach((_, i) => box(g, px + (i - 1) * 2.54, PROBE_TOP, qz, 0.64, 8.5, 0.64, GOLD, { nh: 1 }));
+
+    /* The plant: a stem in four pieces, each bending a little more as it droops, a pair of leaves at the top of each piece, turned a quarter round from
+       the pair below, and a bud at the very top. */
+    const away = qz < pz ? 1 : -1, leafy: Solid[] = [], pivots: { g: T.Group; side: number; up: number }[] = [], joints: T.Group[] = [];   // away: which way along z is away from the probe
+    let at: T.Group = pot, stemY = SOIL_TOP;
+    [[16, 3.4, 1.3], [15, 3, 1.1], [13, 2.6, 0.9], [10, 2, 0.75]].forEach(([len, s, r], i) => {
+      const joint = new T.Group(); joint.position.set(i ? 0 : x + 5.5, stemY, i ? 0 : pz + away * 4.5); at.add(joint); joints.push(joint);
+      cyl(joint, 0, 0, 0, r, len, 0x4f9a3a);
+      [-1, 1].forEach(side => {
+        const pivot = new T.Group(); pivot.position.set(0, len - 0.4, 0); pivot.rotation.y = i % 2 ? Math.PI / 2 : 0; joint.add(pivot);
+        const tilt = new T.Group(); pivot.add(tilt);
+        const leaf = new T.Group(); leaf.position.set(side * 2.6 * s, 0, 0); leaf.scale.set(2.8 * s, 0.6, 1.45 * s); tilt.add(leaf);
+        leafy.push(ball(leaf, 0, 0, 0, 1, 0x3aa655));
+        pivots.push({ g: tilt, side, up: 0.5 - i * 0.12 });
+      });
+      at = joint; stemY = len;
+    });
+    leafy.push(ball(at, 0, stemY + 1.2, 0, 2, 0x5cbf4a));
+    const green = new T.Color(0x3aa655), parched = new T.Color(0xb39a3a), wet = new T.Color(0x3e2a1c), dry = new T.Color(0xb0916a);
+    const set = (v: number) => {
+      const m = clamp(v), wilt = 1 - clamp((m - 0.12) / 0.38);   // fine above half, fully wilted below about a tenth
+      strips.forEach(st => { st.material.emissive.setHex(0x2a8cff); st.material.emissiveIntensity = m * 0.9; });
+      earth.material.color.copy(dry).lerp(wet, m);
+      joints.forEach((j, i) => { j.rotation.x = away * wilt * (0.15 + i * 0.08); });   // bowed over away from the probe, the top furthest
+      pivots.forEach(pv => { pv.g.rotation.z = pv.side * (pv.up - wilt * 1.15); });
+      leafy.forEach(l => l.material.color.copy(green).lerp(parched, wilt));
+    };
+    set(0.5);
+    return { g, set, top: new T.Vector3(x, POT_H + 62, pz) };   // its name goes over the pot
   }
   /** A thumb joystick: a board standing on its five pins with the stick facing you. The stick leans the way it is pushed and sinks when it is pressed. */
   function mkJoy(it: Of<'joy'>): Made {
@@ -777,7 +953,7 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
       case 'rgb': return mkRgb(it);
       case 'slide': return mkSlide(it);
       case 'contact': return mkContact(it);
-      case 'module': return mkModule(it);
+      case 'module': return it.kind === 'soil' ? mkPlant(it) : mkModule(it);
       case 'joy': return mkJoy(it);
       case 'breadboard': return mkBreadboard();
     }
@@ -844,6 +1020,8 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
     const lay = tableLayout(spec.board, settled), bx = bb!.position.x;   // the touch pad and the LCD lie where nothing else does
     padPos = new T.Vector3(bx + (lay.pad ?? PAD_AT).x, 0.8, (lay.pad ?? PAD_AT).z);
     lcdPos = new T.Vector3(bx + (lay.lcd ?? LCD_AT).x, 0, (lay.lcd ?? LCD_AT).z);
+    const soil = items.find(it => it.t === 'module' && it.kind === 'soil');
+    plantAt = soil ? plantPlace(soil as SoilItem) : null;   // where the pot is, while it is dragged too, so the wires to its probe follow it
     items.forEach((it, k) => {
       let made: Made;
       try { made = make(it, k); } catch { return; }   // a point that is not on this bench is skipped
@@ -863,6 +1041,7 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
       if (it.t === 'led') { const p = anchor(it.a), n = anchor(it.k), u = flat(p, n); pole('LED long leg (+)', '+', p, u, -4.5); pole('LED short leg (−)', '-', n, u, 4.5); }
       else if (it.t === 'buzzer') { const p = anchor(it.a), n = anchor(it.b), u = flat(p, n); pole('Buzzer positive leg (+)', '+', p, u, -4.5); pole('Buzzer negative leg (−)', '-', n, u, 4.5); }
       else if (it.t === 'temp') { const p = anchor(`${it.row}${it.col}`), n = anchor(`${it.row}${it.col + 2}`), u = flat(p, n); pole('Sensor power leg (+)', '+', p, u, -4.5, 9); pole('Sensor ground leg (−)', '-', n, u, 4.5, 9); }
+      else if (it.t === 'module' && it.kind === 'soil') { const p = anchor(soilPoint('VCC')), n = anchor(soilPoint('GND')), u = flat(p, n); pole('Probe power pin VCC (+)', '+', p, u, -4, 12); pole('Probe ground pin GND (−)', '-', n, u, 4, 12); }
       else if (it.t === 'module') { const p = anchor(`${it.row}${it.col}`), n = anchor(`${it.row}${it.col + 2}`), u = flat(p, n); pole('Sensor power pin (+)', '+', p, u, -6.5, 6); pole('Sensor ground pin (−)', '-', n, u, 6.5, 6); }
       else if (it.t === 'joy') { const n = anchor(`${it.row}${it.col}`), p = anchor(`${it.row}${it.col + 1}`), u = flat(n, p); pole('Joystick ground pin (−)', '-', n, u, -6.5, 6); pole('Joystick power pin (+)', '+', p, u, -4, 28); }
       else if (it.t === 'rgb') { const n = anchor(`${it.row}${it.col + 1}`), u = flat(anchor(`${it.row}${it.col}`), n); pole('RGB LED long leg (−)', '-', n, u, 0, 20); }

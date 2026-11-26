@@ -30,10 +30,10 @@ export const ITEM_INFO: Record<string, Info> = {
   joy: ['Joystick', 'Two knobs and a button under one stick. VRx follows left and right, VRy follows down and up, each a voltage for an analog pin. Pressing the stick joins SW to GND, so read SW with INPUT_PULLUP.'],
   pir: ['Motion sensor (PIR)', 'Notices the warmth of a person or animal moving in front of it. OUT goes HIGH while it sees movement and LOW when all is still. It needs 5 V (VIN on the ESP32).'],
   ir: ['Obstacle sensor (IR)', 'Shines invisible infrared light and watches for it bouncing back. OUT is HIGH while the way is clear and goes LOW when something is in front of it.'],
-  soil: ['Soil moisture sensor', 'Two prongs that go in the soil. The wetter the soil, the higher the voltage on OUT: read it with analogRead() and water the plant when it gets low.'],
+  soil: ['Soil moisture sensor', 'A probe with two prongs in the soil of a potted plant. The wetter the soil, the higher the voltage on SIG: read it with analogRead() and water the plant when it gets low. Wire the three pins on the head of the probe: VCC to power, SIG to an analog pin, GND to GND. Drag the pot anywhere on the table, and its wires come with it.'],
   water: ['Water level sensor', 'Bare tracks that the water joins together. The deeper it stands in water, the higher the voltage on OUT. Read it with analogRead().'],
   gas: ['Gas sensor (MQ-2)', 'Smells smoke and burnable gas. OUT is about 0.1 V in clean air and rises towards 3.3 V as the air fills with gas. Its little heater needs 5 V (VIN on the ESP32).'],
-  flame: ['Flame sensor', 'A dark LED that reacts to the infrared light of a flame. The brighter the flame in front of it, the higher the voltage on OUT. Read it with analogRead().'],
+  flame: ['Flame sensor', 'A dark LED that reacts to the infrared light of a flame. The brighter the flame in front of it, the higher the voltage on OUT. Read it with analogRead(). On the bench it watches the candle in front of it.'],
 };
 
 export const BOARDS: Record<BoardId, Board> = {
