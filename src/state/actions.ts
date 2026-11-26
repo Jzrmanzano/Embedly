@@ -13,6 +13,7 @@ import { flipped, holesOf, homedBreadboard, inputsOf, makeItem, movedBreadboard,
 import { placeOf, slide, type Place } from './table';
 import { guideHash, parseHash } from './route';
 import { cardOf, fitsAll, type CardId } from '../data/boardchoice';
+import { TEMPLATES } from '../data/templates';
 import { benchOf, burntOf, codeOf, FRESH_PHONE, keyOf, missionOf, saveBenches, saveProgress, saveSketches, saveWidths, useLab, type Tab } from './store';
 import { emptyProgress, makeBackup, parseBackup, describe, type Progress } from './progress';
 
@@ -208,7 +209,7 @@ export function openFromHash() {
   const home = route.page === 'home';
   const choosing = !home && !!MISSIONS[board][mission].choice;
   set(s => {
-    const open = home || isPhone() ? s.panels : openPanelIn(s.panels, 'brief', isNarrow());   // a new mission opens its brief, except on a phone where it would cover the bench
+    const open = home || (isPhone() && !s.templateFocus) ? s.panels : openPanelIn(s.panels, 'brief', isNarrow());   // a new mission opens its brief, except on a phone where it would cover the bench, unless a template was asked for
     return { page: home ? 'home' : 'lab', labSeen: s.labSeen || !home, board, mission, hot: null, serial: '', errLine: null, tool: null, pending: null, point: null, notice: null, results: null, asking: null, checking: false, drag: null, bbDrag: null, partDrag: null, panels: choosing ? closePanelIn(closePanelIn(open, 'code'), 'parts') : home || isNarrow() || open.right ? open : openPanelIn(open, 'parts', false) };   // choosing a board needs no code or parts, and on a wide screen the parts are at hand
   });
   syncInputs();
@@ -607,6 +608,21 @@ export function revealHint() {
   set(st => ({ hintsUsed: { ...st.hintsUsed, [key]: n + 1 } }));
   saveMissionProgress();
 }
+/** The home page's link to a template: the studio opens with its brief on the Mission tab, scrolled to that template. Called as the link is followed. */
+export const showTemplate = (id: string) => set({ templateFocus: id, tab: 'mission' });
+/** The brief has scrolled to the template asked for. */
+export const templateShown = () => set({ templateFocus: null });
+
+/** Puts a template's build on the bench and its sketch in the editor, in the Open Studio. Undo takes the build off again; the sketch it replaced is gone, so the brief asks first. */
+export function loadTemplate(id: string) {
+  const s = get(), t = TEMPLATES[s.board].find(x => x.id === id);
+  if (!t || !missionOf(s).sandbox) return;
+  change(t.circuit.map(it => ({ ...it })), []);
+  set(st => ({ edits: { ...st.edits, [keyOf(st)]: t.sketch }, errLine: null, results: null, hot: null, tool: null, pending: null }));
+  saveSketches(get().edits, 0);
+  say('info', `${t.title} is on the bench, and its sketch is in the editor. Press Run to try it. Undo takes the parts off again.`, 8000);
+}
+
 /** Puts the mission's reference sketch in the editor. Only offered with the last hint. */
 export function fillAnswerCode() {
   set(s => ({ edits: { ...s.edits, [keyOf(s)]: missionOf(s).answer }, errLine: null, results: null }));

@@ -1,8 +1,9 @@
-import { useRef, useState, type ChangeEvent } from 'react';
+import { useRef, useState, type ChangeEvent, type MouseEvent, type ReactNode } from 'react';
 import { BOARDS } from '../data/boards';
 import { GUIDE } from '../data/guide';
 import { MISSIONS } from '../data/missions';
-import { progressBackup, resetProgress, restoreProgress } from '../state/actions';
+import { TEMPLATES } from '../data/templates';
+import { progressBackup, resetProgress, restoreProgress, showTemplate } from '../state/actions';
 import { boardProgress, graded, nextMission, sideProgress, sideQuests } from '../state/progress';
 import { useLab } from '../state/store';
 import { BrandMark, Icon } from './Icons';
@@ -37,6 +38,41 @@ function BoardArt() {
       <rect x="260" y="132" width="86" height="64" rx="6" className="a-code" />
       {[50, 62, 38, 56].map((w, i) => <rect key={i} x="270" y={144 + i * 12} width={w} height="4" rx="2" className="a-line" />)}
     </svg>
+  );
+}
+
+/** A link to a section further down the home page. The address bar hash says which page shows (#uno-beacon opens a mission), so following
+    "#templates" would leave the home page: the link scrolls to the section instead, and the keyboard goes with it. */
+function JumpLink({ to, children }: { to: string; children: ReactNode }) {
+  const jump = (e: MouseEvent) => {
+    e.preventDefault();
+    const el = document.getElementById(to);
+    if (!el) return;
+    el.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    el.focus({ preventScroll: true });
+  };
+  return <a href={`#${to}`} onClick={jump}>{children}</a>;
+}
+
+/** The Open Studio's templates, both boards together. Each opens its board's studio with the brief scrolled to it. */
+function TemplateList() {
+  return (
+    <section id="templates" className="tpl-home" aria-labelledby="tpl-title" tabIndex={-1}>
+      <h2 id="tpl-title" className="sec-title">Start from a template</h2>
+      <p className="sec-note">Finished projects to open in the Open Studio: load one, run it, then take it apart and change it. Every part is there, so no missions are needed first.</p>
+      <ul className="tpl-grid">
+        {ALL_BOARDS.flatMap(b => TEMPLATES[b.id].map(t => (
+          <li key={`${b.id}-${t.id}`}>
+            <a href={`#${b.id}-workshop`} onClick={() => showTemplate(t.id)}>
+              <span className="tpl-board">{b.name}</span>
+              <b>{t.title}</b>
+              <small>{t.about}</small>
+              <span className="tpl-go">Open it in the studio <Icon name="chevron" /></span>
+            </a>
+          </li>
+        )))}
+      </ul>
+    </section>
   );
 }
 
@@ -91,7 +127,8 @@ export function Home() {
       <header className="home-bar">
         <a className="brand" href="#" aria-label="Embedly home"><BrandMark /><h1>Embed<span>ly</span></h1></a>
         <nav aria-label="Sections">
-          <a href="#boards-section">Missions</a>
+          <JumpLink to="boards-section">Missions</JumpLink>
+          <JumpLink to="templates">Templates</JumpLink>
           <a href="#boards">Compare boards</a>
           <a href="#guide">Guide</a>
           <ThemeToggle />
@@ -113,7 +150,7 @@ export function Home() {
           <BoardArt />
         </section>
 
-        <section id="boards-section" className="boards" aria-labelledby="pick">
+        <section id="boards-section" className="boards" aria-labelledby="pick" tabIndex={-1}>
           <h2 id="pick" className="sec-title">Pick a board</h2>
           <p className="sec-note">Two boards are on the bench here. <a href="#boards">Compare them with three others</a>, side by side and drawn to scale.</p>
           <div className="board-grid">
@@ -166,6 +203,7 @@ export function Home() {
             })}
           </div>
         </section>
+        <TemplateList />
         <section className="steps" aria-labelledby="how">
           <h2 id="how" className="sec-title">How it works</h2>
           <ol>

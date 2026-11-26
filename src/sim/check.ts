@@ -11,7 +11,7 @@ import type { Frame } from './timeline';
 
 /* --- inputs --- */
 /** The parts a check can script, by kind: a sensor module goes by its own kind ("soil"), every other part by its type. */
-export type InputKind = 'button' | 'pot' | 'sonar' | 'pad' | 'ldr' | 'temp' | 'soil' | 'pir' | 'reed' | 'ir';
+export type InputKind = 'button' | 'pot' | 'sonar' | 'pad' | 'ldr' | 'temp' | 'soil' | 'pir' | 'reed' | 'ir' | 'joy' | 'joyY' | 'joySw';
 /** From `from` milliseconds on, these inputs have these values. Parts of the same kind all take the same value. A knob, a light sensor or a soil sensor is 0 to 1, the temperature is in °C, the wall is in cm, a button, pad or motion sensor is 0 or 1, a reed switch is 1 while its magnet is near, and an obstacle sensor 1 while something is in front of it. */
 export interface InputStep {
   from: number;
@@ -21,7 +21,8 @@ export interface InputStep {
   /** The phone taps the link or button with these words on whatever page it shows at this moment, such as "ON". */
   tap?: string;
 }
-const REST: Record<InputKind, number> = { button: 0, pad: 0, pot: 0.5, sonar: 100, ldr: 0.5, temp: 25, soil: 0.5, pir: 0, reed: 0, ir: 0 };
+/** `joy` is the joystick's left to right and `joyY` its down to up, 0 to 1 with the middle at 0.5; `joySw` is 1 while the stick is pressed. */
+const REST: Record<InputKind, number> = { button: 0, pad: 0, pot: 0.5, sonar: 100, ldr: 0.5, temp: 25, soil: 0.5, pir: 0, reed: 0, ir: 0, joy: 0.5, joyY: 0.5, joySw: 0 };
 
 export function inputsAt(items: Item[], plan: InputStep[], t: number): Record<string, number> {
   const value = { ...REST };
@@ -32,6 +33,7 @@ export function inputsAt(items: Item[], plan: InputStep[], t: number): Record<st
     Object.assign(out, inputsOf(it, id));   // a part no check scripts keeps its resting value
     const kind = kindOf(it);
     if ('ctl' in it && kind in value) out[id] = value[kind as InputKind];
+    if (it.t === 'joy') { out[`${id}:y`] = value.joyY; out[`${id}:sw`] = value.joySw; }   // a joystick is two knobs and a button under one stick
   });
   return out;
 }

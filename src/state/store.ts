@@ -103,6 +103,8 @@ export interface LabState {
   errLine: number | null;
   serial: string;
   phone: PhoneState;
+  /** A template the home page asked to see. The studio's brief scrolls to it, then forgets it. */
+  templateFocus: string | null;
 }
 
 const MISSION_KEY = 'boardlab-missions', BENCH_KEY = 'boardlab-benches';
@@ -156,7 +158,7 @@ export const useLab = create<LabState>(() => ({
   page: 'home', labSeen: false, board: 'uno', mission: 0, tab: 'mission', panels: NO_PANELS, focusPanel: null, widths: loadWidths(), help: false, guide: null, hot: null, edits: loadSketches(), ...saved, undo: {}, redo: {},
   tool: null, pending: null, point: null, notice: null, drag: null, bbDrag: null, partDrag: null, sparks: 0, paused: false, line: null, cursor: null, frameTick: 0, probe: null,
   inputs: {}, ...loadProgress(), results: null, checking: false, asking: null,
-  sound: false, ohms: 220, ledColor: LED_COLORS.red, bbSize: 'short', nav: 'pan', labels: true, running: false, errLine: null, serial: '', phone: FRESH_PHONE,
+  sound: false, ohms: 220, ledColor: LED_COLORS.red, bbSize: 'short', nav: 'pan', labels: true, running: false, errLine: null, serial: '', phone: FRESH_PHONE, templateFocus: null,
 }));
 
 const NONE: Item[] = [], NONE_IDS: string[] = [];
