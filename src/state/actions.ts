@@ -9,8 +9,8 @@ import { ANSWER_MS, parseAddress, type Answer } from '../sim/network';
 import { pushFrame, type Frame } from '../sim/timeline';
 import { BREADBOARD_COLS, itemId, MAIN_COLS, type BoardId, type BreadboardSize, type Item } from '../types';
 import { clampWidth, closePanel as closePanelIn, closeTop, isOpen, openPanel as openPanelIn, widestPanel, type Panel, type Side } from './panels';
-import { flipped, holesOf, homedBreadboard, inputsOf, makeItem, movedBreadboard, movedPart, movedWire, parseTerminal, placementError, resizedBreadboard, sameTool, TWO_POINT, withoutBreadboard, type Tool } from './bench';
-import { placeOf, slide, type Place } from './table';
+import { flipped, holesOf, homedBreadboard, inputsOf, isSoil, makeItem, movedBreadboard, movedPart, movedPlant, movedWire, parseTerminal, placementError, resizedBreadboard, sameTool, toolKind, TWO_POINT, withoutBreadboard, type Tool } from './bench';
+import { placeOf, plantPlace, plantSpot, slide, slidePlant, type Place } from './table';
 import { guideHash, parseHash } from './route';
 import { cardOf, fitsAll, type CardId } from '../data/boardchoice';
 import { TEMPLATES } from '../data/templates';
@@ -212,7 +212,7 @@ export function openFromHash() {
   set(s => {
     // A new mission opens its brief, and the studio its templates, except on a phone where they would cover the bench (unless the templates were asked for).
     const open = home || (isPhone() && s.templateFocus === null) ? s.panels : openPanelIn(s.panels, studio ? 'templates' : 'brief', isNarrow());
-    return { page: home ? 'home' : 'lab', labSeen: s.labSeen || !home, board, mission, hot: null, serial: '', errLine: null, tool: null, pending: null, point: null, notice: null, results: null, asking: null, checking: false, drag: null, bbDrag: null, partDrag: null, panels: choosing ? closePanelIn(closePanelIn(open, 'code'), 'parts') : home || isNarrow() || open.right ? open : openPanelIn(open, 'parts', false) };   // choosing a board needs no code or parts, and on a wide screen the parts are at hand
+    return { page: home ? 'home' : 'lab', labSeen: s.labSeen || !home, board, mission, hot: null, serial: '', errLine: null, tool: null, pending: null, point: null, notice: null, results: null, asking: null, checking: false, drag: null, bbDrag: null, plantDrag: null, partDrag: null, panels: choosing ? closePanelIn(closePanelIn(open, 'code'), 'parts') : home || isNarrow() || open.right ? open : openPanelIn(open, 'parts', false) };   // choosing a board needs no code or parts, and on a wide screen the parts are at hand
   });
   syncInputs();
 }
@@ -372,6 +372,31 @@ export function nudgeBreadboard(dx: number, dz: number) {
   if (items !== bench) moveOnTable(items, 'breadboard');
   else say('info', 'The second breadboard cannot go any further that way.', 3000);
 }
+/* --- moving the potted plant around the table --- */
+const plantOf = (items: Item[]) => { const it = items.find(isSoil); return it?.t === 'module' && it.kind === 'soil' ? it : null; };
+/** The pointer drags the potted plant towards a place on the table. It goes as far as it can without landing on anything, and the wires to its probe follow it. */
+export function dragPlant(want: Place) {
+  const s = get(), it = plantOf(benchOf(s));
+  if (!it) return;
+  const to = slidePlant(s.board, benchOf(s), it.id, s.plantDrag ?? plantPlace(it), want);
+  if (to.x !== s.plantDrag?.x || to.z !== s.plantDrag?.z) set({ plantDrag: to });
+}
+/** The pointer came up: the potted plant stays where it was dragged. */
+export function dropPlant() {
+  const s = get(), to = s.plantDrag, bench = benchOf(s), it = plantOf(bench);
+  set({ plantDrag: null });
+  if (!to || !it) return;
+  const from = plantPlace(it);
+  if (to.x !== from.x || to.z !== from.z) moveOnTable(bench.map(x => (x === it ? { ...it, x: to.x, z: to.z } : x)));
+}
+/** The arrow keys move the selected potted plant a step at a time. */
+export function nudgePlant(dx: number, dz: number) {
+  const s = get(), bench = benchOf(s), it = plantOf(bench);
+  if (!it) return;
+  const from = plantPlace(it), items = movedPlant(s.board, bench, { x: from.x + dx, z: from.z + dz });
+  if (items !== bench) moveOnTable(items, 'plant');
+  else say('info', 'The potted plant cannot go any further that way.', 3000);
+}
 /** Puts the second breadboard back beside the first, where it started. */
 export function homeBreadboard() {
   const bench = benchOf(get());
@@ -462,6 +487,12 @@ export function pickTool(tool: Tool | null) {
     const err = placementError(get().board, benchOf(get()), it);
     if (err) say('warn', err, 6000); else addItem(it);
     set({ tool: null });
+  } else if (toolKind(tool) === 'soil') {   // the potted plant stands on the table at the first free place, to be wired up and dragged wherever suits
+    const bench = benchOf(get()), spot = plantSpot(get().board, bench), made = makeItem(tool, bench, 'SOIL'), it: Item = made.t === 'module' && made.kind === 'soil' && spot ? { ...made, ...spot } : made;
+    const err = placementError(get().board, bench, it) ?? (spot ? null : 'There is no room left on the table for the potted plant. Move something out of the way first.');
+    if (err) say('warn', err, 6000);
+    else { addItem(it); say('info', 'The potted plant is on the table with the soil probe in it. Wire the three pins on the probe\'s head (VCC, SIG and GND), and drag the pot wherever suits.', 9000); }
+    set({ tool: null });
   } else dismissNotice();
 }
 export const cancelTool = () => set({ tool: null, pending: null });
@@ -507,7 +538,7 @@ function firstPointError(name: string): string | null {
 export function placeTyped(text: string): string | null {
   const s = get(), tool = s.tool;
   if (!tool) return 'Choose a part first.';
-  const words = text.split(/[\s,]+/).filter(Boolean), want = TWO_POINT.includes(tool.kind) ? 2 : tool.kind === 'pad' || tool.kind === 'lcd' || tool.kind === 'breadboard' ? 0 : 1;
+  const words = text.split(/[\s,]+/).filter(Boolean), want = TWO_POINT.includes(tool.kind) ? 2 : tool.kind === 'pad' || tool.kind === 'lcd' || tool.kind === 'breadboard' || toolKind(tool) === 'soil' ? 0 : 1;
   if (words.length !== want) return want === 2 ? 'Type two points, such as e10 e11.' : 'Type one hole, such as d24.';
   const pts = words.map(w => parseTerminal(s.board, w, benchOf(s)));
   const bad = pts.findIndex(p => !p);

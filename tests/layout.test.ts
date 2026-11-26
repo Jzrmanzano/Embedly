@@ -8,7 +8,7 @@ import { ESP_FAR, ESP_HOLES, ESP_NEAR } from '../src/data/boards';
 import { MISSIONS } from '../src/data/missions';
 import { TEMPLATES } from '../src/data/templates';
 import { LCD_PINS } from '../src/sim/lcd';
-import { BB_DEPTH, bbLength, extraRect, holeXZ, placeOf, RAILZ, ROWZ, tableLayout, unoPinSide, unoPinXZ } from '../src/state/table';
+import { BB_DEPTH, bbLength, extraRect, holeXZ, placeOf, plantPlace, RAILZ, ROWZ, soilPinXZ, tableLayout, unoPinSide, unoPinXZ } from '../src/state/table';
 import { MAIN_COLS, type BoardId, type Item } from '../src/types';
 
 type Wire = Extract<Item, { t: 'wire' }>;
@@ -28,6 +28,7 @@ function at(board: BoardId, items: Item[], p: string): [number, number] | null {
   if ((m = /^E:(.+)$/.exec(p))) return ESP_HOLES[m[1]] ? at(board, items, ESP_HOLES[m[1]]) : null;
   if ((m = /^([TB][+-])(\d+)$/.exec(p))) { const q = holeXZ(items, +m[2], RAILZ[m[1]]); return q && [q.x, q.z]; }
   if ((m = /^([a-j])(\d+)$/.exec(p))) { const q = holeXZ(items, +m[2], ROWZ[m[1]]); return q && [q.x, q.z]; }
+  if ((m = /^SOIL:(w+)$/.exec(p))) { const soil = items.find(it => it.t === 'module' && it.kind === 'soil') as { x?: number; z?: number } | undefined, q = soil && soilPinXZ(plantPlace(soil), m[1]); return q ? [q.x, q.z] : null; }
   const lay = tableLayout(board, items);
   if (p === 'PAD' && lay.pad) return [lay.pad.x, lay.pad.z];
   if ((m = /^LCD:(\w+)$/.exec(p)) && lay.lcd) return [lay.lcd.x - 47.5, lay.lcd.z + (LCD_PINS.indexOf(m[1] as never) - 1.5) * 2.54];

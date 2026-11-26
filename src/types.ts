@@ -31,7 +31,11 @@ export type Item =
   /** A tilt switch or a reed switch: two legs, with no front and back. */
   | { t: 'contact'; kind: ContactKind; id: string; a: string; b: string; ctl: string }
   /** A sensor module with three pins in a row: + in `row``col`, OUT one column right, GND two columns right. */
-  | { t: 'module'; kind: ModuleKind; id: string; row: string; col: number; ctl: string }
+  | { t: 'module'; kind: Exclude<ModuleKind, 'soil'>; id: string; row: string; col: number; ctl: string }
+  /** A soil moisture sensor: its probe stands in the soil of a potted plant on the table, and the three pins on the probe's head are wired by name:
+      "SOIL:VCC", "SOIL:SIG" and "SOIL:GND". The pot can be dragged anywhere on the table. `x` and `z` are where its middle is, in millimetres from the
+      middle of the bench's own breadboard (src/state/table.ts); without them it stands at its usual place in front of the breadboard. */
+  | { t: 'module'; kind: 'soil'; id: string; ctl: string; x?: number; z?: number }
   /** A thumb joystick, five pins in a row: GND in `row``col`, then +, VRx, VRy and SW. Its on-screen controls are kept under its id (left to right), id + ":y" (down to up) and id + ":sw" (pressed). */
   | { t: 'joy'; id: string; row: string; col: number; ctl: string }
   /** A 16×2 character LCD with an I2C backpack. It is too wide for the breadboard, so it lies on the table at a place of its own, and its four pins are wired by name: "LCD:GND", "LCD:VCC", "LCD:SDA", "LCD:SCL". */
@@ -39,6 +43,16 @@ export type Item =
   /** A second breadboard on the table. Its holes and rails are named on from the first one's: "a31", "T+31" and up.
       It starts just to the right of the first. Once moved, `x` is where its left end lies and `z` where its middle lies, in millimetres from the middle of the first (src/state/table.ts). */
   | { t: 'breadboard'; id: string; size: BreadboardSize; x?: number; z?: number };
+
+/** The soil moisture sensor in its pot, and the other sensor modules, which stand in a row of breadboard holes. */
+export type SoilItem = Extract<Item, { t: 'module'; kind: 'soil' }>;
+export type RowModule = Extract<Item, { t: 'module'; kind: Exclude<ModuleKind, 'soil'> }>;
+/** The pins on the soil probe's head, left to right, and the names they are wired by. */
+export const SOIL_PINS = ['VCC', 'SIG', 'GND'] as const;
+export const soilPoint = (pin: (typeof SOIL_PINS)[number]) => `SOIL:${pin}`;
+/** A sensor module's +, OUT and GND: the soil probe's pins, or three breadboard holes side by side. */
+export const moduleLegs = (it: Extract<Item, { t: 'module' }>): [plus: string, out: string, gnd: string] =>
+  it.kind === 'soil' ? [soilPoint('VCC'), soilPoint('SIG'), soilPoint('GND')] : [`${it.row}${it.col}`, `${it.row}${it.col + 1}`, `${it.row}${it.col + 2}`];
 
 /** The bench's own breadboard has columns 1 to 30. */
 export const MAIN_COLS = 30;

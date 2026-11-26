@@ -66,13 +66,16 @@ const FIELDS: Record<Item['t'], { s: string[]; n: string[] }> = {
   contact: { s: ['id', 'kind', 'a', 'b', 'ctl'], n: [] }, module: { s: ['id', 'kind', 'row', 'ctl'], n: ['col'] }, lcd: { s: ['id'], n: [] },
   breadboard: { s: ['id', 'size'], n: [] },
 };
+/** The soil moisture sensor has no row and column: it stands in its pot on the table. */
+const SOIL_FIELDS = { s: ['id', 'kind', 'ctl'], n: [] };
 /** The kinds a part with a `kind` may be. */
 const KINDS: Partial<Record<Item['t'], readonly string[]>> = { contact: CONTACT_KINDS, module: MODULE_KINDS };
 const SIZES = Object.keys(BREADBOARD_COLS);
 export function isItem(v: unknown): v is Item {
   if (!isObject(v) || typeof v.t !== 'string' || !Object.hasOwn(FIELDS, v.t)) return false;
-  const f = FIELDS[v.t as Item['t']];
-  return f.s.every(k => str(v[k])) && f.n.every(k => num(v[k])) && (v.ohms === undefined || num(v.ohms)) && (KINDS[v.t as Item['t']]?.includes(v.kind as string) ?? true) && (v.t !== 'breadboard' || (SIZES.includes(v.size as string) && [v.x, v.z].every(n => n === undefined || (num(n) && Math.abs(n) <= REACH))));
+  const soil = v.t === 'module' && v.kind === 'soil', f = soil ? SOIL_FIELDS : FIELDS[v.t as Item['t']], onTable = soil || v.t === 'breadboard';   // things put down on the table by x and z
+  return f.s.every(k => str(v[k])) && f.n.every(k => num(v[k])) && (v.ohms === undefined || num(v.ohms)) && (KINDS[v.t as Item['t']]?.includes(v.kind as string) ?? true)
+    && (v.t !== 'breadboard' || SIZES.includes(v.size as string)) && (!onTable || [v.x, v.z].every(n => n === undefined || (num(n) && Math.abs(n) <= REACH)));
 }
 
 function pick<T>(from: unknown, ok: (v: unknown) => T | null): Record<string, T> {

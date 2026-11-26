@@ -44,7 +44,7 @@ test('leg counts match the legs the bench gives each part', () => {
   for (const k of Object.keys(counts) as PartKind[]) assert.equal(PINOUTS[k].legs.length, counts[k], k);
   for (const id of Object.keys(PARTS) as (keyof typeof PARTS)[]) {   // every part of the tray: as many legs in its pinout as holes it takes on the bench
     const tool = PARTS[id].tool, k = toolKind(tool);
-    if (k === 'button' || k === 'pad' || k === 'lcd' || k === 'breadboard') continue;   // a button covers a column no leg goes in, the pad and the LCD lie on the table, and a breadboard's "legs" are its strips
+    if (k === 'button' || k === 'pad' || k === 'lcd' || k === 'soil' || k === 'breadboard') continue;   // a button covers a column no leg goes in, the pad, the LCD and the potted soil probe stand on the table, and a breadboard's "legs" are its strips
     assert.equal(PINOUTS[k].legs.length, holesOf(makeItem(tool, [], 'd10', 'd14')).length, `${id}: one pinout leg for each hole`);
   }
 });

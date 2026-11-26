@@ -90,7 +90,7 @@ The circuit check explains problems in plain words:
 
 **Editing is forgiving.** Undo, redo and Reset bench live in the tray (<kbd>Ctrl</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd>, <kbd>Esc</kbd> and <kbd>Delete</kbd> work too). Drag either end of a wire (the cursor turns into a ✋) to replug it: the wire follows the pointer, and a taken or impossible spot is refused with a reason. Selecting a wire also shows **From** and **To** boxes to type new places.
 
-**Nothing lands on anything else.** Some things stand on the table beside the breadboard: a servo's motor (in front for rows f to j, behind for a to e), the wall a distance sensor measures to (anywhere from the breadboard's front edge out to 100 cm), the touch pad and the LCD. The touch pad and the LCD take the first free place, starting from their usual ones, so they make room for a motor or a wall. A servo or a distance sensor whose motor or wall would land on something is refused, saying what it would hit. All of this is `tableLayout` and `collisions` in `src/state/table.ts`, and `tests/collisions.test.ts` checks every mission, repair job and template.
+**Nothing lands on anything else.** Some things stand on the table beside the breadboard: a servo's motor (in front for rows f to j, behind for a to e), the wall a distance sensor measures to (anywhere from the breadboard's front edge out to 100 cm), the candle a flame sensor watches, the potted plant with the soil sensor, the touch pad and the LCD. The touch pad and the LCD take the first free place, starting from their usual ones, so they make room for a motor or a wall. A servo or a distance sensor whose motor or wall would land on something is refused, saying what it would hit. All of this is `tableLayout` and `collisions` in `src/state/table.ts`, and `tests/collisions.test.ts` checks every mission, repair job and template.
 
 **Placed parts move too.** Drag a part to other holes and it follows the pointer hole by hole, keeping its shape: an LED keeps its two legs the same distance apart, a knob its three columns, and a button stays across the middle gap. It shows in its new holes while they would take it, and a taken or impossible spot is refused with a reason when you let go. With a part selected, the arrow keys move it a hole at a time (five with <kbd>Shift</kbd>), and a quick run of nudges is one Undo step. Wires plugged in beside it stay where they are, as on a real breadboard, so moving a part can change the circuit. The rules are `movedPart` in `src/state/bench.ts`, tested in `tests/moveparts.test.ts`.
 
@@ -122,6 +122,19 @@ Need more room? The **Breadboard** tile in the tray's Wiring group adds a second
 - 🗑️ **Removing it takes off everything plugged into it**, and Undo puts it all back.
 
 The rules live in `src/state/bench.ts` (`withoutBreadboard`, `resizedBreadboard`, `movedBreadboard`), where things lie on the table and how the breadboard slides in `src/state/table.ts`, the separate rails in `holeNode` in `src/sim/circuit.ts`, and `tests/breadboard.test.ts` covers them.
+
+---
+
+### 🪴 The potted plant
+
+The soil moisture sensor is not plugged into the breadboard. Its probe stands in the soil of a potted plant on the table, the way one is used, and you wire the three pins on the probe's head to the bench yourself.
+
+- 📍 **It goes straight onto the table** when you pick it from the tray: in front of the breadboard, or the first free place if something is already there. There is one per bench.
+- 🔌 **Its pins are wired by name:** `SOIL:VCC`, `SOIL:SIG` and `SOIL:GND`, left to right on the probe's head. Click them like any other point, or type them (`soil:sig`). A wire to VCC comes out red and one to GND black. The probe stands on the side of the pot towards the bench, so its wires go off over the pot's edge and not through the plant.
+- ✋ **Drag the pot anywhere on the table** (the cursor turns into a ✋ over it), and the ends of its wires come with it. Like the second breadboard, it stops against the breadboards, the Uno, the LCD, the touch pad, servo motors, walls and candles, and slides along them. With it selected, the **arrow keys move it** a hole's width at a time (ten with <kbd>Shift</kbd>). Moving it never stops a running sketch.
+- 🌱 **The slider is the soil:** the soil darkens as it gets wetter, the gold strips on the probe glow with the reading, and the plant droops away from the probe and yellows as it dries out.
+
+In Plant alert (Uno) the pot stands in front of the breadboard, wired to the near rails and A0. In the Plant monitor template (ESP32) it stands behind the long breadboard, beside the far rails and D34. The item is a `module` of kind `soil` with an `x` and `z` instead of holes (`src/types.ts`). Where it stands, where its pins are and how it slides are in `src/state/table.ts` (`plantPlace`, `soilPinXZ`, `slidePlant`), the rules in `src/state/bench.ts` (`movedPlant`), and `tests/plant.test.ts` covers them.
 
 ---
 
@@ -301,6 +314,11 @@ The 3D bench is drawn like an illustration (`src/scene/world.ts`): toon-shaded s
 | 🌡️ TMP36 | D-shaped TO-92 case with its name on the flat face |
 | 🦾 Servo | Label, screw holes in the tabs, holes in the horn |
 | 🧱 Breadboard | A real channel down the middle, notched at each end |
+| 👋 Motion sensor | An HC-SR501: green board, the white Fresnel dome faceted on its square base, the orange trimmers and jumper on the back |
+| 💨 Gas sensor | An MQ-2 module: blue board, the sensor in its steel double-mesh cap on a bakelite base, the mesh glowing as gas builds up |
+| 🔥 Flame sensor | A red board with the black infrared receiver bent towards a candle, its blue trimmer, LM393 comparator and alarm light. The candle is unlit until the slider lights it: a teardrop flame in three layers (blue base, yellow core, orange tongue) with a soft glow, growing with the slider and flickering unless less motion is asked for |
+| 🌱 Soil moisture | A black fork-shaped probe with gold strips down both prongs, stuck in the soil of a potted plant that stands on the table by itself (see [The potted plant](#-the-potted-plant)). Its three pins stand up from its head. The plant is bigger than the probe; its soil darkens as it gets wetter, and the plant droops and yellows as it dries out, standing up green again once watered |
+| 💧 Water level | A red board with ten interleaved bare traces, wet from the tip down as the level rises |
 
 ---
 

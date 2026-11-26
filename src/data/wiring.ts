@@ -11,6 +11,7 @@ function pointName(a: string): string {
   if ((m = /^E:(.+)$/.exec(a))) return `ESP32 ${m[1].replace('GNDf', 'GND')} (hole ${ESP_HOLES[m[1]]})`;
   if (a === 'PAD') return 'the touch pad';
   if ((m = /^LCD:(.+)$/.exec(a))) return `the LCD's ${m[1]} pin`;
+  if ((m = /^SOIL:(.+)$/.exec(a))) return `the soil probe's ${m[1]} pin`;
   if ((m = /^([TB])([+-])(\d+)$/.exec(a))) return `${m[2] === '+' ? 'plus' : 'minus'} rail, ${m[1] === 'T' ? 'far' : 'near'} side${onExtraBoard(a) ? ', second breadboard' : ''}`;
   return 'hole ' + a;
 }
@@ -34,7 +35,9 @@ export function wiringRows(circuit: Item[]): WiringRow[] {
       case 'rgb': return { part: 'RGB LED', where: `red ${it.row}${it.col}, long leg (−) ${it.row}${it.col + 1}, green ${it.row}${it.col + 2}, blue ${it.row}${it.col + 3}` };
       case 'slide': return { part: 'Slide switch', where: `${it.row}${it.col}, ${it.row}${it.col + 1} (the middle leg), ${it.row}${it.col + 2}` };
       case 'contact': return { part: it.kind === 'tilt' ? 'Tilt switch' : 'Reed switch', where: `${it.a} to ${it.b}` };
-      case 'module': return { part: ITEM_INFO[it.kind][0], where: `+ ${it.row}${it.col}, OUT ${it.row}${it.col + 1}, GND ${it.row}${it.col + 2}` };
+      case 'module': return it.kind === 'soil'
+        ? { part: ITEM_INFO.soil[0], where: 'its probe in a potted plant on the table, wired by the three pins on its head: VCC, SIG and GND' }
+        : { part: ITEM_INFO[it.kind][0], where: `+ ${it.row}${it.col}, OUT ${it.row}${it.col + 1}, GND ${it.row}${it.col + 2}` };
       case 'joy': return { part: 'Joystick', where: `GND ${it.row}${it.col}, + ${it.row}${it.col + 1}, VRx ${it.row}${it.col + 2}, VRy ${it.row}${it.col + 3}, SW ${it.row}${it.col + 4}` };
       case 'lcd': return { part: 'LCD display (16×2, I2C)', where: 'on the table beside the bench, wherever there is room, wired by its four pins: GND, VCC, SDA and SCL' };
       case 'breadboard': return { part: breadboardName(it.size), where: `on the table beside the first one: columns ${MAIN_COLS + 1} to ${MAIN_COLS + BREADBOARD_COLS[it.size]}, with rails of its own` };

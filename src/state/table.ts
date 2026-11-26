@@ -1,7 +1,8 @@
 /* Where things lie on the table, seen from above, in millimetres from the middle of the bench's own breadboard: x to the right, z towards the student.
    No 3D in here. The 3D bench is built from these numbers, and the rules below keep things from landing on each other: the touch pad and the LCD
-   find a free place, a part whose motor or wall would stand on something is refused, and the second breadboard stops against whatever is in its way. */
-import { BREADBOARD_COLS, MAIN_COLS, type BoardId, type BreadboardSize, type Item } from '../types';
+   find a free place, a part whose motor or wall would stand on something is refused, and the second breadboard and the potted plant stop against whatever
+   is in their way. */
+import { BREADBOARD_COLS, MAIN_COLS, SOIL_PINS, type BoardId, type BreadboardSize, type Item, type RowModule } from '../types';
 
 /** The distance between two holes. */
 export const PITCH = 2.54;
@@ -85,6 +86,30 @@ export function wallSweep(items: Item[], it: Extract<Item, { t: 'sonar' }>, plac
   const bbZ = p.z - ROWZ[it.row], near = wallZ(p.z, bbZ, WALL_CM[0]) - 3, far = wallZ(p.z, bbZ, WALL_CM[1]) + 3;
   return { x: p.x + 3.81, z: (near + far) / 2, w: 48, d: far - near };
 }
+/** How far in front of the middle of its breadboard the candle a flame sensor watches stands on the table: just beyond the breadboard's near edge, in line with the sensor. */
+export const CANDLE_REACH = BB_DEPTH / 2 + 7.5;
+export function candleSpot(items: Item[], it: RowModule, place?: Place): Rect | null {
+  if (it.kind !== 'flame') return null;
+  const mid = holeXZ(items, it.col + 1, ROWZ[it.row], place);
+  return mid && { x: mid.x, z: mid.z - ROWZ[it.row] + CANDLE_REACH, w: 9.6, d: 9.6 };
+}
+/* The soil moisture sensor's potted plant stands on the table on its own, wherever it is dragged, and its probe's pins are wired to the bench. */
+/** How wide the pot is across its rim. */
+export const POT_SIZE = 41;
+/** Where the pot stands until it is moved: in front of the breadboard, just clear of its near edge. */
+export const PLANT_AT: Place = { x: colX(22), z: BB_DEPTH / 2 + 3 + POT_SIZE / 2 };
+export const plantPlace = (it: { x?: number; z?: number }): Place => ({ x: it.x ?? PLANT_AT.x, z: it.z ?? PLANT_AT.z });
+export const plantRect = (p: Place): Rect => ({ x: p.x, z: p.z, w: POT_SIZE, d: POT_SIZE });
+/** Where the probe stands in the pot: on the left, on the side towards the bench's own breadboard, so the wires from its pins go off over the pot's
+    edge and not through the plant, which grows on the other side. */
+export const probeAt = (p: Place): Place => ({ x: p.x - 4.5, z: p.z + (p.z >= 0 ? -8.5 : 8.5) });
+/** Where one of the pins on the probe's head is, seen from above. They run VCC, SIG, GND from left to right. */
+export function soilPinXZ(p: Place, pin: string): Place | null {
+  const i = (SOIL_PINS as readonly string[]).indexOf(pin), q = probeAt(p);
+  return i < 0 ? null : { x: q.x + (i - 1) * PITCH, z: q.z };
+}
+/** Where a new pot is put, first choice first: in front of the breadboard, then in front of the gap beside the Uno, behind, and further out. */
+const PLANT_SPOTS: Place[] = [PLANT_AT, { x: -60, z: PLANT_AT.z }, { x: PLANT_AT.x, z: -PLANT_AT.z }, { x: -60, z: -PLANT_AT.z }, { x: 90, z: PLANT_AT.z }, { x: 90, z: -PLANT_AT.z }, { x: PLANT_AT.x, z: 110 }, { x: -60, z: 110 }];
 const padRect = (p: Place): Rect => ({ x: p.x, z: p.z, w: 18, d: 18 });
 /** The display's board, and the backpack's narrower tab on its left that holds the four pins. */
 const lcdRects = (p: Place): Rect[] => [{ x: p.x, z: p.z, w: 80, d: 36 }, { x: p.x - 44, z: p.z, w: 12, d: 15 }];
@@ -97,12 +122,15 @@ export interface Thing { what: string; rect: Rect; rides: boolean; id?: string }
 /** Everything on the table and where it lies, with the places found for the touch pad and the LCD. */
 export interface Layout { things: Thing[]; pad: Place | null; lcd: Place | null }
 
-/** The things that are on the table because of the parts on the bench: servo motors and the walls in front of distance sensors. */
+/** The things that are on the table because of the parts on the bench: servo motors, the walls in front of distance sensors, the candles that flame sensors watch,
+    and the potted plant with the soil sensor in it. */
 function partThings(items: Item[], place?: Place): Thing[] {
   const out: Thing[] = [];
   for (const it of items) {
     if (it.t === 'servo') { const r = servoBody(items, it, place); if (r) out.push({ what: 'a servo motor', rect: r, rides: it.col > MAIN_COLS, id: it.id }); }
     if (it.t === 'sonar') { const r = wallSweep(items, it, place); if (r) out.push({ what: 'the wall in front of a distance sensor', rect: r, rides: it.col > MAIN_COLS, id: it.id }); }
+    if (it.t === 'module' && it.kind === 'soil') out.push({ what: 'the potted plant', rect: plantRect(plantPlace(it)), rides: false, id: it.id });
+    else if (it.t === 'module') { const r = candleSpot(items, it, place); if (r) out.push({ what: 'the candle in front of a flame sensor', rect: r, rides: it.col > MAIN_COLS, id: it.id }); }
   }
   return out;
 }
@@ -137,12 +165,25 @@ export function fits(board: BoardId, items: Item[], size: BreadboardSize, p: Pla
   return obstacles(board, items).every(o => moving.every(m => !overlaps(m, o)));
 }
 
+/** Where a new potted plant can go: the first of its places that nothing lies on, or null when the table is full. */
+export function plantSpot(board: BoardId, items: Item[]): Place | null {
+  const { things } = tableLayout(board, items);
+  return PLANT_SPOTS.find(p => things.every(t => !overlaps(plantRect(p), t.rect))) ?? null;
+}
+
 const tenth = (v: number) => Math.round(v * 10) / 10, within = (v: number) => Math.max(-REACH, Math.min(REACH, v));
-/** Where the second breadboard ends up when it is pushed from `from` towards `want`. It moves in small steps, first along x and then along z,
-    so it stops flush against whatever is in the way and slides along it, the way a real one does when pushed into something.
-    A breadboard that already lies on something (an LCD put down on top of it) may go anywhere, so it can be moved off. Places are kept to a tenth of a millimetre. */
-export function slide(board: BoardId, items: Item[], size: BreadboardSize, from: Place, want: Place): Place {
-  const to = { x: within(want.x), z: within(want.z) }, ok = (p: Place) => fits(board, items, size, p);
+/** Where the second breadboard ends up when it is pushed from `from` towards `want`. See `slideWhere`. */
+export const slide = (board: BoardId, items: Item[], size: BreadboardSize, from: Place, want: Place): Place => slideWhere(p => fits(board, items, size, p), from, want);
+/** Where the potted plant ends up when it is pushed from `from` towards `want`: it keeps clear of everything else on the table, as it was before the push. */
+export function slidePlant(board: BoardId, items: Item[], id: string, from: Place, want: Place): Place {
+  const others = tableLayout(board, items).things.filter(t => t.id !== id).map(t => t.rect);
+  return slideWhere(p => others.every(o => !overlaps(plantRect(p), o)), from, want);
+}
+/** Where something on the table ends up when it is pushed from `from` towards `want`, where `ok` says where it may lie. It moves in small steps, first along x
+    and then along z, so it stops flush against whatever is in the way and slides along it, the way a real one does when pushed into something.
+    Something that already lies on something (an LCD put down on top of a breadboard) may go anywhere, so it can be moved off. Places are kept to a tenth of a millimetre. */
+function slideWhere(ok: (p: Place) => boolean, from: Place, want: Place): Place {
+  const to = { x: within(want.x), z: within(want.z) };
   if (!ok(from)) return { x: tenth(to.x), z: tenth(to.z) };
   const along = (p: Place, axis: 'x' | 'z', goal: number): Place => {   // as far towards goal along one axis as it can go
     const at = (f: number) => ({ ...p, [axis]: p[axis] + (goal - p[axis]) * f });

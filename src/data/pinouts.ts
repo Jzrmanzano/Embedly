@@ -200,11 +200,11 @@ export const PINOUTS: Record<PartKind, Pinout> = {
   soil: {
     title: 'Soil moisture sensor',
     legs: [
-      { name: '+', tone: 'plus', note: 'Power: 5V on the Uno, 3V3 on the ESP32.' },
-      { name: 'OUT', tone: 'signal', note: 'A voltage that rises as the soil gets wetter. Wire it to an analog pin and use analogRead().' },
-      { name: '−', tone: 'minus', note: 'Ground. Wire it to GND.' },
+      { name: 'VCC', tone: 'plus', note: 'Power: 5V on the Uno, 3V3 on the ESP32.' },
+      { name: 'SIG', tone: 'signal', note: 'A voltage that rises as the soil gets wetter. Wire it to an analog pin and use analogRead().' },
+      { name: 'GND', tone: 'minus', note: 'Ground. Wire it to GND.' },
     ],
-    tip: 'Only the two prongs go in the soil. Dry soil reads near 0, soaked soil near the top of the range.',
+    tip: 'The probe stands in a potted plant on the table, and these pins are on its head: wire them to the bench, and drag the pot wherever suits. Dry soil reads near 0, soaked soil near the top of the range.',
   },
   water: {
     title: 'Water level sensor',

@@ -1,8 +1,8 @@
 /* The rules of placing parts on the bench: which connection points exist, which are taken, and what a part needs. No 3D and no React in here. */
 import { ESP_HOLES } from '../data/boards';
 import { LCD_PINS, lcdPoint } from '../sim/lcd';
-import { collisions, fits, placeOf, slide, type Place, type Thing } from './table';
-import { BREADBOARD_COLS, extraColumns, itemId, kindOf, MAIN_COLS, onExtraBoard, type BoardId, type BreadboardSize, type ContactKind, type Item, type ModuleKind, type PartKind, type WireColor } from '../types';
+import { collisions, fits, placeOf, plantPlace, slide, slidePlant, type Place, type Thing } from './table';
+import { BREADBOARD_COLS, extraColumns, itemId, kindOf, MAIN_COLS, onExtraBoard, SOIL_PINS, soilPoint, type BoardId, type BreadboardSize, type ContactKind, type Item, type ModuleKind, type PartKind, type WireColor } from '../types';
 
 export type ToolKind = Item['t'];
 /** The part in hand. `sub` says which sensor module or which contact it is, and `size` how long a breadboard is. */
@@ -22,6 +22,8 @@ const RAILS = ['T+', 'T-', 'B+', 'B-'];
 const ESP_FIRST_FREE = 22;
 const UNO_PINS = [...Array.from({ length: 14 }, (_, i) => String(i)), 'A0', 'A1', 'A2', 'A3', 'A4', 'A5', '5V', '3V3', 'GND', 'GND2', 'GNDb', 'VIN'];
 
+/** Is this the soil moisture sensor, whose probe stands in a pot on the table? */
+export const isSoil = (it: Item) => it.t === 'module' && it.kind === 'soil';
 export const isHole = (n: string) => /^[a-j]\d+$/.test(n) || /^[TB][+-]\d+$/.test(n);
 const colOf = (n: string) => +n.replace(/^\D+/, '');
 const rowOf = (n: string) => n[0];
@@ -38,6 +40,7 @@ export function allTerminals(board: BoardId, items: Item[]): string[] {
   else out.push(...Object.keys(ESP_HOLES).filter(p => p !== 'EN').map(p => 'E:' + p));
   if (items.some(it => it.t === 'pad')) out.push('PAD');
   if (items.some(it => it.t === 'lcd')) out.push(...LCD_PINS.map(lcdPoint));
+  if (items.some(isSoil)) out.push(...SOIL_PINS.map(soilPoint));
   return out;
 }
 
@@ -47,7 +50,8 @@ export function holesOf(it: Item): string[] {
     case 'wire': case 'res': case 'buzzer': case 'ldr': case 'contact': return [it.a, it.b];
     case 'led': return [it.a, it.k];
     case 'button': return [`e${it.col}`, `e${it.col + 1}`, `e${it.col + 2}`, `f${it.col}`, `f${it.col + 1}`, `f${it.col + 2}`];   // the body covers the middle column too, though no leg goes in it
-    case 'pot': case 'servo': case 'temp': case 'sonar': case 'rgb': case 'slide': case 'module': case 'joy': return Array.from({ length: WIDTH[it.t]! }, (_, i) => `${it.row}${it.col + i}`);
+    case 'pot': case 'servo': case 'temp': case 'sonar': case 'rgb': case 'slide': case 'joy': return Array.from({ length: WIDTH[it.t]! }, (_, i) => `${it.row}${it.col + i}`);
+    case 'module': return it.kind === 'soil' ? [] : Array.from({ length: WIDTH.module! }, (_, i) => `${it.row}${it.col + i}`);   // the soil probe stands in its pot on the table
     case 'pad': case 'lcd': case 'breadboard': return [];   // they lie on the table, not in the breadboard
   }
 }
@@ -79,10 +83,11 @@ export function placementError(board: BoardId, items: Item[], it: Item): string 
   if (WIDTH[it.t] && 'col' in it && board === 'esp32' && it.col < ESP_FIRST_FREE) return 'That spot is under the ESP32. Use the free holes on the right.';
   if (it.t === 'pad' && items.some(x => x.t === 'pad')) return 'There is only one touch pad.';
   if (it.t === 'lcd' && items.some(x => x.t === 'lcd')) return 'There is only one LCD display.';
+  if (isSoil(it) && items.some(isSoil)) return 'There is only one soil moisture sensor. Its pins are wired by name: SOIL:VCC, SOIL:SIG and SOIL:GND.';
   const second = items.find(x => x.t === 'breadboard');   // the LCD and the touch pad each have a place of their own on the table, which the second breadboard may have been moved onto
   if ((it.t === 'lcd' || it.t === 'pad') && second?.t === 'breadboard' && !fits(board, [...items, it], second.size, placeOf(second))) return `The second breadboard is lying where the ${what} goes. Drag it out of the way first.`;
   if (it.t === 'breadboard' && items.some(x => x.t === 'breadboard')) return 'The bench has room for one more breadboard, and it is already there.';
-  if (it.t === 'servo' || it.t === 'sonar' || it.t === 'lcd' || it.t === 'pad') return crowded(board, items, it);
+  if (it.t === 'servo' || it.t === 'sonar' || it.t === 'lcd' || it.t === 'pad' || (it.t === 'module' && (it.kind === 'soil' || it.kind === 'flame'))) return crowded(board, items, it);
   return null;
 }
 
@@ -97,12 +102,14 @@ function crowded(board: BoardId, items: Item[], it: Item): string | null {
   if (!other) return `There would be no room left on the table for ${[a, b].find(t => t.what.includes('LCD') || t.what.includes('pad'))?.what ?? 'everything'}. Put the ${what} somewhere else.`;
   if (it.t === 'servo') return `Here the servo's motor would lie on ${other.what}. The motor sits on the table beyond the breadboard's edge: in front for rows f to j, behind for rows a to e. Plug it in further along, or on the other side.`;
   if (it.t === 'sonar') return `The wall the sensor measures to would run into ${other.what}. It stands on the table in front of the sensor. Plug the sensor in further along.`;
+  if (it.t === 'module' && it.kind === 'soil') return `The potted plant would stand on ${other.what}. Drag it somewhere clear.`;
+  if (it.t === 'module') return `The candle it watches would stand on ${other.what}. It stands on the table just in front of the breadboard, in line with the sensor. Plug the sensor in further along.`;
   return `There is no room left on the table for the ${what}.`;
 }
 
 /** Points that carry power or ground, so wires to them can be coloured red and black. */
-const isPlus = (n: string) => /^[TB]\+/.test(n) || /^[UE]:(5V|3V3|VIN)$/.test(n) || n === lcdPoint('VCC');
-const isMinus = (n: string) => /^[TB]-/.test(n) || /^[UE]:GND/.test(n) || n === lcdPoint('GND');
+const isPlus = (n: string) => /^[TB]\+/.test(n) || /^[UE]:(5V|3V3|VIN)$/.test(n) || n === lcdPoint('VCC') || n === soilPoint('VCC');
+const isMinus = (n: string) => /^[TB]-/.test(n) || /^[UE]:GND/.test(n) || n === lcdPoint('GND') || n === soilPoint('GND');
 const WIRE_CYCLE: WireColor[] = ['orange', 'yellow', 'green', 'blue', 'purple', 'white'];
 
 export function nextId(items: Item[], prefix: string): string {
@@ -144,7 +151,10 @@ export function makeItem(tool: Tool, items: Item[], a: string, b?: string): Item
     case 'slide': return { t: 'slide', id: nextId(items, 'slide'), row, col, ctl: DEFAULT_CTL.slide! };
     case 'joy': return { t: 'joy', id: nextId(items, 'joy'), row, col, ctl: DEFAULT_CTL.joy! };
     case 'contact': { const kind = toolKind(tool) as ContactKind; return { t: 'contact', kind, id: nextId(items, kind), a, b: b!, ctl: DEFAULT_CTL[kind]! }; }
-    case 'module': { const kind = toolKind(tool) as ModuleKind; return { t: 'module', kind, id: nextId(items, kind), row, col, ctl: DEFAULT_CTL[kind]! }; }
+    case 'module': {
+      const kind = toolKind(tool) as ModuleKind;
+      return kind === 'soil' ? { t: 'module', kind, id: nextId(items, kind), ctl: DEFAULT_CTL.soil! } : { t: 'module', kind, id: nextId(items, kind), row, col, ctl: DEFAULT_CTL[kind]! };
+    }
     case 'lcd': return { t: 'lcd', id: nextId(items, 'lcd') };
     case 'breadboard': return { t: 'breadboard', id: nextId(items, 'breadboard'), size: tool.size ?? 'short' };
   }
@@ -163,6 +173,13 @@ export function resizedBreadboard(board: BoardId, items: Item[], size: Breadboar
   return { items: items.map(it => (it.t === 'breadboard' ? { ...it, size } : it)) };
 }
 
+/** Moves the potted plant towards a place on the table, as far as it will go (see `slidePlant`). Gives back the bench as it was when there is none, or it does not move. */
+export function movedPlant(board: BoardId, items: Item[], want: Place): Item[] {
+  const k = items.findIndex(isSoil), it = items[k];
+  if (!it || it.t !== 'module' || it.kind !== 'soil') return items;
+  const from = plantPlace(it), to = slidePlant(board, items, it.id, from, want);
+  return to.x === from.x && to.z === from.z ? items : items.map((x, i) => (i === k ? { ...it, x: to.x, z: to.z } : x));
+}
 /** Moves the second breadboard towards a place on the table, as far as it will go (see `slide`). Gives back the bench as it was when there is none, or it does not move. */
 export function movedBreadboard(board: BoardId, items: Item[], want: Place): Item[] {
   const k = items.findIndex(it => it.t === 'breadboard'), bb = items[k];
@@ -173,8 +190,8 @@ export function movedBreadboard(board: BoardId, items: Item[], want: Place): Ite
 /* --- moving a placed part to other holes --- */
 /** The rows of a breadboard from its far edge to its near one: the far rails, a to j, and the near rails. */
 const ROWS = ['T+', 'T-', ...'abcdefghij', 'B-', 'B+'];
-/** Can this part be picked up and put in other holes? A wire moves by its ends, and the touch pad, the LCD and the second breadboard lie on the table. */
-export const movable = (it: Item) => it.t !== 'wire' && it.t !== 'pad' && it.t !== 'lcd' && it.t !== 'breadboard';
+/** Can this part be picked up and put in other holes? A wire moves by its ends, and the touch pad, the LCD, the second breadboard and the potted plant lie on the table. */
+export const movable = (it: Item) => it.t !== 'wire' && it.t !== 'pad' && it.t !== 'lcd' && it.t !== 'breadboard' && !isSoil(it);
 const rowCol = (p: string): [number, number] | null => { const m = /^([a-j]|[TB][+-])(\d+)$/.exec(p); return m ? [ROWS.indexOf(m[1]), +m[2]] : null; };
 /** How many rows and columns it is from one hole to another, or null when either is not a breadboard hole. */
 export function holeOffset(from: string, to: string): [rows: number, cols: number] | null {
@@ -194,6 +211,7 @@ export function shiftedPart(it: Item, rows: number, cols: number): Item | null {
     case 'res': case 'buzzer': case 'ldr': case 'contact': { const a = hole(it.a), b = hole(it.b); return a && b ? { ...it, a, b } : null; }
     case 'button': return it.col + cols >= 1 ? { ...it, col: it.col + cols } : null;
     case 'pot': case 'servo': case 'temp': case 'sonar': case 'rgb': case 'slide': case 'module': case 'joy': {
+      if (it.t === 'module' && it.kind === 'soil') return null;
       const row = ROWS[ROWS.indexOf(it.row) + rows];
       return row && /^[a-j]$/.test(row) && it.col + cols >= 1 ? { ...it, row, col: it.col + cols } : null;
     }

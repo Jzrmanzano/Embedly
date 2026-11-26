@@ -167,7 +167,10 @@ test('a tilt switch is closed until it is tilted, and a reed switch is open unti
 });
 
 /* --- sensor modules --- */
-const module = (kind: ModuleKind, plus = 'T+10', pin = 'U:A0'): Item[] => [...POWER, { t: 'module', kind, id: 'm', row: 'e', col: 10, ctl: '' }, wire('a10', plus), wire('a11', pin), wire('a12', 'T-12')];
+/** A sensor module wired +, OUT, GND: in holes e10 to e12, or for the soil sensor by the pins on its probe, which stands in its pot on the table. */
+const module = (kind: ModuleKind, plus = 'T+10', pin = 'U:A0'): Item[] => kind === 'soil'
+  ? [...POWER, { t: 'module', kind, id: 'm', ctl: '' }, wire('SOIL:VCC', plus), wire('SOIL:SIG', pin), wire('SOIL:GND', 'T-12')]
+  : [...POWER, { t: 'module', kind, id: 'm', row: 'e', col: 10, ctl: '' }, wire('a10', plus), wire('a11', pin), wire('a12', 'T-12')];
 const out = (kind: ModuleKind, v: number, items = module(kind)) => +analyze('uno', items).solve({}, { m: v }).volt('U:A0').toFixed(2);
 
 test('every sensor module wired +, OUT, GND has nothing to fix and follows its control', () => {
@@ -195,9 +198,12 @@ test('a motion sensor reads HIGH on both boards, and a sketch sees it', async ()
 
 test('the circuit check says what a sensor module is missing', () => {
   const no = (drop: string) => titles('uno', module('soil').filter(it => !(it.t === 'wire' && (it.a === drop || it.b === drop))));
-  assert.deepEqual(no('a12'), ['Soil moisture sensor has no ground']);
-  assert.deepEqual(no('a10'), ['Soil moisture sensor has no power']);
-  assert.deepEqual(no('a11'), ['Soil moisture sensor is not connected to a pin']);
+  assert.deepEqual(no('SOIL:GND'), ['Soil moisture sensor has no ground']);
+  assert.deepEqual(no('SOIL:VCC'), ['Soil moisture sensor has no power']);
+  assert.deepEqual(no('SOIL:SIG'), ['Soil moisture sensor is not connected to a pin']);
+  const plain = (drop: string) => analyze('uno', module('soil').filter(it => !(it.t === 'wire' && it.a === drop))).issues[0].plain;
+  assert.match(plain('SOIL:SIG'), /SIG pin is not wired/, 'the pins go by the names printed on the probe');
+  assert.doesNotMatch(plain('SOIL:GND'), /on the right/, 'the probe has no left and right on the breadboard');
   const weak: Item[] = [wire('U:3V3', 'T+1'), wire('U:GND', 'T-1'), ...module('gas').slice(2)];
   assert.match(analyze('uno', weak).issues[0].plain, /needs 5 V but its \+ pin only gets 3.3 V/);
   assert.equal(out('gas', 1, weak), 0, 'an unpowered sensor gives no reading');

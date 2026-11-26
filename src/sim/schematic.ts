@@ -5,7 +5,7 @@
    A connection that cannot be drawn as a line gets a name tag at both ends. This is layout only: no React and no DOM. */
 import { ohmsLabel } from '../data/resistor';
 import { spanOf } from '../data/symbols';
-import { itemId, ledColorName, type BoardId, type Item, type ModuleKind } from '../types';
+import { itemId, ledColorName, moduleLegs, type BoardId, type Item, type ModuleKind } from '../types';
 import { analyze, boardPins, joyLegs, rgbLegs, servoLegs, type Net } from './circuit';
 import { LCD_PINS, lcdPoint } from './lcd';
 
@@ -85,7 +85,7 @@ export function layoutSchematic(board: BoardId, items: Item[]): Schematic {
       case 'pad': blocks.push({ id, kind: 'pad', title: 'touch pad', legs: [{ name: 'pad', net: net('PAD') }] }); break;
       case 'contact': twos.push({ id, symbol: 'button', legs: [net(it.a), net(it.b)], label: it.kind === 'tilt' ? 'tilt switch' : 'reed switch' }); break;
       case 'slide': blocks.push({ id, kind: 'box', title: 'slide switch', box: 'Slide switch', legs: ['1', 'COM', '2'].map((name, i) => ({ name, net: net(`${it.row}${it.col + i}`) })) }); break;
-      case 'module': blocks.push({ id, kind: 'box', title: MODULE_TITLE[it.kind][0], box: MODULE_TITLE[it.kind][1], legs: ['+', 'OUT', 'GND'].map((name, i) => ({ name, net: net(`${it.row}${it.col + i}`) })) }); break;
+      case 'module': blocks.push({ id, kind: 'box', title: MODULE_TITLE[it.kind][0], box: MODULE_TITLE[it.kind][1], legs: moduleLegs(it).map((p, i) => ({ name: ['+', 'OUT', 'GND'][i], net: net(p) })) }); break;
       case 'rgb': { const l = rgbLegs(it); blocks.push({ id, kind: 'box', title: 'RGB LED', box: 'RGB LED', legs: [{ name: 'R', net: net(l.r) }, { name: '−', net: net(l.com) }, { name: 'G', net: net(l.g) }, { name: 'B', net: net(l.b) }] }); break; }
       case 'joy': { const l = joyLegs(it); blocks.push({ id, kind: 'box', title: 'joystick', box: 'Joystick', legs: [{ name: 'GND', net: net(l.gnd) }, { name: '+', net: net(l.vcc) }, { name: 'VRx', net: net(l.x) }, { name: 'VRy', net: net(l.y) }, { name: 'SW', net: net(l.sw) }] }); break; }
       case 'lcd': blocks.push({ id, kind: 'box', title: 'LCD display', box: 'LCD 16×2', legs: LCD_PINS.map(name => ({ name, net: net(lcdPoint(name)) })) }); break;

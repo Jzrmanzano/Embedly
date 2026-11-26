@@ -847,8 +847,9 @@ void loop() {
   {
     id: 'soil', group: 'parts', title: 'Soil moisture sensor', lede: 'Two prongs in the soil, and a voltage that rises as it gets wetter.',
     blocks: [
-      { p: 'The sensor comes in two halves: a fork with two bare prongs that goes in the soil, and a small board that turns what the prongs feel into a voltage. Water carries electricity, so the wetter the soil, the more easily it flows between the prongs and the <b>higher</b> the voltage on OUT.' },
-      { table: [['+', 'Power: 5V on the Uno, 3V3 on the ESP32. Anything from 3 V up works.'], ['OUT', 'The middle pin. Wire it to an analog pin.'], ['GND', 'GND']], head: ['Pin', 'Goes to'] },
+      { p: 'The sensor is a fork with two bare prongs that goes in the soil, with a little circuit on its head that turns what the prongs feel into a voltage. Water carries electricity, so the wetter the soil, the more easily it flows between the prongs and the <b>higher</b> the voltage on SIG.' },
+      { p: 'On the bench the probe stands in a potted plant on the table, as it would in a greenhouse. Wire the three pins on its head to the breadboard or straight to the board, and drag the pot wherever suits: its wires come with it.' },
+      { table: [['VCC', 'Power: 5V on the Uno, 3V3 on the ESP32. Anything from 3 V up works.'], ['SIG', 'The middle pin. Wire it to an analog pin.'], ['GND', 'GND']], head: ['Pin', 'Goes to'] },
       { table: [
         ['Bone dry', 'Close to 0 V. The pin reads near <b>0</b>.'],
         ['Drying out', 'About a quarter of the supply. The pin reads around 250 on the Uno.'],

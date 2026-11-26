@@ -2,7 +2,7 @@
    to try, take apart and change. They use only the tray's parts. Each has a proof, checks its own build and sketch must pass, so a template
    cannot quietly stop working: tests/templates.test.ts runs them, and also places every build by hand, the way a student would. */
 import { phases, type InputStep, type Scenario, type Trace } from '../sim/check';
-import { esp5vNear, espFarSensor, espSensorPower, LONG, unoGndFar, unoPowerNear } from './missions';
+import { esp5vNear, espSensorPower, LONG, unoGndFar, unoPowerNear } from './missions';
 import { LED_COLORS, type BoardId, type Item } from '../types';
 
 export interface Template {
@@ -290,13 +290,16 @@ void loop() {
   {
     id: 'plant', title: 'Plant monitor', guide: ['soil', 'wifi', 'analog'],
     about: 'A soil sensor in a pot: the phone shows how damp the soil is, and a light comes on when the plant needs water.',
-    tryIt: 'Run it, press Go on the phone, then dry the soil out with its slider and tap Check again.',
-    circuit: [LONG, ...espLed(), ...espSensorPower, ...espFarSensor({ t: 'module', kind: 'soil', id: 'soil', row: 'd', col: 36, ctl: 'Soil moisture' })],
+    tryIt: 'Run it and press Go on the phone. Then dry the soil out with its slider: the plant the probe stands in droops, the light comes on, and Check again shows it on the phone.',
+    circuit: [   // the potted plant behind the long breadboard, its probe's pins in line with columns 36 to 38, beside the far rails and the ESP32's analog pins
+      LONG, ...espLed(), ...espSensorPower, { t: 'module', kind: 'soil', id: 'soil', ctl: 'Soil moisture', x: 72.1, z: -50.2 },
+      { t: 'wire', a: 'SOIL:VCC', b: 'T+36', c: 'red' }, { t: 'wire', a: 'SOIL:SIG', b: 'E:D34', c: 'green' }, { t: 'wire', a: 'SOIL:GND', b: 'T-38', c: 'black' },
+    ],
     sketch: `// Plant monitor: the soil's moisture on the phone, and a light when the plant needs water
 #include <WiFi.h>
 #include <WebServer.h>
 
-const int SOIL_PIN = 34;    // the sensor's OUT: higher when the soil is wetter
+const int SOIL_PIN = 34;    // the probe's SIG pin: higher when the soil is wetter
 const int LED_PIN = 5;      // on when the soil is dry
 const int DRY_BELOW = 30;   // percent
 
@@ -346,8 +349,8 @@ void loop() {
       LONG, ...espLed(), ...esp5vNear,
       { t: 'module', kind: 'pir', id: 'pir', row: 'g', col: 36, ctl: 'Movement' },
       { t: 'wire', a: 'j36', b: 'B+36', c: 'red' }, { t: 'wire', a: 'j37', b: 'E:D18', c: 'yellow' }, { t: 'wire', a: 'j38', b: 'B-38', c: 'black' },
-      { t: 'buzzer', id: 'buzz', a: 'g44', b: 'g47' },
-      { t: 'wire', a: 'E:D19', b: 'j44', c: 'purple' }, { t: 'wire', a: 'j47', b: 'B-47', c: 'black' },
+      { t: 'buzzer', id: 'buzz', a: 'g45', b: 'g48' },   // clear of the motion sensor's board, which is 32 mm wide
+      { t: 'wire', a: 'E:D19', b: 'j45', c: 'purple' }, { t: 'wire', a: 'j48', b: 'B-48', c: 'black' },
     ],
     sketch: `// Motion alarm: a light and a beep when someone moves, until all is still for 3 seconds
 const int PIR_PIN = 18;      // HIGH while the sensor sees movement

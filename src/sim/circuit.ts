@@ -3,7 +3,7 @@
    reports the mistakes a student can make, and `solve` finds the voltage of every net and the current in every part
    for a given state of the board's pins. All numbers are simple DC values: enough to teach, small enough to explain. */
 import { ESP_HOLES } from '../data/boards';
-import { itemId, MAIN_COLS, type BoardId, type Item, type ModuleKind } from '../types';
+import { itemId, MAIN_COLS, moduleLegs, type BoardId, type Item, type ModuleKind } from '../types';
 import { LCD_MIN_VOLTS, LCD_PINS, lcdPoint } from './lcd';
 
 /** What a pin is doing right now. `level` runs from 0 to 1 (a PWM duty cycle for analogWrite). */
@@ -224,7 +224,7 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
         needsRoot.push([mk('SW', c, r, { id: `${id}:r`, src: id, own: id }), []]); break;
       }
       case 'module': {
-        const [vcc, out, gnd] = [0, 1, 2].map(i => `${it.row}${it.col + i}`);
+        const [vcc, out, gnd] = moduleLegs(it);
         needsRoot.push([mk('MOD', vcc, gnd, { w: out, ohms: MODULE_OHMS[it.kind] }), [vcc, out, gnd]]); break;
       }
       case 'rgb': {
@@ -334,13 +334,14 @@ export function analyze(board: BoardId, items: Item[]): Analysis {
       }
       if (e.kind === 'MOD' && e.it.t === 'module') {
         const name = MODULE_NAME[e.it.kind], Name = name[0].toUpperCase() + name.slice(1), min = MODULE_MIN_VOLTS[e.it.kind], out = sets.find(term(e.w!)), onPin = pinRoots.some(([, pr]) => pr === out);
+        const soil = e.it.kind === 'soil', plusPin = soil ? 'VCC pin' : '+ pin, on the left,', gndPin = soil ? 'GND pin' : 'GND pin, on the right,', outPin = soil ? 'SIG pin' : 'middle (OUT) pin';   // the soil probe's pins are named on its head
         if (live(rb, 2.7) && ra === gnd) issues.push({ kind: 'unpowered', severity: 'error', part: e.id, title: `${Name} is in backwards`,
-          plain: `The ${name}'s + pin is on GND and its GND pin is on power, the wrong way round. A real module can be damaged like this. Swap the two outer pins: + on the left, GND on the right.` });
-        else if (rb !== gnd) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: `${Name} has no ground`, plain: `The ${name}'s GND pin, on the right, is not connected to GND, so it cannot work.` });
+          plain: `The ${name}'s + pin is on GND and its GND pin is on power, the wrong way round. A real module can be damaged like this. ${soil ? 'Swap the wires on its VCC and GND pins.' : 'Swap the two outer pins: + on the left, GND on the right.'}` });
+        else if (rb !== gnd) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: `${Name} has no ground`, plain: `The ${name}'s ${gndPin} is not connected to GND, so it cannot work.` });
         else if (!live(ra, min)) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: `${Name} has no power`,
           plain: (volts(ra) ?? 0) > 0 ? `The ${name} needs 5 V but its + pin only gets ${volts(ra)} V, so it gives no reading. Power it from 5V${board === 'esp32' ? ' (VIN on the ESP32)' : ''}.`
-            : `The ${name}'s + pin, on the left, is not connected to ${min > 4 ? (board === 'esp32' ? 'VIN (5 V)' : '5V') : (board === 'esp32' ? '3V3' : '5V')}, so it gives no reading.` });
-        else if (!onPin) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: `${Name} is not connected to a pin`, plain: `The ${name}'s middle (OUT) pin is not wired to a pin of the board, so the sketch cannot read it.` });
+            : `The ${name}'s ${plusPin} is not connected to ${min > 4 ? (board === 'esp32' ? 'VIN (5 V)' : '5V') : (board === 'esp32' ? '3V3' : '5V')}, so it gives no reading.` });
+        else if (!onPin) issues.push({ kind: 'unpowered', severity: 'warn', part: e.id, title: `${Name} is not connected to a pin`, plain: `The ${name}'s ${outPin} is not wired to a pin of the board, so the sketch cannot read it.` });
       }
       if (e.kind === 'TEMP') {
         const out = sets.find(term(e.w!)), onPin = pinRoots.some(([, pr]) => pr === out);
