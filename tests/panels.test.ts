@@ -20,6 +20,13 @@ test('the map and the brief share the left side: opening one closes the other', 
   assert.equal(isOpen(openPanel(brief, 'map', false), 'brief'), false);
 });
 
+test('the templates take their turn on the left too, and leave the parts open beside them', () => {
+  assert.equal(sideOf('templates'), 'left');
+  const s = openPanel(openPanel(openPanel(NONE, 'brief', false), 'parts', false), 'templates', false);
+  assert.deepEqual([isOpen(s, 'brief'), isOpen(s, 'templates'), isOpen(s, 'parts')], [false, true, true]);
+  assert.equal(isOpen(openPanel(s, 'map', false), 'templates'), false);
+});
+
 test('swapping the brief for the map leaves the code open beside it', () => {
   const s = openPanel(openPanel(openPanel(NONE, 'brief', false), 'code', false), 'map', false);
   assert.deepEqual([isOpen(s, 'brief'), isOpen(s, 'map'), isOpen(s, 'code')], [false, true, true]);

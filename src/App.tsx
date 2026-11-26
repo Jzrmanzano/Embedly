@@ -12,6 +12,7 @@ import { PartsPanel } from './components/PartsPanel';
 import { PredictDialog } from './components/PredictDialog';
 import { RunBar, Stage } from './components/Stage';
 import { SupplyShelf } from './components/SupplyShelf';
+import { TemplatesPanel } from './components/TemplatesPanel';
 import { ThemeToggle } from './components/ThemeToggle';
 import { BOARDS } from './data/boards';
 import { chapterOf } from './data/guide';
@@ -24,7 +25,7 @@ import { boardOf, keyOf, missionOf, useLab } from './state/store';
 const ALL_BOARDS = Object.values(BOARDS);
 const GRADED = Object.entries(MISSIONS).flatMap(([board, list]) => list.filter(m => !m.sandbox && !m.repair).map(m => `${board}-${m.id}`));   // the main quest; side quests are extra
 
-const PANELS: [Panel, string, IconName, string][] = [['map', 'Map', 'map', 'M'], ['brief', 'Brief', 'brief', 'B'], ['parts', 'Parts', 'parts', 'P'], ['code', 'Code', 'code', 'C']];
+const PANELS: [Panel, string, IconName, string][] = [['map', 'Map', 'map', 'M'], ['brief', 'Brief', 'brief', 'B'], ['templates', 'Templates', 'template', 'L'], ['parts', 'Parts', 'parts', 'P'], ['code', 'Code', 'code', 'C']];
 const HOME_TITLE = 'Embedly · Learn to build Arduino based projects';
 
 /** The buttons that open the panels, and the link to the guide (a page of its own): in the top bar on a wide screen, along the bottom on a phone. */
@@ -99,14 +100,14 @@ function Grip({ side, title }: { side: Side; title: string }) {
 }
 
 const RAILS: Record<Side, [Panel, string, IconName, string][]> = {
-  left: [['map', 'Map', 'map', 'M'], ['brief', 'Brief', 'brief', 'B']],
+  left: [['map', 'Map', 'map', 'M'], ['brief', 'Brief', 'brief', 'B'], ['templates', 'Templates', 'template', 'L']],
   right: [['parts', 'Parts', 'parts', 'P'], ['code', 'Code', 'code', 'C']],
 };
 /** A rail of panel buttons down one edge of the bench. The left one is for reading (map, brief, guide) and the right one for building (parts, code). */
 function Rail({ side }: { side: Side }) {
   const panels = useLab(s => s.panels), guide = useLab(s => s.guide);
   return (
-    <nav className={`rail ${side}`} aria-label={side === 'left' ? 'Read: map, brief and guide' : 'Build: parts and code'}>
+    <nav className={`rail ${side}`} aria-label={side === 'left' ? 'Read: map, brief, templates and guide' : 'Build: parts and code'}>
       {RAILS[side].map(([name, label, icon, key]) => (
         <button key={name} type="button" className="rail-btn" data-toggle={name} aria-pressed={isOpen(panels, name)} aria-keyshortcuts={key} title={`${label} (${key})`} onClick={() => togglePanel(name)}>
           <Icon name={icon} /><span>{label}</span>
@@ -158,6 +159,7 @@ export function App() {
         {mission.choice ? <SupplyShelf /> : <Stage />}
         <Drawer name="map" title="Mission map" icon="map" className="mapbody"><CampusMap /></Drawer>
         <Drawer name="brief" title="Mission brief" icon="brief"><DocPanel /></Drawer>
+        <Drawer name="templates" title="Templates" icon="template"><TemplatesPanel /></Drawer>
         {!mission.choice && <Drawer name="parts" title="Parts" icon="parts"><PartsPanel /></Drawer>}
         {!mission.choice && <Drawer name="code" title="Code" icon="code"><CodePanel /></Drawer>}
         <Rail side="left" />

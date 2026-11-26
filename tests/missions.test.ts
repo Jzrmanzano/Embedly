@@ -110,8 +110,11 @@ test('every mission: the intended build and sketch pass every check', () => forE
   assert.ok(r.length >= 3, 'a wiring check and at least two others');
 }));
 
-test('every mission: the intended build can be put together by hand on the bench as it opens, with no second breadboard', () => forEvery(graded, label, ({ board, m }) => {
+test('every mission: the intended build can be put together by hand on the bench as it opens, the long breadboard first when it has one', () => forEvery(graded, label, ({ board, m }) => {
   m.circuit.forEach((it, k) => assert.equal(placementError(board, m.circuit.slice(0, k), it), null, JSON.stringify(it)));   // nothing off the end of the breadboard, under the ESP32 or in a taken hole
+  const second = m.circuit.findIndex(it => it.t === 'breadboard');
+  assert.ok(second <= 0, 'a second breadboard comes first, so the parts on it have their holes');
+  if (second === 0) assert.equal((m.circuit[0] as Extract<Item, { t: 'breadboard' }>).size, 'long', 'and it is a long one, where there is room');
 }));
 
 test('every mission: the starter sketch is not enough', () => forEvery(graded, label, async ({ board, m }) => {
@@ -245,21 +248,21 @@ const wrongWiring: [BoardId, string, string, (it: Item) => Item | null][] = [
   ['uno', 'chime', 'has the buzzer on the wrong pin', it => (it.t === 'wire' && it.a === 'U:8' ? { ...it, a: 'U:7' } : it)],
   ['esp32', 'touchlamp', 'has the pad unwired', it => (it.t === 'wire' && it.b === 'PAD' ? null : it)],
   ['uno', 'barrier', 'powers the servo from 3.3 V', it => (it.t === 'wire' && it.a === 'U:5V' ? { ...it, a: 'U:3V3' } : it)],
-  ['uno', 'barrier', 'powers the servo from a pin', it => (it.t === 'wire' && it.a === 'j25' ? { ...it, b: 'U:8' } : it)],
+  ['uno', 'barrier', 'powers the servo from a pin', it => (it.t === 'wire' && it.a === 'a17' ? { ...it, b: 'U:8' } : it)],
   ['uno', 'barrier', 'has the servo signal on the wrong pin', it => (it.t === 'wire' && it.b === 'U:9' ? { ...it, b: 'U:10' } : it)],
   ['uno', 'crossing', 'has the red and green LEDs swapped', it => (it.t === 'led' ? { ...it, color: it.color === 0xff3b30 ? 0x2ecc40 : 0xff3b30 } : it)],
   ['esp32', 'weather', 'powers the servo from 3V3', it => (it.t === 'wire' && it.a === 'E:VIN' ? { ...it, a: 'E:3V3' } : it)],
   ['uno', 'streetlamp', 'has no 10 kΩ resistor in the divider', it => (it.t === 'res' && it.ohms === 10000 ? null : it)],
   ['uno', 'streetlamp', 'has the sensor on the wrong pin', it => (it.t === 'wire' && it.b === 'U:A0' ? { ...it, b: 'U:A1' } : it)],
-  ['uno', 'heatwarn', 'has the temperature sensor backwards', it => (it.t === 'wire' && (it.a === 'a24' || it.a === 'a26') ? { ...it, a: it.a === 'a24' ? 'a26' : 'a24' } : it)],
-  ['uno', 'heatwarn', 'has the sensor without power', it => (it.t === 'wire' && it.a === 'a24' ? null : it)],
-  ['esp32', 'fridge', 'has the sensor without power', it => (it.t === 'wire' && it.a === 'j28' ? null : it)],
-  ['uno', 'greenhouse', 'has the soil sensor without power', it => (it.t === 'wire' && it.a === 'a22' ? null : it)],
-  ['uno', 'greenhouse', 'has the soil sensor backwards', it => (it.t === 'wire' && (it.a === 'a22' || it.a === 'a24') ? { ...it, a: it.a === 'a22' ? 'a24' : 'a22' } : it)],
+  ['uno', 'heatwarn', 'has the temperature sensor backwards', it => (it.t === 'wire' && (it.a === 'j24' || it.a === 'j26') ? { ...it, a: it.a === 'j24' ? 'j26' : 'j24' } : it)],
+  ['uno', 'heatwarn', 'has the sensor without power', it => (it.t === 'wire' && it.a === 'j24' ? null : it)],
+  ['esp32', 'fridge', 'has the sensor without power', it => (it.t === 'wire' && it.a === 'a36' ? null : it)],
+  ['uno', 'greenhouse', 'has the soil sensor without power', it => (it.t === 'wire' && it.a === 'j24' ? null : it)],
+  ['uno', 'greenhouse', 'has the soil sensor backwards', it => (it.t === 'wire' && (it.a === 'j24' || it.a === 'j26') ? { ...it, a: it.a === 'j24' ? 'j26' : 'j24' } : it)],
   ['uno', 'greenhouse', 'has the soil sensor on the wrong pin', it => (it.t === 'wire' && it.b === 'U:A0' ? { ...it, b: 'U:A1' } : it)],
   ['esp32', 'stairs', 'powers the motion sensor from 3V3', it => (it.t === 'wire' && it.a === 'E:VIN' ? { ...it, a: 'E:3V3' } : it)],
   ['esp32', 'stairs', 'has the motion sensor on the wrong pin', it => (it.t === 'wire' && it.b === 'E:D18' ? { ...it, b: 'E:D19' } : it)],
-  ['esp32', 'stairs', 'has no ground on the motion sensor', it => (it.t === 'wire' && it.a === 'j30' ? null : it)],
+  ['esp32', 'stairs', 'has no ground on the motion sensor', it => (it.t === 'wire' && it.a === 'j38' ? null : it)],
   ['uno', 'colddoor', 'leaves the reed switch\'s other leg unconnected', it => (it.t === 'wire' && it.a === 'a22' ? null : it)],
   ['uno', 'colddoor', 'wires the reed switch to 5V instead of GND', it => (it.t === 'wire' && it.a === 'a22' ? { ...it, b: 'T+22' } : it)],
   ['uno', 'colddoor', 'has the reed switch on the wrong pin', it => (it.t === 'wire' && it.a === 'U:2' ? { ...it, a: 'U:3' } : it)],

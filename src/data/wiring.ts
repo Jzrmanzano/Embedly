@@ -36,7 +36,7 @@ export function wiringRows(circuit: Item[]): WiringRow[] {
       case 'contact': return { part: it.kind === 'tilt' ? 'Tilt switch' : 'Reed switch', where: `${it.a} to ${it.b}` };
       case 'module': return { part: ITEM_INFO[it.kind][0], where: `+ ${it.row}${it.col}, OUT ${it.row}${it.col + 1}, GND ${it.row}${it.col + 2}` };
       case 'joy': return { part: 'Joystick', where: `GND ${it.row}${it.col}, + ${it.row}${it.col + 1}, VRx ${it.row}${it.col + 2}, VRy ${it.row}${it.col + 3}, SW ${it.row}${it.col + 4}` };
-      case 'lcd': return { part: 'LCD display (16×2, I2C)', where: 'on the table in front of the bench, wired by its four pins: GND, VCC, SDA and SCL' };
+      case 'lcd': return { part: 'LCD display (16×2, I2C)', where: 'on the table beside the bench, wherever there is room, wired by its four pins: GND, VCC, SDA and SCL' };
       case 'breadboard': return { part: breadboardName(it.size), where: `on the table beside the first one: columns ${MAIN_COLS + 1} to ${MAIN_COLS + BREADBOARD_COLS[it.size]}, with rails of its own` };
       case 'wire': return { part: `${it.c[0].toUpperCase() + it.c.slice(1)} wire`, where: `${pointName(it.a)} to ${pointName(it.b)}`, wire: it.c };
     }

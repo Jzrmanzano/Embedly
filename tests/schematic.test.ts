@@ -26,7 +26,7 @@ test('in every mission, every part is drawn once and nothing overlaps', () => {
       if (!m.circuit.length) continue;
       try {
         const s = layoutSchematic(board, m.circuit);
-        const want = m.circuit.map((it, k) => [it, itemId(it, k)] as const).filter(([it]) => it.t !== 'wire').map(([, id]) => id).sort();
+        const want = m.circuit.map((it, k) => [it, itemId(it, k)] as const).filter(([it]) => it.t !== 'wire' && it.t !== 'breadboard').map(([, id]) => id).sort();   // a breadboard holds the parts; it is not drawn as one
         assert.deepEqual(ids(s).sort(), want);
         const r = rects(s), clash: string[] = [];
         for (let i = 0; i < r.length; i++) for (let j = i + 1; j < r.length; j++) if (overlaps(r[i], r[j])) clash.push(`${r[i][0]} and ${r[j][0]}`);
@@ -60,8 +60,8 @@ test('the distance sensor sits at the end of the rows from its pins, with power 
   const sonar = MISSIONS.uno.find(m => m.circuit.some(it => it.t === 'sonar'))!.circuit;
   const s = layoutSchematic('uno', sonar), box = s.boxes.find(b => b.title === 'HC-SR04')!;
   const leg = (name: string) => box.pins.find(p => p.name === name)!.y;
-  assert.equal(leg('TRIG'), pinY(s, '9'));
-  assert.equal(leg('ECHO'), pinY(s, '10'));
+  assert.equal(leg('TRIG'), pinY(s, '10'));
+  assert.equal(leg('ECHO'), pinY(s, '9'));
   assert.ok(s.marks.some(m => m.kind === 'supply' && m.at[1] === leg('VCC') && m.text === '5V'));
   assert.ok(s.marks.some(m => m.kind === 'ground' && m.at[1] === leg('GND')));
 });

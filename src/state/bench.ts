@@ -1,7 +1,7 @@
 /* The rules of placing parts on the bench: which connection points exist, which are taken, and what a part needs. No 3D and no React in here. */
 import { ESP_HOLES } from '../data/boards';
 import { LCD_PINS, lcdPoint } from '../sim/lcd';
-import { fits, placeOf, slide, type Place } from './table';
+import { collisions, fits, placeOf, slide, type Place, type Thing } from './table';
 import { BREADBOARD_COLS, extraColumns, itemId, kindOf, MAIN_COLS, onExtraBoard, type BoardId, type BreadboardSize, type ContactKind, type Item, type ModuleKind, type PartKind, type WireColor } from '../types';
 
 export type ToolKind = Item['t'];
@@ -82,7 +82,22 @@ export function placementError(board: BoardId, items: Item[], it: Item): string 
   const second = items.find(x => x.t === 'breadboard');   // the LCD and the touch pad each have a place of their own on the table, which the second breadboard may have been moved onto
   if ((it.t === 'lcd' || it.t === 'pad') && second?.t === 'breadboard' && !fits(board, [...items, it], second.size, placeOf(second))) return `The second breadboard is lying where the ${what} goes. Drag it out of the way first.`;
   if (it.t === 'breadboard' && items.some(x => x.t === 'breadboard')) return 'The bench has room for one more breadboard, and it is already there.';
+  if (it.t === 'servo' || it.t === 'sonar' || it.t === 'lcd' || it.t === 'pad') return crowded(board, items, it);
   return null;
+}
+
+/** Why putting this part on the bench would make something on the table lie on something else, or null when everything still has room.
+    A servo's motor and the wall in front of a distance sensor stand on the table beyond the breadboard; the touch pad and the LCD look for a free place. */
+function crowded(board: BoardId, items: Item[], it: Item): string | null {
+  const key = ([a, b]: [Thing, Thing]) => [a, b].map(t => `${t.what}#${t.id ?? ''}`).sort().join('|');
+  const before = new Set(collisions(board, items).map(key)), fresh = collisions(board, [...items, it]).filter(p => !before.has(key(p)));
+  if (!fresh.length) return null;
+  const id = 'id' in it ? it.id : undefined, [a, b] = fresh.find(([x, y]) => x.id === id || y.id === id) ?? fresh[0];
+  const other = a.id === id ? b : b.id === id ? a : null, what = NAMES[kindOf(it)];
+  if (!other) return `There would be no room left on the table for ${[a, b].find(t => t.what.includes('LCD') || t.what.includes('pad'))?.what ?? 'everything'}. Put the ${what} somewhere else.`;
+  if (it.t === 'servo') return `Here the servo's motor would lie on ${other.what}. The motor sits on the table beyond the breadboard's edge: in front for rows f to j, behind for rows a to e. Plug it in further along, or on the other side.`;
+  if (it.t === 'sonar') return `The wall the sensor measures to would run into ${other.what}. It stands on the table in front of the sensor. Plug the sensor in further along.`;
+  return `There is no room left on the table for the ${what}.`;
 }
 
 /** Points that carry power or ground, so wires to them can be coloured red and black. */

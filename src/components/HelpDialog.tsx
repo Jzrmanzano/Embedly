@@ -5,6 +5,7 @@ import { useLab } from '../state/store';
 const KEYS: [string[], string][] = [
   [['M'], 'Open or close the mission map'],
   [['B'], 'Open or close the mission brief'],
+  [['L'], 'Open or close the templates: finished projects to start from'],
   [['G'], 'Go to the guide to the code and the parts, which has a page of its own. G there comes back to the bench'],
   [['P'], 'Open or close the parts drawer'],
   [['C'], 'Open or close the code'],

@@ -7,7 +7,7 @@ import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeome
 import { ESP_FAR, ESP_HOLES, ESP_NEAR } from '../data/boards';
 import { bands, ohmsLabel } from '../data/resistor';
 import { COLS as LCD_COLS, DARK_LCD, LCD_PINS, type LcdView } from '../sim/lcd';
-import { BB_DEPTH, BB_HEIGHT, bbLength, colX, LCD_AT, PAD_AT, placeOf, UNO_AT } from '../state/table';
+import { BB_DEPTH, BB_HEIGHT, bbLength, colX, LCD_AT, PAD_AT, placeOf, RAILZ, ROWZ, SERVO_REACH, tableLayout, UNO_AT, UNO_HEADERS, wallZ } from '../state/table';
 import { BREADBOARD_COLS, breadboardName, itemId, kindOf, MAIN_COLS, type BoardId, type BreadboardSize, type Info, type Item } from '../types';
 
 export interface WorldSpec {
@@ -28,7 +28,8 @@ export interface World {
   highlight(id: string | null): void;
   animate(timeMs: number): void;
   /** Replaces every placed part and wire. LEDs in `burnt` show as burnt out. */
-  setCircuit(items: Item[], burnt: string[]): void;
+  /** Builds the parts. `settled` is the bench as it was before a drag began: the touch pad and the LCD are placed from it, so they stay put while something is dragged. */
+  setCircuit(items: Item[], burnt: string[], settled?: Item[]): void;
   /** An LED burns out: it turns black and lets out a puff of smoke. */
   burn(id: string): void;
   puff(at: T.Vector3, kind: 'smoke' | 'spark'): void;
@@ -65,8 +66,6 @@ interface Made { g: T.Group; set?: (v: number) => void; more?: Record<string, (v
 
 const INK = 0x1b2430, HILITE = 0xe2572b, METAL = 0xc9ced3, GOLD = 0xd9b24a, DARK = 0x23272e;
 const WIRE: Record<string, number> = { red: 0xd6453d, black: 0x2f353d, orange: 0xf08a24, yellow: 0xe8c22e, green: 0x3aa655, blue: 0x3577d4, white: 0xe9ecef, purple: 0x8d5bd1 };
-const ROWZ: Record<string, number> = { a: -13.97, b: -11.43, c: -8.89, d: -6.35, e: -3.81, f: 3.81, g: 6.35, h: 8.89, i: 11.43, j: 13.97 };
-const RAILZ: Record<string, number> = { 'T+': -23.5, 'T-': -20.96, 'B-': 20.96, 'B+': 23.5 };
 const HT = 0.32;
 /** Colours used by more than one part: the bright metal of legs and leads, the tan of a resistor, the cream of a breadboard. */
 const LEAD = 0xb8c0c8, TAN = 0xe2c89a, CREAM = 0xf4f1e8;
@@ -256,10 +255,7 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
       bx(hg, x0 + (n - 1) * 1.27, z, n * 2.54, 2.54, 8.5, DARK);
       names.forEach((nm, i) => { bx(hg, x0 + i * 2.54, z, 1.15, 1.15, 0.06, 0x05070a, { y: 8.5, nh: 1 }); if (nm) anchors[nm] = [K.X(x0 + i * 2.54), 8.5, K.Z(z)]; });
     };
-    header('digital', 18.8, 2.5, ['SCL', 'SDA', 'AREF', 'GND2', '13', '12', '11', '10', '9', '8']);
-    header('digital', 45.2, 2.5, ['7', '6', '5', '4', '3', '2', '1', '0']);
-    header('power', 27.9, D - 2.5, ['', 'IOREF', 'RESET', '3V3', '5V', 'GND', 'GNDb', 'VIN']);
-    header('analog', 50.8, D - 2.5, an);
+    UNO_HEADERS.forEach(h => header(h.id, h.x0, h.z, h.names));   // the same numbers the table layout and its tests use
     g = P('usb'); bx(g, 4, 14, 16, 12, 10.8, METAL); bx(g, -4.06, 14, 0.2, 8.6, 7.4, 0x1a1f26, { y: 1.7, nh: 1 }); bx(g, -3.9, 14, 0.6, 5.6, 2.8, 0xf2f2f2, { y: 4, nh: 1 });
     g = P('jack'); bx(g, 4.5, 45.5, 14, 9, 10.8, DARK); cy(g, -2.6, 45.5, 3.2, 0.3, 0x05070a, { ax: 'x', y: 5.6, nh: 1 }); cy(g, -2.3, 45.5, 0.9, 0.5, METAL, { ax: 'x', y: 5.6, nh: 1 });
     g = P('mcu'); bx(g, 47.5, 38, 37, 9.8, 2.4, 0x343a42); bx(g, 47.5, 38, 35.6, 7.2, 3.1, 0x1b1e23, { y: 2.4 }); cy(g, 31.2, 38, 1, 0.06, 0x4a515a, { y: 5.5, nh: 1 });
@@ -547,14 +543,14 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
         c.fillStyle = tones[(row * 3 + i + 4) % tones.length]; c.fillRect((x + 0.4) * S, (row * 5 + 0.4) * S, w * S, 4.2 * S);
       }
     });
-    const set = (cm: number) => { wall.position.z = z + 17 + cm * 0.6; };
+    const set = (cm: number) => { wall.position.z = wallZ(z, z - ROWZ[it.row], cm); };   // it stands on the table, so never on the breadboard
     set(30);
     return { g, set, top: new T.Vector3(cx, y + 25, z) };
   }
   /** A 9 g hobby servo. Its three-pin lead plugs into the breadboard and the motor sits on the table beyond the nearest edge, its white arm turning to the angle. */
   function mkServo(it: Of<'servo'>): Made {
     const g = new T.Group(), legs = [0, 1, 2].map(i => anchor(`${it.row}${it.col + i}`)), mid = legs[1], y = mid.y;
-    const away = it.row <= 'e' ? -1 : 1, bodyZ = away * 46, bodyX = mid.x;
+    const away = it.row <= 'e' ? -1 : 1, bodyZ = mid.z - ROWZ[it.row] + away * SERVO_REACH, bodyX = mid.x;   // beyond the edge of the breadboard it plugs into, wherever that lies
     legs.forEach(p => box(g, p.x, y, p.z, 0.6, 2.6, 0.6, GOLD, { nh: 1 }));
     box(g, mid.x, y + 2.6, mid.z, 7.6, 6, 2.6, DARK);   // the plug on the end of the lead
     const WIRES = [0x7a4a21, 0xd6453d, 0xf08a24];   // brown GND, red +, orange signal
@@ -832,19 +828,22 @@ export function buildWorld(spec: WorldSpec, anisotropy: number): World {
   Object.assign(groups, b.parts); devs.builtin = b.setLed;
   if (spec.parts) for (const id of Object.keys(spec.parts)) { const h = b.hot[id]; if (h) addHot(id, spec.parts[id][0], new T.Vector3(...h).add(b.group.position)); }
   padPos = new T.Vector3(bb.position.x + PAD_AT.x, 0.8, PAD_AT.z);
-  lcdPos = new T.Vector3(bb.position.x + LCD_AT.x, 0, LCD_AT.z);   // in front of the breadboard, clear of the touch pad's place
+  lcdPos = new T.Vector3(bb.position.x + LCD_AT.x, 0, LCD_AT.z);   // their usual places, until a circuit says where there is room
   const boardHots = hots.length;
 
   /* --- the parts the student placed --- */
   let placed: T.Group[] = [], placedIds: string[] = [], burntSet = new Set<string>();
   const burners: Record<string, () => void> = {}, tops: Record<string, T.Vector3> = {};
   const free = (o: T.Object3D) => o.traverse(c => { if (c instanceof T.Mesh) { c.geometry.dispose(); c.material.map?.dispose(); c.material.dispose(); } });
-  function setCircuit(items: Item[], burnt: string[]) {
+  function setCircuit(items: Item[], burnt: string[], settled: Item[] = items) {
     placed.forEach(g => { world.remove(g); if (!g.userData.keep) free(g); });
     placedIds.forEach(id => { delete devs[id]; delete groups[id]; delete burners[id]; delete tops[id]; delete lcdDraws[id]; });
     placed = []; placedIds = []; itemAnim.length = 0; hots.length = boardHots; burntSet = new Set(burnt); lit.forEach(m => { m.color.setHex(INK); inkOf.get(m)?.color.setHex(INK); }); lit = [];
     const second = items.find(it => it.t === 'breadboard');   // first, so the parts plugged into it know where its holes are
     extra = second?.t === 'breadboard' ? { g: extraBoard(second), cols: BREADBOARD_COLS[second.size] } : null;
+    const lay = tableLayout(spec.board, settled), bx = bb!.position.x;   // the touch pad and the LCD lie where nothing else does
+    padPos = new T.Vector3(bx + (lay.pad ?? PAD_AT).x, 0.8, (lay.pad ?? PAD_AT).z);
+    lcdPos = new T.Vector3(bx + (lay.lcd ?? LCD_AT).x, 0, (lay.lcd ?? LCD_AT).z);
     items.forEach((it, k) => {
       let made: Made;
       try { made = make(it, k); } catch { return; }   // a point that is not on this bench is skipped

@@ -35,6 +35,7 @@ const PATHS = {
   lock: <><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></>,
   wifi: <><path d="M2.5 9.5a13.5 13.5 0 0 1 19 0M5.6 12.8a9 9 0 0 1 12.8 0M8.8 16a4.5 4.5 0 0 1 6.4 0" /><circle cx="12" cy="19.2" r="1.1" fill="currentColor" /></>,
   phone: <><rect x="6.5" y="2.5" width="11" height="19" rx="2.5" /><path d="M10.5 18.5h3" /></>,
+  template: <><rect x="3.5" y="4" width="17" height="16" rx="2" /><path d="M3.5 9h17M9 9v11" /><path d="M12.5 13h5M12.5 16.5h3" /></>,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof PATHS;

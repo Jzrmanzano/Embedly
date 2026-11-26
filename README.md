@@ -90,11 +90,19 @@ The circuit check explains problems in plain words:
 
 **Editing is forgiving.** Undo, redo and Reset bench live in the tray (<kbd>Ctrl</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd>, <kbd>Esc</kbd> and <kbd>Delete</kbd> work too). Drag either end of a wire (the cursor turns into a ✋) to replug it: the wire follows the pointer, and a taken or impossible spot is refused with a reason. Selecting a wire also shows **From** and **To** boxes to type new places.
 
+**Nothing lands on anything else.** Some things stand on the table beside the breadboard: a servo's motor (in front for rows f to j, behind for a to e), the wall a distance sensor measures to (anywhere from the breadboard's front edge out to 100 cm), the touch pad and the LCD. The touch pad and the LCD take the first free place, starting from their usual ones, so they make room for a motor or a wall. A servo or a distance sensor whose motor or wall would land on something is refused, saying what it would hit. All of this is `tableLayout` and `collisions` in `src/state/table.ts`, and `tests/collisions.test.ts` checks every mission, repair job and template.
+
 **Placed parts move too.** Drag a part to other holes and it follows the pointer hole by hole, keeping its shape: an LED keeps its two legs the same distance apart, a knob its three columns, and a button stays across the middle gap. It shows in its new holes while they would take it, and a taken or impossible spot is refused with a reason when you let go. With a part selected, the arrow keys move it a hole at a time (five with <kbd>Shift</kbd>), and a quick run of nudges is one Undo step. Wires plugged in beside it stay where they are, as on a real breadboard, so moving a part can change the circuit. The rules are `movedPart` in `src/state/bench.ts`, tested in `tests/moveparts.test.ts`.
 
 **And they change after they are placed.** Select a placed LED to give it another **Colour**, a resistor to change its **Value** with the slider or by typing one (its bands follow), or the second breadboard to make it **Short** or **Long**. The tray's tiles stay simple: each says what it comes as (Red, 220 Ω, Short), which is whatever was last chosen on the bench. A quick run of changes to one part, such as dragging the value slider along, is one Undo step.
 
 A lesson's own `circuit` is the reference answer, shown in the Wiring tab with a **Build it for me** button.
+
+**Reference builds are laid out to be read.** The ESP32 covers the middle of the bench's breadboard and leaves nine free columns, enough for an LED. ESP32 builds with more on them (the night light, wind gauge, fridge alarm and stairwell light, and the plant monitor and motion alarm templates) use a **long breadboard** beside it. Each ESP32 pin is wired on its own side of the board, so no wire arcs over the ESP32. Power goes onto the rails beside the pins and along to the long breadboard with short jumpers, and the parts stand spread out along it.
+
+The Uno's builds follow the same rule. Its digital pins, and the GND beside pin 13, are along its far edge; 5V, GND and the analog pins along its near one. So parts on digital pins stand on the far side of the breadboard, in the order of their pins (13 on the left, 2 on the right) so their wires never cross, and analog sensors stand on the near side. 5V goes to the near rail, and a jumper at the right-hand end, where no wire from the Uno reaches, carries it to the far rail for the parts there. The distance sensor stands in row j facing its wall and is wired from behind across the centre gap, since its board would be in the way of anything in front. The distance meter template, whose wall and LCD both need the front of the bench, puts the sensor on a long breadboard.
+
+`tests/layout.test.ts` holds every mission and template to two rules: a wire from a board pin stays on its pin's side of the breadboard, and no two long wires cross over a breadboard. A short jumper to the rail beside it lies low under the arcs and does not count, and a repair job's faulty bench only has to keep the first rule. The shared pieces are `LONG`, `espSensorPower`, `espFarSensor`, `esp5vNear`, `unoGndFar`, `unoPowerNear` and `unoFiveFar` in `src/data/missions.ts`, and the Uno's header layout is `UNO_HEADERS` in `src/state/table.ts`.
 
 ### 🧱 A second breadboard
 
@@ -108,7 +116,7 @@ Need more room? The **Breadboard** tile in the tray's Wiring group adds a second
 
 - 🔢 Its columns **carry on from the first one's**, so every hole on the bench has a name of its own.
 - 🔌 **Its rails are its own**, as on two real breadboards. A wire such as `T+30` to `T+31` joins them.
-- ✋ **Drag it anywhere on the table** by the board itself (the cursor turns into a ✋ over it; pressing on a part in it moves just that part), and everything plugged into it comes along, wires and all. It stops against the first breadboard, the Uno, the LCD and the touch pad and slides along them instead of landing on them. A press that does not move still just selects it.
+- ✋ **Drag it anywhere on the table** by the board itself (the cursor turns into a ✋ over it; pressing on a part in it moves just that part), and everything plugged into it comes along, wires and all. It stops against the first breadboard, the Uno, the LCD, the touch pad, servo motors and the walls in front of distance sensors, and slides along them instead of landing on them. What is plugged into it can't be carried onto anything either. A press that does not move still just selects it.
 - ⌨️ With it selected, the **arrow keys move it** one hole at a time (ten with <kbd>Shift</kbd>), and quick nudges in a row are one Undo step. **Put it back** in its card returns it to where it started. Moving it never stops a running sketch: the circuit is the same wherever it lies.
 - 🔁 Pick the other size and press the tile again to **swap** it, keeping its left end where it is. A long one only becomes short when nothing is plugged in past column 60, and a short one only becomes long when there is room.
 - 🗑️ **Removing it takes off everything plugged into it**, and Undo puts it all back.
@@ -257,7 +265,7 @@ A backup is read with `parseBackup` in `src/state/progress.ts`, which keeps only
 
 ## 🖥️ The bench, the panels and the keyboard
 
-The 3D bench fills the screen. The **Map**, **Brief** and **Code** open over it as panels (in the top bar, or along the bottom on a phone, where a panel is a sheet and only one is open at a time). **Guide** goes to a page of its own. **Run**, **Step** and **Stop** stay on the bench, so a sketch can run without the code open, and the circuit slides to stay centred in whatever the panels leave free.
+The 3D bench fills the screen. The **Map**, **Brief**, **Templates**, **Parts** and **Code** open over it as panels (in the top bar, or along the bottom on a phone, where a panel is a sheet and only one is open at a time). **Guide** goes to a page of its own. **Run**, **Step** and **Stop** stay on the bench, so a sketch can run without the code open, and the circuit slides to stay centred in whatever the panels leave free.
 
 On a wide screen, drag the inner edge of a panel to make it wider for reading or narrower for building. Double-click for the usual width, or Tab to the edge and use the arrow keys. Widths are remembered; the rules are in `src/state/panels.ts`.
 
@@ -267,7 +275,7 @@ Press <kbd>?</kbd> in the app for the full list. The highlights:
 
 | Key | Does |
 |---|---|
-| <kbd>M</kbd> <kbd>B</kbd> <kbd>C</kbd> | Toggle Map, Brief, Code (focus moves into the panel, <kbd>Esc</kbd> returns it to the button) |
+| <kbd>M</kbd> <kbd>B</kbd> <kbd>L</kbd> <kbd>P</kbd> <kbd>C</kbd> | Toggle Map, Brief, Templates, Parts, Code (focus moves into the panel, <kbd>Esc</kbd> returns it to the button) |
 | <kbd>G</kbd> | Go to the guide and back |
 | <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | Run or stop |
 | <kbd>←</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>→</kbd> | Slide the view |
@@ -338,7 +346,7 @@ Free build: no goal, no checks. Open from the start with **every part in the tra
 
 #### 🧰 Templates
 
-The home page lists them all under **Start from a template** (the **Templates** link in its top bar scrolls there): each card opens its board's studio with the brief scrolled to that template. The studio's brief offers them too. **Load** puts a template's parts on the bench and its sketch in the editor, ready to run, take apart and change. If there is work of your own on the bench or in the editor, it asks first: Undo brings the bench back, but not the sketch.
+They have a panel of their own, **Templates** (<kbd>L</kbd>), on the left rail beside the Map and the Brief, and the studio opens on it. In a mission the panel shows the same templates, each opening in the studio, so the mission's bench is never replaced. The home page lists them all under **Start from a template** (the **Templates** link in its top bar scrolls there), and each card opens its board's studio with the panel scrolled to that template. **Load** puts a template's parts on the bench and its sketch in the editor, ready to run, take apart and change. If there is work of your own on the bench or in the editor, it asks first: Undo brings the bench back, but not the sketch.
 
 | Board | Template | What it does |
 |---|---|---|
