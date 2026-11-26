@@ -141,7 +141,7 @@ test('Servo mistakes are explained', async () => {
   await fails(sketch('  arm.spin(3);', 'Servo arm;'), /has no "\.spin\(\)"/);
   await fails(sketch('  arm.attach();', 'Servo arm;'), /needs 1 value/);
   await fails(sketch('', 'Servo arm = 3;'), /is made with "Servo arm;"/);
-  await fails(sketch('  Adafruit_NeoPixel strip(8, 6);'), /"Adafruit_NeoPixel" is not a type this simulator knows.*Servo and LiquidCrystal_I2C/, 4);
+  await fails(sketch('  Adafruit_NeoPixel strip(8, 6);'), /"Adafruit_NeoPixel" is not a type this simulator knows.*Servo, LiquidCrystal_I2C and, on the ESP32, WebServer/, 4);
   await fails('Adafruit_NeoPixel strip(8, 6);\nvoid setup() {}\nvoid loop() {}', /"Adafruit_NeoPixel" is not a type/, 1);
   await fails(sketch('  servo arm;'), /"servo" is not a type.*capital letters/);
 });

@@ -1,6 +1,6 @@
 /* Missions. Each mission is a small device to build, checked by running the student's own sketch on the student's own circuit.
    The reference build in each mission (`circuit` and `answer`) is what the tests run to prove the checks can be passed, and what the last hint offers. */
-import { blinks, colorOn, ledOn, phases, reaction, servoAt, soundOn, sweeps, type InputKind, type InputStep, type Sample, type Scenario, type Trace } from '../sim/check';
+import { blinks, colorOn, ledOn, phases, reaction, servoAt, soundOn, sweeps, type InputKind, type InputStep, type Phase, type Sample, type Scenario, type Trace } from '../sim/check';
 import type { Tool } from '../state/bench';
 import type { Choice } from './boardchoice';
 import { LED_COLORS, type BoardId, type Item } from '../types';
@@ -193,6 +193,9 @@ function counts(label: string, what: string, people: [blocked: number, gap: numb
     },
   };
 }
+
+/** The first stretch of a Wi-Fi check: the board starts up and joins the Wi-Fi before the phone asks it anything. */
+const BOOT: Phase = { when: 'the board starts up and joins the Wi-Fi', ms: 3000, expect: {} };
 
 /** Three short taps of a button at uneven moments, so a sketch that only looks at the button now and then misses at least one. */
 const TAP_TIMES = [1000, 2250, 3600];
@@ -1976,10 +1979,163 @@ void loop() {
     unlocks: [],
   },
   {
+    id: 'gatelight', title: 'Gate light by phone', place: 'Guard Booth', hook: 'Switch the gate\'s green light from the guard\'s phone, over Wi-Fi.', map: [70, 5], after: ['nightlight'], guide: ['wifi', 'functions', 'variables'],
+    story: 'Visitors wait at the front gate until a <b>green light</b> tells them to come in. The guard sits in the booth across the yard and wants to switch it from a phone. The ESP32 can join the workshop\'s <b>Wi-Fi</b> and run a small <b>web server</b>: the phone opens the board\'s address like any website, and each link on the page asks the board to do something. The guard cannot see the light from the booth, so the page must also say whether it is on.',
+    goal: 'The phone opens the board\'s page. Tapping ON turns the light on and tapping OFF turns it off, and the page says "The light is on" or "The light is off".',
+    how: [
+      'The Wi-Fi is called <b>Workshop</b> and its password is <b>solder123</b>. Once the board has joined, it prints its address. The <b>phone</b> on the bench is on the same Wi-Fi: run the sketch, then press Go on the phone.',
+      'Each address on the board has a function of its own, a <b>handler</b>. <code>server.on("/on", handleOn)</code> runs <code>handleOn()</code> whenever the phone asks for <code>/on</code>. Write the function\'s name without brackets.',
+      'A handler ends by sending a page back with <code>server.send()</code>, or by calling <code>handleRoot()</code>, which does. <code>server.handleClient()</code> in <code>loop()</code> is what answers the phone, so keep loop() quick.',
+    ],
+    starter: `// Gate light by phone
+#include <WiFi.h>
+#include <WebServer.h>
+
+const char* WIFI_NAME = "Workshop";
+const char* WIFI_PASSWORD = "solder123";
+const int LIGHT_PIN = 5;
+
+WebServer server(80);   // answers the phone on port 80, the usual one for web pages
+bool lightOn = false;
+
+// The page the phone sees at the board's address
+void handleRoot() {
+  String page = "<h1>Gate light</h1>";
+  page += "<p>The light is off.</p>";   // say on or off, from lightOn
+  page += "<p><a href=\\"/on\\">ON</a> &nbsp; <a href=\\"/off\\">OFF</a></p>";
+  server.send(200, "text/html", page);
+}
+
+// Write handleOn() and handleOff() here: switch the light, then send the page back
+
+void setup() {
+  pinMode(LIGHT_PIN, OUTPUT);
+  Serial.begin(115200);
+
+  WiFi.begin(WIFI_NAME, WIFI_PASSWORD);
+  Serial.print("Joining the Wi-Fi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+  Serial.print("Open http://");
+  Serial.println(WiFi.localIP());
+
+  server.on("/", handleRoot);
+  // tell the server which function answers /on, and which answers /off
+  server.begin();
+}
+
+void loop() {
+  server.handleClient();   // answer the phone, if it has asked for a page
+  delay(2);
+}`,
+    circuit: espLed.map((it): Item => (it.t === 'led' ? { ...it, color: LED_COLORS.green } : it)),
+    answer: `// Gate light by phone
+#include <WiFi.h>
+#include <WebServer.h>
+
+const char* WIFI_NAME = "Workshop";
+const char* WIFI_PASSWORD = "solder123";
+const int LIGHT_PIN = 5;
+
+WebServer server(80);
+bool lightOn = false;
+
+void handleRoot() {
+  String page = "<h1>Gate light</h1>";
+  if (lightOn) {
+    page += "<p>The light is on.</p>";
+  } else {
+    page += "<p>The light is off.</p>";
+  }
+  page += "<p><a href=\\"/on\\">ON</a> &nbsp; <a href=\\"/off\\">OFF</a></p>";
+  server.send(200, "text/html", page);
+}
+
+void handleOn() {
+  lightOn = true;
+  digitalWrite(LIGHT_PIN, HIGH);
+  handleRoot();   // send the page back, now saying the light is on
+}
+
+void handleOff() {
+  lightOn = false;
+  digitalWrite(LIGHT_PIN, LOW);
+  handleRoot();
+}
+
+void setup() {
+  pinMode(LIGHT_PIN, OUTPUT);
+  Serial.begin(115200);
+
+  WiFi.begin(WIFI_NAME, WIFI_PASSWORD);
+  Serial.print("Joining the Wi-Fi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+  Serial.print("Open http://");
+  Serial.println(WiFi.localIP());
+
+  server.on("/", handleRoot);
+  server.on("/on", handleOn);
+  server.on("/off", handleOff);
+  server.begin();
+}
+
+void loop() {
+  server.handleClient();
+  delay(2);
+}`,
+    predict: {
+      question: 'The starter sketch joins the Wi-Fi and has a page with ON and OFF on it. The guard opens the page on the phone and taps ON. What happens?',
+      options: [
+        { id: 'on', label: 'The gate light turns on' }, { id: 'notfound', label: 'The phone says the page was not found' },
+        { id: 'stays', label: 'A page opens, but the light stays off' }, { id: 'noanswer', label: 'The phone gets no answer from the board' },
+      ],
+      demo: [{ from: 2500, visit: '/' }, { from: 3500, tap: 'ON' }], run: 5000,
+      classify: tr => {
+        const s = tr.at(4900), a = s.page?.answer;
+        if (ledOn(s)) return 'on';
+        if (a?.kind === 'page') return a.status === 404 ? 'notfound' : 'stays';
+        return 'noanswer';
+      },
+      works: 'on',
+      explain: {
+        on: 'The phone asked for /on, the board ran the function that answers it, and that function switched the light on.',
+        notfound: 'The phone asked the board for /on, but nothing on the board answers that address, so the server sent its own "Not found" page. Each address needs a server.on() line naming the function that answers it.',
+        stays: 'The board answered, but the function that answered never switched the light on. Check the pin it writes to and that it writes HIGH.',
+        noanswer: 'The phone never got a page from the board. The board must join the Wi-Fi, start the server with server.begin(), and call server.handleClient() on every pass of loop().',
+      },
+    },
+    hints: [
+      'Run it and press Go on the phone, then tap ON. The phone says "Not found: /on": the board has a page at <code>/</code>, but nothing answers <code>/on</code> yet.',
+      'Write a function for each address, like <code>handleRoot()</code>: <code>handleOn()</code> sets <code>lightOn</code>, writes the pin, and sends the page back by calling <code>handleRoot()</code>. Name it in <code>setup()</code> with <code>server.on("/on", handleOn);</code>. In <code>handleRoot()</code>, an <code>if (lightOn)</code> chooses which sentence goes on the page.',
+      'void handleOn() { lightOn = true; digitalWrite(LIGHT_PIN, HIGH); handleRoot(); } and handleOff() the same with false and LOW. In setup(): server.on("/on", handleOn); server.on("/off", handleOff); before server.begin(). In handleRoot(): if (lightOn) page += "&lt;p&gt;The light is on.&lt;/p&gt;"; else page += "&lt;p&gt;The light is off.&lt;/p&gt;"; Wire the LED to D5 as for the beacon, and choose Green for it.',
+    ],
+    checks: [
+      phases('The board joins the Wi-Fi and prints its address', [{ when: 'the board has started up', ms: 3000, expect: { serial: /192\.168\.1\.57/ } }]),
+      phases('The phone opens the gate light\'s page', [BOOT, { when: 'the guard opens the board\'s address on the phone', visit: '/', expect: { page: true, led: false } }]),
+      phases('Tapping ON turns the light on', [BOOT, { when: 'the guard opens the page', visit: '/', expect: { led: false } }, { when: 'the guard taps ON', tap: 'ON', expect: { led: true } }]),
+      phases('Tapping OFF turns it off again', [
+        BOOT, { when: 'the guard opens the page', visit: '/', expect: {} },
+        { when: 'the guard taps ON', tap: 'ON', expect: { led: true } }, { when: 'the guard taps OFF', tap: 'OFF', expect: { led: false } },
+      ]),
+      phases('The page says whether the light is on', [
+        BOOT, { when: 'the guard opens the page', visit: '/', expect: { page: /light is off/i } },
+        { when: 'the guard taps ON', tap: 'ON', expect: { page: /light is on\b/i } }, { when: 'the guard taps OFF', tap: 'OFF', expect: { page: /light is off/i } },
+      ]),
+    ],
+    unlocks: [],
+  },
+  {
     id: 'workshop', title: 'Open studio', place: 'Open Studio', hook: 'Free build with every part, open from the start.', map: [75, 93], after: [], sandbox: true, guide: ['circuit', 'breadboard', 'switch', 'loops', 'functions', 'lcd'],
     story: 'The studio is yours: no goal and no checks. <b>Every part is in the tray here</b>, whether or not a mission has unlocked it yet, so you can build and test a project of your own at any time. Wire it, write the sketch, and run it. The missions teach the parts one at a time, and the <b>i</b> on a part in the tray shows its pinout.',
     goal: 'Build anything you like.',
-    how: ['Use the tray to add parts and wires. The ESP32 plugs into the left of the breadboard, so build in columns 22 to 30.', 'Point at a hole or pin to read its voltage while the sketch runs.'],
+    how: ['Use the tray to add parts and wires. The ESP32 plugs into the left of the breadboard, so build in columns 22 to 30.', 'Point at a hole or pin to read its voltage while the sketch runs.', 'The ESP32 can join the Wi-Fi here too: a sketch with a <code>WebServer</code> gets the phone beside the bench.'],
     starter: `// Open studio: your own sketch
 void setup() {
 }

@@ -12,6 +12,7 @@ import { breadboardName, itemId, kindOf, ledColorName, onExtraBoard, type Item, 
 import { Boundary, isLoadError } from './Boundary';
 import { Icon } from './Icons';
 import { BreadboardSizes, LedColours, named, ResistorValue } from './PartOptions';
+import { Phone } from './Phone';
 import { Pinout } from './Pinout';
 
 /** The 3D view and three.js come in their own file, fetched when the bench first shows. */
@@ -379,6 +380,7 @@ export function Stage() {
       <div className="hotlayer" ref={labelLayer} hidden={!labels} />
       <Probe />
       <Tools />
+      <Phone />
       <div className="base">
         <div className="dock">
           <div className="stack">

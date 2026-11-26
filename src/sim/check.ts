@@ -6,13 +6,21 @@ import { itemId, kindOf, type BoardId, type Item } from '../types';
 import { analyze } from './circuit';
 import { makeHW, makeReadout, type VirtualHW } from './hardware';
 import { run, SimError, type RunControl } from './interpreter';
+import { missWords, pageText, seenWords, type Miss, type Seen } from './network';
 import type { Frame } from './timeline';
 
 /* --- inputs --- */
 /** The parts a check can script, by kind: a sensor module goes by its own kind ("soil"), every other part by its type. */
 export type InputKind = 'button' | 'pot' | 'sonar' | 'pad' | 'ldr' | 'temp' | 'soil' | 'pir' | 'reed' | 'ir';
 /** From `from` milliseconds on, these inputs have these values. Parts of the same kind all take the same value. A knob, a light sensor or a soil sensor is 0 to 1, the temperature is in °C, the wall is in cm, a button, pad or motion sensor is 0 or 1, a reed switch is 1 while its magnet is near, and an obstacle sensor 1 while something is in front of it. */
-export interface InputStep { from: number; set: Partial<Record<InputKind, number>> }
+export interface InputStep {
+  from: number;
+  set?: Partial<Record<InputKind, number>>;
+  /** The phone beside the bench opens this address on the board at this moment, such as "/" or "/on". Only the ESP32 has Wi-Fi to answer it. */
+  visit?: string;
+  /** The phone taps the link or button with these words on whatever page it shows at this moment, such as "ON". */
+  tap?: string;
+}
 const REST: Record<InputKind, number> = { button: 0, pad: 0, pot: 0.5, sonar: 100, ldr: 0.5, temp: 25, soil: 0.5, pir: 0, reed: 0, ir: 0 };
 
 export function inputsAt(items: Item[], plan: InputStep[], t: number): Record<string, number> {
@@ -46,6 +54,8 @@ export interface Sample {
   serial: string;
   /** What the first LCD on the bench shows: its two lines, one under the other. Empty when there is no LCD. */
   lcd: string;
+  /** What the phone shows: the address it last opened and the answer, if one has come. Null before the phone has opened anything, and on a board with no Wi-Fi. */
+  page: Seen | null;
 }
 export interface Trace {
   ms: number;
@@ -55,6 +65,10 @@ export interface Trace {
   buzzerCount: number;
   servoCount: number;
   lcdCount: number;
+  /** The board has Wi-Fi, so the phone can reach it. */
+  phone: boolean;
+  /** Taps the script asked for that found nothing to tap. */
+  missed: Miss[];
   /** Why the sketch stopped early, in words for the student. */
   error: string | null;
   /** The sketch kept running without ever waiting. */
@@ -95,6 +109,8 @@ export async function observe(board: BoardId, items: Item[], code: string, plan:
     },
   });
   hw.skipDelays = true;
+  const net = hw.net;
+  for (const s of plan) { if (s.visit) net?.visit(s.visit, s.from, 0); if (s.tap) net?.tap(s.tap, s.from); }   // the phone's part of the script, played as the sketch's clock reaches each moment
   let yields = 0;
   hw.pause = () => (++yields % 25 === 0 ? new Promise<void>(r => setTimeout(r, 0)) : Promise.resolve());   // let the page breathe now and then
   frames.push(hw.snapshot()); sigs.push(JSON.stringify([frames[0].drive, frames[0].tones, frames[0].servos, frames[0].lcd]));
@@ -109,9 +125,10 @@ export async function observe(board: BoardId, items: Item[], code: string, plan:
   try { await run(code, hw, ctl); }
   catch (e) { error = e instanceof SimError ? `Your sketch stopped with an error on line ${e.line}: ${e.message}` : `Your sketch stopped with an error: ${e instanceof Error ? e.message : e}`; }
   void passes;
+  net?.settle(Math.max(ms, hw.elapsed()));   // whatever the script asked for that the sketch never got to: a phone left waiting, or turned away
 
-  /** The board as the pins and inputs leave it, kept for each pin state and set of inputs. What has been printed is not part of it: printing changes no pin. */
-  const cache = new Map<string, Omit<Sample, 't' | 'serial'>>();
+  /** The board as the pins and inputs leave it, kept for each pin state and set of inputs. What has been printed and what the phone shows are not part of it: neither changes a pin. */
+  const cache = new Map<string, Omit<Sample, 't' | 'serial' | 'page'>>();
   const frameBefore = (t: number) => {
     let lo = 0, hi = frames.length - 1;
     while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (frames[mid].t <= t) lo = mid; else hi = mid - 1; }
@@ -136,11 +153,11 @@ export async function observe(board: BoardId, items: Item[], code: string, plan:
       };
       cache.set(key, s);
     }
-    return { ...s, t, serial: serialAt(t) };
+    return { ...s, t, serial: serialAt(t), page: net ? net.seenAt(t) : null };
   };
   const samples = frames.map(f => at(f.t));
   return {
-    ms, ledCount: ledIds.length, ledColors, buzzerCount: buzzIds.length, servoCount: servoIds.length, lcdCount: lcdIds.length, error, timedOut, burnt, shorted, samples, at,
+    ms, ledCount: ledIds.length, ledColors, buzzerCount: buzzIds.length, servoCount: servoIds.length, lcdCount: lcdIds.length, phone: !!net, missed: net?.missed ?? [], error, timedOut, burnt, shorted, samples, at,
     window: (from, to) => [at(from), ...frames.filter(f => f.t > from && f.t <= to).map(f => at(f.t))],
   };
 }
@@ -173,12 +190,18 @@ export interface Expect {
   servo?: [min: number, max: number];
   /** What the LCD shows, its two lines one under the other. */
   lcd?: RegExp;
+  /** The phone shows a page the board sent with status 200 (true), and one whose words match this. Judged at the end of the phase. */
+  page?: true | RegExp;
 }
 export interface Phase {
   /** The situation, finishing the sentence "When …" in the messages. */
   when: string;
   /** Inputs from the start of this phase on. Inputs not mentioned keep their last value. */
   set?: Partial<Record<InputKind, number>>;
+  /** The phone opens this address at the start of the phase, such as "/". */
+  visit?: string;
+  /** The phone taps the link or button with these words at the start of the phase, on the page it shows. */
+  tap?: string;
   /** How long the phase lasts. */
   ms?: number;
   /** `end`: judge the state just before the phase ends. `during`: something must happen at some point in it (or, for false, never happen). */
@@ -187,10 +210,16 @@ export interface Phase {
 }
 
 const percent = (v: number) => `${Math.round(v * 100)}%`;
+/** The words a page should say, in quotes when the pattern is plain words, else the pattern itself. */
+const like = (re: RegExp) => { const plain = re.source.replace(/\\b/g, ''); return /^[\w\s.,:;!'°%-]*$/.test(plain) ? `"${plain}"` : String(re); };
 
 function judgePhase(tr: Trace, p: Phase, start: number, end: number): string | null {
   const e = p.expect, during = p.mode === 'during', states = during ? tr.window(start, end) : [tr.at(end - 100)];
   const when = `When ${p.when}`, last = states[states.length - 1];
+  if (p.tap) {   // a tap that found nothing to tap explains everything that follows from it
+    const miss = tr.missed.find(m => m.at >= start && m.at < end);
+    if (miss) return `${when}, ${missWords(miss)}.`;
+  }
   const lit = (want: boolean, what: string, read: (s: Sample) => boolean, none: boolean): string | null => {
     if (none) return `I could not find ${what === 'LED' ? 'an LED' : `a ${what}`} on your bench.`;
     if (during) {
@@ -228,6 +257,12 @@ function judgePhase(tr: Trace, p: Phase, start: number, end: number): string | n
     if (!e.lcd.test(last.lcd)) return `${when}, the LCD should show something like ${e.lcd}, but it showed "${last.lcd.split('\n').map(l => l.trimEnd()).join(' / ')}".`;
   }
   if (e.serial && !e.serial.test(last.serial)) return `${when}, the Serial Monitor should show something like ${e.serial}, but it did not.`;
+  if (e.page !== undefined) {
+    if (!tr.phone) return 'This board has no Wi-Fi, so the phone cannot reach it. Build it on the ESP32.';
+    const seen = tr.at(end - 100).page, a = seen?.answer;
+    const ok = a?.kind === 'page' && a.status === 200 && (e.page === true || e.page.test(pageText(a)));
+    if (!ok) return `${when}, the phone should show ${e.page === true ? 'the board\'s page' : `a page that says ${like(e.page)}`}, but ${seenWords(seen ?? null)}.`;
+  }
   if (e.duty) {
     if (tr.ledCount === 0) return 'I could not find an LED on your bench.';
     const d = Math.max(0, ...last.duties), [lo, hi] = e.duty;
@@ -240,7 +275,7 @@ function judgePhase(tr: Trace, p: Phase, start: number, end: number): string | n
 export function phases(label: string, list: Phase[]): Scenario {
   const plan: InputStep[] = [], spans: { p: Phase; start: number; end: number }[] = [];
   let t = 0;
-  for (const p of list) { const ms = p.ms ?? 1500; plan.push({ from: t, set: p.set ?? {} }); spans.push({ p, start: t, end: t + ms }); t += ms; }
+  for (const p of list) { const ms = p.ms ?? 1500; plan.push({ from: t, set: p.set ?? {}, visit: p.visit, tap: p.tap }); spans.push({ p, start: t, end: t + ms }); t += ms; }
   return { label, plan, run: t, judge: tr => { for (const s of spans) { const m = judgePhase(tr, s.p, s.start, s.end); if (m) return m; } return null; } };
 }
 
