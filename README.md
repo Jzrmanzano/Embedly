@@ -27,7 +27,7 @@ No parts to buy, nothing to burn out (well, *almost* nothing, see below 🔥).
    │ the bench│     │the sketch│     │          │     │ it react │
    └──────────┘     └──────────┘     └──────────┘     └────┬─────┘
          ▲                                                 │
-         └────────── 🐛 debug, tweak, try again ◀──────────┘
+         └────────── 🐛 debug, tweak, try again ◀─────────┘
 ```
 
 Every mission is a small device to build. You predict what will happen, run your own sketch on your own circuit, and the simulator tells you whether you were right.
