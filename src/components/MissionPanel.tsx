@@ -1,69 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { chapterOf } from '../data/guide';
-import { MISSIONS, missionKey, partIdOf, PARTS } from '../data/missions';
-import { TEMPLATES, type Template } from '../data/templates';
+import { useMemo } from 'react';
+import { MISSIONS, missionKey, PARTS } from '../data/missions';
 import { WIRE_CSS, wiringRows } from '../data/wiring';
-import { checkMission, fillAnswerCode, goTo, loadTemplate, revealHint, showAnswer, templateShown } from '../state/actions';
+import { checkMission, fillAnswerCode, goTo, openPanel, revealHint, showAnswer } from '../state/actions';
 import { guideHash } from '../state/route';
-import { benchOf, codeOf, missionOf, useLab } from '../state/store';
+import { missionOf, useLab } from '../state/store';
 import { NeedList, verdict } from './SupplyShelf';
 
 /** Mission text is trusted HTML from src/data, so inline <code> tags can be used in it. */
 export const html = (s: string) => ({ dangerouslySetInnerHTML: { __html: s } });
-
-/** "LED × 3 · Resistor × 3": the parts a template is built from, without its wires. */
-const partsOf = (t: Template) => {
-  const count = new Map<string, number>();
-  for (const it of t.circuit) if (it.t !== 'wire') { const label = PARTS[partIdOf(it)].label; count.set(label, (count.get(label) ?? 0) + 1); }
-  return [...count].map(([label, n]) => (n > 1 ? `${label} × ${n}` : label)).join(' · ');
-};
-
-/** The Open Studio's finished projects. Loading one replaces the bench and the sketch, so when there is work of the student's own there, it asks first. */
-function Templates() {
-  const board = useLab(s => s.board), ownWork = useLab(s => benchOf(s).length > 0 || codeOf(s) !== missionOf(s).starter), focus = useLab(s => s.templateFocus);
-  const [asking, setAsking] = useState<string | null>(null), [lit, setLit] = useState<string | null>(null);
-  const cards = useRef<Record<string, HTMLLIElement | null>>({});
-  const load = (id: string) => { setAsking(null); loadTemplate(id); };
-  useEffect(() => {   // the home page asked for this template: bring it into view, mark it for a moment, and put the keyboard on its Load button
-    if (!focus) return;
-    const card = cards.current[focus];
-    if (card) {
-      card.scrollIntoView({ block: 'center' });
-      card.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
-      setLit(focus);
-    }
-    templateShown();
-  }, [focus]);
-  useEffect(() => { if (!lit) return; const t = setTimeout(() => setLit(null), 2400); return () => clearTimeout(t); }, [lit]);
-  return (
-    <>
-      <h3>Start from a template</h3>
-      <p className="muted">Finished projects to try, take apart and change. Loading one puts its parts on the bench and its sketch in the editor.</p>
-      <ul className="templates">
-        {TEMPLATES[board].map(t => (
-          <li key={t.id} ref={el => { cards.current[t.id] = el; }} className={lit === t.id ? 'lit' : undefined}>
-            <b>{t.title}</b>
-            <p>{t.about}</p>
-            <p className="tpl-parts">{partsOf(t)}</p>
-            <p className="tpl-try"><b>Then try</b> {t.tryIt}</p>
-            <p className="tpl-guide">In the guide: {t.guide.map((id, i) => <span key={id}>{i > 0 && ', '}<a className="link" href={guideHash(id)}>{chapterOf(id)?.title.split(':')[0] ?? id}</a></span>)}</p>
-            {asking === t.id ? (
-              <div className="tpl-confirm" role="alert">
-                <span>This replaces what is on your bench and in your sketch. Undo brings the bench back, but not the sketch.</span>
-                <span className="actions">
-                  <button type="button" className="go" onClick={() => load(t.id)}>Replace them</button>
-                  <button type="button" autoFocus onClick={() => setAsking(null)}>Keep mine</button>
-                </span>
-              </div>
-            ) : (
-              <p className="actions"><button type="button" onClick={() => (ownWork ? setAsking(t.id) : load(t.id))} aria-label={`Load the ${t.title} template`}>Load</button></p>
-            )}
-          </li>
-        ))}
-      </ul>
-    </>
-  );
-}
 
 const HINT_NAMES = ['Nudge', 'Idea', 'Answer'], HINT_BUTTONS = ['Give me a nudge', 'Show me the idea', 'Show me the answer'];
 
@@ -90,7 +34,7 @@ export function MissionPanel() {
       {m.sandbox ? (
         <>
           <p className="free">This is free build, so there is nothing to check. Every part is in the tray, and what you build here is kept in this browser.</p>
-          <Templates />
+          <p className="actions"><button type="button" onClick={() => openPanel('templates')}>Open the templates</button><small>Finished projects to start from, in a panel of their own.</small></p>
         </>
       ) : (
         <>

@@ -67,7 +67,7 @@ export function Bench({ labelLayer }: { labelLayer: RefObject<HTMLDivElement | n
     light.position.copy(c).addScaledVector(SUN_DIR, 800);
     cam.left = -r; cam.right = r; cam.top = r; cam.bottom = -r; cam.near = 1; cam.far = 1800; cam.updateProjectionMatrix();
   };
-  useLayoutEffect(() => { world.setCircuit(shown, useLab.getState().burnt[keyOf(useLab.getState())] ?? []); aimSun(); }, [world, shown, board]);
+  useLayoutEffect(() => { world.setCircuit(shown, useLab.getState().burnt[keyOf(useLab.getState())] ?? [], bench); aimSun(); }, [world, shown, bench, board]);
   if (import.meta.env.DEV) (window as unknown as { __three: unknown }).__three = { gl, sun, world };
   useLayoutEffect(() => { const dpr = gl.getPixelRatio(); world.resize(size.width * dpr, size.height * dpr, dpr); }, [world, size, gl]);
   useEffect(() => {   // shadows follow the theme: the toggle's choice, or the system's when none has been made

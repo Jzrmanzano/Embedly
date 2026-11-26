@@ -115,22 +115,35 @@ const unoLed = (pin: number): Item[] => [
   { t: 'led', id: 'led', a: 'e10', k: 'e11', color: 0xff3b30 },
   { t: 'res', a: 'c11', b: 'c15' },
 ];
-const unoKnob: Item[] = [
-  ...unoLed(9),
-  { t: 'wire', a: 'a15', b: 'T-15', c: 'black' }, { t: 'wire', a: 'U:GND', b: 'T-2', c: 'black' }, { t: 'wire', a: 'U:5V', b: 'T+1', c: 'red' },
-  { t: 'pot', id: 'pot', row: 'd', col: 24, ctl: 'Knob position' },
-  { t: 'wire', a: 'a24', b: 'T+24', c: 'red' }, { t: 'wire', a: 'a26', b: 'T-26', c: 'black' }, { t: 'wire', a: 'a25', b: 'U:A0', c: 'green' },
+/* The Uno's builds are laid out so the connections are easy to follow, the same way as the ESP32's (tests/layout.test.ts holds them to it).
+   The Uno's digital pins, and the GND beside pin 13, are on its far header; 5V, GND and the analog pins on its near one. Each pin is wired to its own side
+   of the breadboard, so no wire cuts across the bench: parts on digital pins stand on the far side, in the same order as their pins (13 on the left,
+   2 on the right) so their wires never cross, and analog sensors stand on the near side. A jumper at the right-hand end, where no wire from the Uno
+   reaches, carries 5V to the far rail for the parts there that need it. */
+/** GND on the far − rail, from the GND pin beside pin 13. */
+export const unoGndFar: Item[] = [{ t: 'wire', a: 'U:GND2', b: 'T-1', c: 'black' }];
+/** 5V and GND on the near rails, beside the Uno's power pins. */
+export const unoPowerNear: Item[] = [{ t: 'wire', a: 'U:5V', b: 'B+1', c: 'red' }, { t: 'wire', a: 'U:GND', b: 'B-2', c: 'black' }];
+/** 5V on the near + rail and on along to the far one, through a jumper at the right-hand end. */
+export const unoFiveFar: Item[] = [{ t: 'wire', a: 'U:5V', b: 'B+1', c: 'red' }, { t: 'wire', a: 'B+30', b: 'T+30', c: 'red' }];
+/** A three-legged analog sensor (+, OUT, GND) on the near side, powered from the near rails and read on A0. */
+const unoNearSensor = (part: Item): Item[] => [
+  part, { t: 'wire', a: 'j24', b: 'B+24', c: 'red' }, { t: 'wire', a: 'j25', b: 'U:A0', c: 'green' }, { t: 'wire', a: 'j26', b: 'B-26', c: 'black' },
 ];
-/** A light sensor on a voltage divider: 5V, the sensor, the point the pin reads, a 10 kΩ resistor, GND. */
+/** The LED on a digital pin on the far side, a knob on A0 on the near side. */
+const unoKnob: Item[] = [
+  ...unoLed(9), { t: 'wire', a: 'a15', b: 'T-15', c: 'black' }, ...unoGndFar,
+  ...unoPowerNear, ...unoNearSensor({ t: 'pot', id: 'pot', row: 'g', col: 24, ctl: 'Knob position' }),
+];
+/** A light sensor on a voltage divider on the near side: 5V, the sensor, the point the pin reads, a 10 kΩ resistor, GND. */
 const unoLdr: Item[] = [
-  ...unoLed(9),
-  { t: 'wire', a: 'a15', b: 'T-15', c: 'black' }, { t: 'wire', a: 'U:GND', b: 'T-2', c: 'black' }, { t: 'wire', a: 'U:5V', b: 'T+1', c: 'red' },
-  { t: 'ldr', id: 'ldr', a: 'e24', b: 'e25', ctl: 'Light level' }, { t: 'wire', a: 'a24', b: 'T+24', c: 'red' },
-  { t: 'res', a: 'c25', b: 'c28', ohms: 10000 }, { t: 'wire', a: 'a28', b: 'T-28', c: 'black' },
-  { t: 'wire', a: 'a25', b: 'U:A0', c: 'green' },
+  ...unoLed(9), { t: 'wire', a: 'a15', b: 'T-15', c: 'black' }, ...unoGndFar, ...unoPowerNear,
+  { t: 'ldr', id: 'ldr', a: 'g24', b: 'g25', ctl: 'Light level' }, { t: 'wire', a: 'j24', b: 'B+24', c: 'red' },
+  { t: 'res', a: 'h25', b: 'h28', ohms: 10000 }, { t: 'wire', a: 'j28', b: 'B-28', c: 'black' },
+  { t: 'wire', a: 'j25', b: 'U:A0', c: 'green' },
 ];
 /** The knob's circuit with a TMP36 where the knob was. */
-const unoTemp: Item[] = unoKnob.map((it): Item => (it.t === 'pot' ? { t: 'temp', id: 'temp', row: 'd', col: 24, ctl: 'Temperature' } : it));
+const unoTemp: Item[] = unoKnob.map((it): Item => (it.t === 'pot' ? { t: 'temp', id: 'temp', row: 'g', col: 24, ctl: 'Temperature' } : it));
 const espLed: Item[] = [
   { t: 'wire', a: 'E:D5', b: 'j22', c: 'orange' },
   { t: 'led', id: 'led', a: 'g22', k: 'g23', color: 0xff3b30 },
@@ -138,6 +151,28 @@ const espLed: Item[] = [
   { t: 'wire', a: 'j27', b: 'B-27', c: 'black' },
   { t: 'wire', a: 'E:GND', b: 'B-5', c: 'black' },
 ];
+/* The ESP32 leaves nine free columns on the bench's breadboard, too few for more than the LED. Builds with more go on a long breadboard beside it,
+   laid out so the connections are easy to follow: each ESP32 pin is wired on its own side of the board (tests/layout.test.ts holds them to that),
+   power goes onto the rails beside the pins and along to the long breadboard with short jumpers, and the parts stand spread out along it. */
+/** A long breadboard at its usual place, just to the right of the bench's own. */
+export const LONG: Item = { t: 'breadboard', id: 'BB1', size: 'long' };
+/** 3.3 V and GND on the near rails, carried along to the long breadboard and across it to its far rails, beside the ESP32's analog pins. */
+export const espSensorPower: Item[] = [
+  { t: 'wire', a: 'E:3V3', b: 'B+4', c: 'red' },
+  { t: 'wire', a: 'B+30', b: 'B+31', c: 'red' }, { t: 'wire', a: 'B-30', b: 'B-31', c: 'black' },
+  { t: 'wire', a: 'B+40', b: 'T+40', c: 'red' }, { t: 'wire', a: 'B-41', b: 'T-41', c: 'black' },   // past the sensor, where no wire from the ESP32 reaches
+];
+/** A three-pin sensor (+, OUT, GND) on the far side of the long breadboard, powered from its far rails and read on D34. */
+export const espFarSensor = (part: Item): Item[] => [
+  part, { t: 'wire', a: 'a36', b: 'T+36', c: 'red' }, { t: 'wire', a: 'a37', b: 'E:D34', c: 'green' }, { t: 'wire', a: 'a38', b: 'T-38', c: 'black' },
+];
+/** 5 V from VIN along the far rails and across to the long breadboard's near + rail, with GND on its near − rail, for a sensor that needs 5 V. */
+export const esp5vNear: Item[] = [
+  { t: 'wire', a: 'E:VIN', b: 'T+4', c: 'red' }, { t: 'wire', a: 'T+30', b: 'T+31', c: 'red' }, { t: 'wire', a: 'T+50', b: 'B+50', c: 'red' },   // past the parts, where no wire from the ESP32 reaches
+  { t: 'wire', a: 'B-30', b: 'B-31', c: 'black' },
+];
+/** Where the long breadboard goes, said once for every mission that uses one. */
+const LONG_HOW = 'Nine free columns are too few for this one. Add a <b>long breadboard</b> from the tray and build the sensor on it. Wire each ESP32 pin on its own side of the board, so no wire crosses over the ESP32: the analog pins such as D34 are on the far side, 3V3, GND and D18 on the near side.';
 
 /* --- reading what a run did, for the prediction --- */
 type Behaviour = 'off' | 'on' | 'blinks';
@@ -446,10 +481,10 @@ void setup() {
 void loop() {
   // when the button is pressed (it reads LOW), play two notes, then stop the sound
 }`,
-    circuit: [
-      { t: 'button', id: 'btn', col: 20, ctl: 'Hold to press the button' },
-      { t: 'wire', a: 'U:2', b: 'a20', c: 'yellow' }, { t: 'wire', a: 'a22', b: 'T-22', c: 'black' }, { t: 'wire', a: 'U:GND', b: 'T-1', c: 'black' },
-      { t: 'buzzer', id: 'buzz', a: 'e26', b: 'e29' }, { t: 'wire', a: 'U:8', b: 'a26', c: 'purple' }, { t: 'wire', a: 'a29', b: 'T-29', c: 'black' },
+    circuit: [   // the buzzer and then the button on the far side, in the order of their pins, 8 then 2
+      { t: 'buzzer', id: 'buzz', a: 'e14', b: 'e17' }, { t: 'wire', a: 'U:8', b: 'a14', c: 'purple' }, { t: 'wire', a: 'a17', b: 'T-17', c: 'black' },
+      { t: 'button', id: 'btn', col: 22, ctl: 'Hold to press the button' },
+      { t: 'wire', a: 'U:2', b: 'a22', c: 'yellow' }, { t: 'wire', a: 'a24', b: 'T-24', c: 'black' }, ...unoGndFar,
     ],
     answer: `const int BUTTON_PIN = 2;
 const int BUZZER_PIN = 8;
@@ -526,8 +561,8 @@ void loop() {
     controls: { sonar: 'Distance from the sensor to the wall' },
     how: ['The sensor sends out a ping and <code>pulseIn()</code> times how long the echo takes to come back, in microseconds.', 'Sound travels about 0.0343 cm per microsecond, and the ping goes there and back, so <code>distance = duration * 0.0343 / 2</code>.', 'A <code>float</code> can hold a number with a decimal point.'],
     starter: `// Parking bay sensor
-const int TRIG_PIN = 9;
-const int ECHO_PIN = 10;
+const int TRIG_PIN = 10;
+const int ECHO_PIN = 9;
 const int LED_PIN = 13;
 
 void setup() {
@@ -552,14 +587,16 @@ void loop() {
 
   delay(250);
 }`,
-    circuit: [
-      ...unoLed(13),
-      { t: 'wire', a: 'a15', b: 'T-15', c: 'black' }, { t: 'wire', a: 'U:GND', b: 'T-2', c: 'black' }, { t: 'wire', a: 'U:5V', b: 'T+1', c: 'red' },
+    circuit: [   // the LED on the far side beside pin 13; the sensor in row j facing the wall, wired from behind it, across the centre gap, to pins 10 and 9 and the far rails
+      ...unoLed(13), { t: 'wire', a: 'a15', b: 'T-15', c: 'black' }, ...unoGndFar, ...unoFiveFar,
       { t: 'sonar', id: 'sonar', row: 'j', col: 18, ctl: 'Distance to the wall' },
-      { t: 'wire', a: 'f18', b: 'T+18', c: 'red' }, { t: 'wire', a: 'f21', b: 'T-21', c: 'black' }, { t: 'wire', a: 'g19', b: 'U:9', c: 'blue' }, { t: 'wire', a: 'g20', b: 'U:10', c: 'green' },
+      { t: 'wire', a: 'f18', b: 'd18', c: 'red' }, { t: 'wire', a: 'a18', b: 'T+18', c: 'red' },
+      { t: 'wire', a: 'f19', b: 'd19', c: 'blue' }, { t: 'wire', a: 'a19', b: 'U:10', c: 'blue' },
+      { t: 'wire', a: 'f20', b: 'd20', c: 'green' }, { t: 'wire', a: 'a20', b: 'U:9', c: 'green' },
+      { t: 'wire', a: 'f21', b: 'd21', c: 'black' }, { t: 'wire', a: 'a21', b: 'T-21', c: 'black' },
     ],
-    answer: `const int TRIG_PIN = 9;
-const int ECHO_PIN = 10;
+    answer: `const int TRIG_PIN = 10;
+const int ECHO_PIN = 9;
 const int LED_PIN = 13;
 
 void setup() {
@@ -604,7 +641,7 @@ void loop() {
     hints: [
       'Open the Serial Monitor and slide the wall closer. Do the printed distances change? If the sensor never reads, check its power and its two signal wires.',
       'The sensor\'s pins are VCC, Trig, Echo and GND, from left to right. Power it from 5 V and GND, and wire Trig and Echo to pins the sketch uses. Then compare <code>distance</code> with 20 using <code>if</code> and <code>&lt;</code>.',
-      'Wire VCC to the + rail (f18 to T+18), GND to the − rail (f21 to T−21), Trig to pin 9 (g19) and Echo to pin 10 (g20). In the sketch: if (distance < 20) digitalWrite(LED_PIN, HIGH); else digitalWrite(LED_PIN, LOW);',
+      'Put the sensor in j18 to j21, facing the wall. Its board stands up in front of its pins, so wire it from behind: four short jumpers across the centre gap (f18 to d18, f19 to d19, f20 to d20, f21 to d21), then VCC to the far + rail (a18 to T+18), Trig to pin 10 (a19), Echo to pin 9 (a20) and GND to the far − rail (a21 to T−21). The far − rail gets GND from the GND pin beside pin 13, and the far + rail gets 5V through the near + rail and a jumper at the right-hand end (B+30 to T+30). In the sketch: if (distance < 20) digitalWrite(LED_PIN, HIGH); else digitalWrite(LED_PIN, LOW);',
     ],
     checks: [
       phases('The light is off when the bay is empty', [{ when: 'the wall is far away (60 cm)', set: { sonar: 60 }, expect: { led: false } }]),
@@ -659,12 +696,10 @@ void loop() {
 
   delay(100);
 }`,
-    circuit: [
-      ...unoLed(13),
-      { t: 'wire', a: 'a15', b: 'T-15', c: 'black' }, { t: 'wire', a: 'U:GND', b: 'T-2', c: 'black' }, { t: 'wire', a: 'U:5V', b: 'T+1', c: 'red' },
-      { t: 'module', kind: 'soil', id: 'soil', row: 'd', col: 22, ctl: 'Soil moisture' },   // two columns left of where a knob would go, so the sensor's board clears the buzzer
-      { t: 'wire', a: 'a22', b: 'T+22', c: 'red' }, { t: 'wire', a: 'a24', b: 'T-24', c: 'black' }, { t: 'wire', a: 'a23', b: 'U:A0', c: 'green' },
-      { t: 'buzzer', id: 'buzz', a: 'e28', b: 'e30' }, { t: 'wire', a: 'U:8', b: 'a28', c: 'purple' }, { t: 'wire', a: 'a30', b: 'T-30', c: 'black' },
+    circuit: [   // the LED and the buzzer on the far side (pins 13 and 8), the soil sensor on the near side (A0)
+      ...unoLed(13), { t: 'wire', a: 'a15', b: 'T-15', c: 'black' }, ...unoGndFar,
+      { t: 'buzzer', id: 'buzz', a: 'e18', b: 'e21' }, { t: 'wire', a: 'U:8', b: 'a18', c: 'purple' }, { t: 'wire', a: 'a21', b: 'T-21', c: 'black' },
+      ...unoPowerNear, ...unoNearSensor({ t: 'module', kind: 'soil', id: 'soil', row: 'g', col: 24, ctl: 'Soil moisture' }),
     ],
     answer: `const int MOISTURE_PIN = A0;
 const int LED_PIN = 13;
@@ -744,8 +779,8 @@ void loop() {
   }
   delay(100);
 }`,
-    circuit: [
-      { t: 'wire', a: 'U:GND', b: 'T-2', c: 'black' }, { t: 'wire', a: 'U:5V', b: 'T+1', c: 'red' },
+    circuit: [   // the sensor on the far side, beside pin 7, with 5V carried to the far rail at the right-hand end
+      ...unoGndFar, ...unoFiveFar,
       { t: 'module', kind: 'ir', id: 'ir', row: 'd', col: 22, ctl: 'Path in front' },
       { t: 'wire', a: 'a22', b: 'T+22', c: 'red' }, { t: 'wire', a: 'a23', b: 'U:7', c: 'yellow' }, { t: 'wire', a: 'a24', b: 'T-24', c: 'black' },
     ],
@@ -831,7 +866,7 @@ void loop() {
     digitalWrite(WALK_PIN, LOW);
   }
 }`,
-    circuit: [
+    circuit: [   // everything on the far side, in the order of the pins: 12, 11, then 2
       { t: 'wire', a: 'U:12', b: 'a5', c: 'orange' },
       { t: 'led', id: 'warn', a: 'e5', k: 'e6', color: 0xff3b30 },
       { t: 'res', a: 'c6', b: 'c9' },
@@ -842,7 +877,7 @@ void loop() {
       { t: 'wire', a: 'a15', b: 'T-15', c: 'black' },
       { t: 'button', id: 'btn', col: 20, ctl: 'Hold to press the button' },
       { t: 'wire', a: 'U:2', b: 'a20', c: 'yellow' }, { t: 'wire', a: 'a22', b: 'T-22', c: 'black' },
-      { t: 'wire', a: 'U:GND', b: 'T-1', c: 'black' },
+      ...unoGndFar,
     ],
     answer: `const int WARN_PIN = 12;     // red warning light
 const int WALK_PIN = 11;     // green walk light
@@ -936,12 +971,12 @@ void setup() {
 void loop() {
   // when the button is pressed: lift the arm to 90, wait 3 seconds, then put it back down to 0
 }`,
-    circuit: [
-      { t: 'button', id: 'btn', col: 20, ctl: 'Hold to press the button' },
-      { t: 'wire', a: 'U:2', b: 'a20', c: 'yellow' }, { t: 'wire', a: 'a22', b: 'T-22', c: 'black' }, { t: 'wire', a: 'U:GND', b: 'T-1', c: 'black' },
-      { t: 'servo', id: 'servo', row: 'g', col: 24 },
-      { t: 'wire', a: 'j24', b: 'B-24', c: 'black' }, { t: 'wire', a: 'j25', b: 'B+25', c: 'red' }, { t: 'wire', a: 'j26', b: 'U:9', c: 'orange' },
-      { t: 'wire', a: 'U:5V', b: 'B+1', c: 'red' }, { t: 'wire', a: 'U:GNDb', b: 'B-2', c: 'black' },
+    circuit: [   // the servo and then the button on the far side, in the order of their pins, 9 then 2; the servo's motor lies behind the breadboard
+      { t: 'servo', id: 'servo', row: 'd', col: 16 },
+      { t: 'wire', a: 'a16', b: 'T-16', c: 'black' }, { t: 'wire', a: 'a17', b: 'T+17', c: 'red' }, { t: 'wire', a: 'a18', b: 'U:9', c: 'orange' },
+      { t: 'button', id: 'btn', col: 22, ctl: 'Hold to press the button' },
+      { t: 'wire', a: 'U:2', b: 'a22', c: 'yellow' }, { t: 'wire', a: 'a24', b: 'T-24', c: 'black' },
+      ...unoGndFar, ...unoFiveFar,
     ],
     answer: `#include <Servo.h>
 
@@ -985,7 +1020,7 @@ void loop() {
     hints: [
       'Press the button while the sketch runs and watch the servo arm. Does the Circuit check say anything about the servo? Its red + wire needs 5 V.',
       'Inside <code>loop()</code>, check <code>if (digitalRead(BUTTON_PIN) == LOW)</code>. Inside it: <code>barrier.write(90)</code>, a <code>delay()</code> of 3000 milliseconds, then <code>barrier.write(0)</code>.',
-      'In loop(): if (digitalRead(BUTTON_PIN) == LOW) { barrier.write(90); delay(3000); barrier.write(0); } Put the servo lead in g24 to g26, then wire j24 to the − rail, j25 to the + rail and j26 to pin 9, with the rails on 5V and GND.',
+      'In loop(): if (digitalRead(BUTTON_PIN) == LOW) { barrier.write(90); delay(3000); barrier.write(0); } Put the servo lead in d16 to d18, on the far side beside pin 9, then wire a16 to the far − rail, a17 to the far + rail and a18 to pin 9. The far − rail gets GND from the GND pin beside pin 13, and the far + rail gets 5V through the near + rail and a jumper at the right-hand end (B+30 to T+30).',
     ],
     checks: [
       phases('The arm rests down', [{ when: 'no bus is waiting', set: { button: 0 }, ms: 1500, expect: { servo: [0, 10] } }]),
@@ -1037,11 +1072,11 @@ void loop() {
     noTone(BUZZER_PIN);
   }
 }`,
-    circuit: [
+    circuit: [   // everything on the far side, in the order of the pins: 12, 8, then 2
       { t: 'wire', a: 'U:12', b: 'a5', c: 'orange' }, { t: 'led', id: 'light', a: 'e5', k: 'e6', color: 0xff3b30 }, { t: 'res', a: 'c6', b: 'c9' }, { t: 'wire', a: 'a9', b: 'T-9', c: 'black' },
+      { t: 'buzzer', id: 'buzz', a: 'e12', b: 'e15' }, { t: 'wire', a: 'U:8', b: 'a12', c: 'purple' }, { t: 'wire', a: 'a15', b: 'T-15', c: 'black' },
       { t: 'contact', kind: 'reed', id: 'reed', a: 'e20', b: 'e22', ctl: 'Magnet' }, { t: 'wire', a: 'U:2', b: 'a20', c: 'yellow' }, { t: 'wire', a: 'a22', b: 'T-22', c: 'black' },
-      { t: 'buzzer', id: 'buzz', a: 'e28', b: 'e30' }, { t: 'wire', a: 'U:8', b: 'a28', c: 'purple' }, { t: 'wire', a: 'a30', b: 'T-30', c: 'black' },
-      { t: 'wire', a: 'U:GND', b: 'T-1', c: 'black' },
+      ...unoGndFar,
     ],
     answer: `const int REED_PIN = 2;      // LOW while the door is shut: the magnet closes the switch
 const int LIGHT_PIN = 12;    // red "door open" light
@@ -1579,6 +1614,7 @@ void loop() {
       'The motion sensor needs <b>5 V</b>, so power its + pin from <b>VIN</b>. Its OUT pin only ever gives 3.3 V, which is safe for an ESP32 pin.',
       'Each time the sensor reads HIGH, remember the time with <code>lastMotion = millis();</code>. The light should go off once <code>millis() - lastMotion &gt;= HOLD_MS</code>.',
       'Do not wait with <code>delay(5000)</code>. While the board waits it cannot see someone move again, so it cannot start the 5 seconds again.',
+      LONG_HOW,
     ],
     starter: `// Stairwell light
 const int PIR_PIN = 18;    // HIGH while the sensor sees movement
@@ -1599,9 +1635,9 @@ void loop() {
   }
 }`,
     circuit: [
-      ...espLed, { t: 'wire', a: 'E:VIN', b: 'B+24', c: 'red' },
-      { t: 'module', kind: 'pir', id: 'pir', row: 'g', col: 28, ctl: 'Movement' },
-      { t: 'wire', a: 'j28', b: 'B+28', c: 'red' }, { t: 'wire', a: 'j29', b: 'E:D18', c: 'yellow' }, { t: 'wire', a: 'j30', b: 'B-30', c: 'black' },
+      LONG, ...espLed, ...esp5vNear,
+      { t: 'module', kind: 'pir', id: 'pir', row: 'g', col: 36, ctl: 'Movement' },
+      { t: 'wire', a: 'j36', b: 'B+36', c: 'red' }, { t: 'wire', a: 'j37', b: 'E:D18', c: 'yellow' }, { t: 'wire', a: 'j38', b: 'B-38', c: 'black' },
     ],
     answer: `const int PIR_PIN = 18;    // HIGH while the sensor sees movement
 const int LED_PIN = 5;
@@ -1743,7 +1779,7 @@ void loop() {
     story: 'The main hallway is dark at night. Build a <b>night light</b> that comes on by itself when it is dark. The ESP32 measures voltage in 4096 steps instead of 1024, so the numbers are four times bigger. The knob stands in for the light sensor and runs from <b>3.3 V</b>, never 5 V, because the pins cannot take more.',
     goal: 'The LED comes on when the light level is low and goes off when it is high.',
     controls: { pot: 'Hallway light level' },
-    how: ['<code>analogRead()</code> gives 0 to 4095 on the ESP32, because its converter has 12 bits.', 'The sensor must be powered from 3V3. A pin cannot take 5 V.', 'Pins D34 to D39 are input-only, which is fine for a sensor.'],
+    how: ['<code>analogRead()</code> gives 0 to 4095 on the ESP32, because its converter has 12 bits.', 'The sensor must be powered from 3V3. A pin cannot take 5 V.', 'Pins D34 to D39 are input-only, which is fine for a sensor.', LONG_HOW],
     starter: `// Hallway night light
 const int SENSOR_PIN = 34;   // the light sensor (the knob)
 const int LED_PIN = 5;
@@ -1758,8 +1794,7 @@ void loop() {
   delay(50);
 }`,
     circuit: [
-      ...espLed, { t: 'wire', a: 'E:3V3', b: 'B+4', c: 'red' },
-      { t: 'pot', id: 'pot', row: 'g', col: 28, ctl: 'Knob position' }, { t: 'wire', a: 'j28', b: 'B+28', c: 'red' }, { t: 'wire', a: 'j30', b: 'B-30', c: 'black' }, { t: 'wire', a: 'j29', b: 'E:D34', c: 'green' },
+      LONG, ...espLed, ...espSensorPower, ...espFarSensor({ t: 'pot', id: 'pot', row: 'd', col: 36, ctl: 'Knob position' }),
     ],
     answer: `const int SENSOR_PIN = 34;
 const int LED_PIN = 5;
@@ -1813,6 +1848,7 @@ void loop() {
       'On the ESP32 the library is <code>ESP32Servo.h</code>, but the Servo in it works just like the Arduino one: <code>attach()</code> it to a pin, then <code>write()</code> an angle.',
       '<code>map(wind, 0, 4095, 0, 180)</code> turns the 12-bit reading into an angle.',
       'The servo needs 5 V, so power it from <b>VIN</b>, which carries the 5 V from USB. Its signal can still come from a 3.3 V pin. The sensor must stay on <b>3V3</b>.',
+      'A servo and a sensor need more room than the nine free columns. Add a <b>long breadboard</b> from the tray and build them on its far side, beside D13 and D34, with VIN on the far rails and 3V3 on the near ones. Then no wire has to cross over the ESP32.',
     ],
     starter: `// Wind gauge
 #include <ESP32Servo.h>
@@ -1833,13 +1869,15 @@ void loop() {
 
   delay(50);
 }`,
-    circuit: [
-      { t: 'servo', id: 'servo', row: 'g', col: 22 },
-      { t: 'wire', a: 'j22', b: 'B-22', c: 'black' }, { t: 'wire', a: 'j23', b: 'B+23', c: 'red' }, { t: 'wire', a: 'j24', b: 'E:D13', c: 'orange' },
-      { t: 'wire', a: 'E:VIN', b: 'B+26', c: 'red' }, { t: 'wire', a: 'E:GND', b: 'B-26', c: 'black' },
-      { t: 'pot', id: 'pot', row: 'd', col: 27, ctl: 'Knob position' },
-      { t: 'wire', a: 'a27', b: 'T+27', c: 'red' }, { t: 'wire', a: 'a29', b: 'T-29', c: 'black' }, { t: 'wire', a: 'a28', b: 'E:D34', c: 'green' },
-      { t: 'wire', a: 'E:3V3', b: 'T+23', c: 'red' }, { t: 'wire', a: 'E:GNDf', b: 'T-24', c: 'black' },
+    circuit: [   // both parts on the far side of a long breadboard, beside D13 and D34: 5 V from VIN along the far rails, 3.3 V along the near rails and across
+      LONG,
+      { t: 'wire', a: 'E:VIN', b: 'T+4', c: 'red' }, { t: 'wire', a: 'E:GNDf', b: 'T-5', c: 'black' },
+      { t: 'wire', a: 'T+30', b: 'T+31', c: 'red' }, { t: 'wire', a: 'T-30', b: 'T-31', c: 'black' },
+      { t: 'servo', id: 'servo', row: 'd', col: 35 },
+      { t: 'wire', a: 'a35', b: 'T-35', c: 'black' }, { t: 'wire', a: 'a36', b: 'T+36', c: 'red' }, { t: 'wire', a: 'a37', b: 'E:D13', c: 'orange' },
+      { t: 'wire', a: 'E:3V3', b: 'B+4', c: 'red' }, { t: 'wire', a: 'B+30', b: 'B+31', c: 'red' },
+      { t: 'pot', id: 'pot', row: 'd', col: 48, ctl: 'Knob position' },
+      { t: 'wire', a: 'B+48', b: 'a48', c: 'red' }, { t: 'wire', a: 'a49', b: 'E:D34', c: 'green' }, { t: 'wire', a: 'a50', b: 'T-50', c: 'black' },
     ],
     answer: `#include <ESP32Servo.h>
 
@@ -1876,7 +1914,7 @@ void loop() {
     hints: [
       'Turn the Wind speed knob while the sketch runs. Does the needle move? Print <code>wind</code> to the Serial Monitor to see what the sensor reads: on the ESP32 it goes up to 4095.',
       '<code>map(wind, 0, 4095, 0, 180)</code> gives the angle. Write it to the servo with <code>needle.write(angle)</code>. Power the servo from VIN (5 V), and keep the knob on 3V3.',
-      'In loop(): int angle = map(wind, 0, 4095, 0, 180); needle.write(angle); then delay(50). Put the servo lead in g22 to g24, then wire j22 to the − rail, j23 to the + rail and j24 to D13, with VIN on the + rail and GND on the − rail.',
+      'In loop(): int angle = map(wind, 0, 4095, 0, 180); needle.write(angle); then delay(50). On a long breadboard, wire VIN and the GND beside it to the far rails and carry them along with two short jumpers, then put the servo lead in d35 to d37 with a35 to the − rail, a36 to the + rail and a37 to D13. The knob goes in d48 to d50, its + leg on 3V3 (carried along the near rails), its middle leg to D34. The table below has every wire.',
     ],
     checks: [
       phases('The needle rests at 0° in still air', [{ when: 'the air is still (wind 0%)', set: { pot: 0 }, expect: { servo: [0, 8] } }]),
@@ -1902,6 +1940,7 @@ void loop() {
       'The <b>TMP36</b> gives <b>0.5 V at 0 °C plus 10 mV for every degree</b>, whatever its supply. Power it from <b>3V3</b>, the same as the other parts.',
       'On the ESP32, <code>analogRead()</code> gives 0 to 4095 for 0 to 3.3 V. So volts are <code>raw * 3.3 / 4095.0</code>.',
       'Degrees are <code>(volts - 0.5) * 100.0</code>. Print them with <code>Serial.println()</code>, then compare with 8.',
+      LONG_HOW,
     ],
     starter: `// Canteen fridge alarm
 const int SENSOR_PIN = 34;   // the TMP36's output
@@ -1923,8 +1962,7 @@ void loop() {
   delay(500);
 }`,
     circuit: [
-      ...espLed, { t: 'wire', a: 'E:3V3', b: 'B+4', c: 'red' },
-      { t: 'temp', id: 'temp', row: 'g', col: 28, ctl: 'Temperature' }, { t: 'wire', a: 'j28', b: 'B+28', c: 'red' }, { t: 'wire', a: 'j30', b: 'B-30', c: 'black' }, { t: 'wire', a: 'j29', b: 'E:D34', c: 'green' },
+      LONG, ...espLed, ...espSensorPower, ...espFarSensor({ t: 'temp', id: 'temp', row: 'd', col: 36, ctl: 'Temperature' }),
     ],
     answer: `const int SENSOR_PIN = 34;
 const int WARN_PIN = 5;
@@ -2191,9 +2229,9 @@ UNO.splice(UNO.length - 1, 0,
     hints: [
       'Print <code>light</code> to the Serial Monitor and move the slider. If the number does not follow it, look at the knob in the circuit check. If it does, look at the number the sketch compares it with.',
       'The knob needs power on one outer leg and GND on the other, or its middle leg floats at one end. And the Uno\'s reading never goes above 1023, so a limit of 3000 is always passed.',
-      'Wire a26 to the - rail (GND) to give the knob its ground. In the sketch, change <code>light &lt; 3000</code> to <code>light &lt; 300</code>.',
+      'Wire j26 to the near − rail (GND) to give the knob its ground. In the sketch, change <code>light &lt; 3000</code> to <code>light &lt; 300</code>.',
     ],
-    fault: it => (it.t === 'wire' && it.a === 'a26' ? null : it),
+    fault: it => (it.t === 'wire' && it.a === 'j26' ? null : it),
     code: [['light < 300', 'light < 3000']],
   }),
   repairOf(unoMission('chime'), {
@@ -2232,10 +2270,10 @@ ESP.splice(ESP.length - 1, 0,
     how: ['The ESP32 counts to <b>4095</b>, not 1023. The sums in an Uno tutorial need changing.', 'A servo needs 5 V to turn. On the ESP32 that is the <b>VIN</b> pin, not 3V3.', 'Check the circuit check panel first: it knows what the servo needs.'],
     hints: [
       'The circuit check names the servo\'s problem. And look at the numbers in <code>map()</code>: what is the biggest number the ESP32\'s <code>analogRead()</code> gives?',
-      'The servo\'s red wire must be on a 5 V supply. VIN carries the 5 V from USB. And <code>map(wind, 0, 1023, 0, 180)</code> reaches 180° at a quarter of the wind.',
-      'Wire VIN (not 3V3) to the + rail the servo uses. In the sketch change <code>map(wind, 0, 1023, 0, 180)</code> to <code>map(wind, 0, 4095, 0, 180)</code>.',
+      'The servo\'s red wire must be on a 5 V supply. VIN carries the 5 V from USB to the far rails. Follow the red jumper that feeds the long breadboard\'s far + rail back to where it starts: is that the VIN rail? And <code>map(wind, 0, 1023, 0, 180)</code> reaches 180° at a quarter of the wind.',
+      'The jumper to the long breadboard\'s far + rail (T+31) starts on the near 3.3 V rail (B+29). Move that end to the far rail VIN feeds, T+30. In the sketch change <code>map(wind, 0, 1023, 0, 180)</code> to <code>map(wind, 0, 4095, 0, 180)</code>.',
     ],
-    fault: it => (it.t === 'wire' && it.a === 'E:VIN' ? { ...it, a: 'E:3V3' } : it),
+    fault: it => (it.t === 'wire' && it.a === 'T+30' ? { ...it, a: 'B+29' } : it),   // the long breadboard's far rail fed from the 3.3 V rail, not from VIN
     code: [['map(wind, 0, 4095, 0, 180)', 'map(wind, 0, 1023, 0, 180)']],
   }),
 );

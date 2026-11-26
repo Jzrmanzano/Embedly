@@ -103,7 +103,7 @@ export interface LabState {
   errLine: number | null;
   serial: string;
   phone: PhoneState;
-  /** A template the home page asked to see. The studio's brief scrolls to it, then forgets it. */
+  /** The templates were asked for, from the home page or a mission: the id of one to scroll to, or "" for the panel itself. The studio opens its Templates panel, then forgets it. */
   templateFocus: string | null;
 }
 

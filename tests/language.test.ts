@@ -160,10 +160,10 @@ test('the circuit check explains a servo with no ground, too little power, power
   const issue = (items: Item[]) => analyze('uno', items).issues.find(i => i.part === 'servo');
   const swap = (f: (it: Item) => Item | null) => barrier.circuit.flatMap(it => f(it) ?? []);
   assert.equal(issue(barrier.circuit), undefined, 'the reference build is fine');
-  assert.equal(issue(swap(it => (it.t === 'wire' && it.a === 'j24' ? null : it)))?.title, 'Servo has no ground');
+  assert.equal(issue(swap(it => (it.t === 'wire' && it.a === 'a16' ? null : it)))?.title, 'Servo has no ground');
   assert.match(issue(swap(it => (it.t === 'wire' && it.a === 'U:5V' ? { ...it, a: 'U:3V3' } : it)))!.plain, /only gets 3\.3 V/);
-  assert.match(issue(swap(it => (it.t === 'wire' && it.a === 'j25' ? { ...it, b: 'U:8' } : it)))!.plain, /wired to a pin/);
-  assert.equal(issue(swap(it => (it.t === 'wire' && it.a === 'j26' ? null : it)))?.title, 'Servo signal is not connected');
+  assert.match(issue(swap(it => (it.t === 'wire' && it.a === 'a17' ? { ...it, b: 'U:8' } : it)))!.plain, /wired to a pin/);
+  assert.equal(issue(swap(it => (it.t === 'wire' && it.a === 'a18' ? null : it)))?.title, 'Servo signal is not connected');
 });
 
 test('the servo points where the sketch says only while it has power and a signal', async () => {

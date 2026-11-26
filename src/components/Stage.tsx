@@ -317,6 +317,7 @@ function useHotkeys() {
         const letter = k.toLowerCase();
         if (letter === 'm') togglePanel('map');
         else if (letter === 'b') togglePanel('brief');
+        else if (letter === 'l') togglePanel('templates');
         else if (letter === 'g') showGuide();
         else if (letter === 'p') togglePanel('parts');
         else if (letter === 'c') togglePanel('code');

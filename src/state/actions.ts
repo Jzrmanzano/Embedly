@@ -208,8 +208,10 @@ export function openFromHash() {
   resetPhone();
   const home = route.page === 'home';
   const choosing = !home && !!MISSIONS[board][mission].choice;
+  const studio = !home && !!MISSIONS[board][mission].sandbox;
   set(s => {
-    const open = home || (isPhone() && !s.templateFocus) ? s.panels : openPanelIn(s.panels, 'brief', isNarrow());   // a new mission opens its brief, except on a phone where it would cover the bench, unless a template was asked for
+    // A new mission opens its brief, and the studio its templates, except on a phone where they would cover the bench (unless the templates were asked for).
+    const open = home || (isPhone() && s.templateFocus === null) ? s.panels : openPanelIn(s.panels, studio ? 'templates' : 'brief', isNarrow());
     return { page: home ? 'home' : 'lab', labSeen: s.labSeen || !home, board, mission, hot: null, serial: '', errLine: null, tool: null, pending: null, point: null, notice: null, results: null, asking: null, checking: false, drag: null, bbDrag: null, partDrag: null, panels: choosing ? closePanelIn(closePanelIn(open, 'code'), 'parts') : home || isNarrow() || open.right ? open : openPanelIn(open, 'parts', false) };   // choosing a board needs no code or parts, and on a wide screen the parts are at hand
   });
   syncInputs();
@@ -608,9 +610,9 @@ export function revealHint() {
   set(st => ({ hintsUsed: { ...st.hintsUsed, [key]: n + 1 } }));
   saveMissionProgress();
 }
-/** The home page's link to a template: the studio opens with its brief on the Mission tab, scrolled to that template. Called as the link is followed. */
-export const showTemplate = (id: string) => set({ templateFocus: id, tab: 'mission' });
-/** The brief has scrolled to the template asked for. */
+/** A link to the templates, from the home page or a mission: the studio opens with its Templates panel, scrolled to this template if one is named. Called as the link is followed. */
+export const showTemplate = (id = '') => set({ templateFocus: id });
+/** The Templates panel has opened, and scrolled to the template asked for. */
 export const templateShown = () => set({ templateFocus: null });
 
 /** Puts a template's build on the bench and its sketch in the editor, in the Open Studio. Undo takes the build off again; the sketch it replaced is gone, so the brief asks first. */

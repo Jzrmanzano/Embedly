@@ -8,6 +8,7 @@ import { layoutSchematic } from '../src/sim/schematic';
 import { allTerminals, homedBreadboard, makeItem, movedBreadboard, parseTerminal, placementError, resizedBreadboard, withoutBreadboard } from '../src/state/bench';
 import { isItem } from '../src/state/progress';
 import { BB_DEPTH, bbLength, fits, HOME, isHome, placeOf, REACH, slide, type Place } from '../src/state/table';
+import { collisions } from '../src/state/table';
 import { extraColumns, onExtraBoard, type BreadboardSize, type Item } from '../src/types';
 
 const HIGH: Drive = { mode: 'out', level: 1 };
@@ -171,10 +172,13 @@ test('one that has been left on something can still be dragged off it', () => {
   assert.deepEqual(slide('uno', [{ t: 'lcd', id: 'lcd1' }], 'short', onLcd, { x: -40, z: 150 }), { x: -40, z: 150 });
 });
 
-test('the LCD and the touch pad are refused while the second breadboard lies on their place, and a long one needs room to grow', () => {
+test('the LCD and the touch pad make room for the second breadboard when it lies on their usual place, and a long one needs room to grow', () => {
   const there = { ...board('short'), x: -60, z: 60 };
-  assert.match(placementError('uno', [there], makeItem({ kind: 'lcd' }, [there], 'LCD'))!, /lying where the LCD display goes/);
-  assert.match(placementError('esp32', [there], makeItem({ kind: 'pad' }, [there], 'PAD'))!, /lying where the touch pad goes/);
+  for (const [b, kind, at] of [['uno', 'lcd', 'LCD'], ['esp32', 'pad', 'PAD']] as const) {
+    const it = makeItem({ kind }, [there], at);
+    assert.equal(placementError(b, [there], it), null, `${kind}: it takes another free place`);
+    assert.deepEqual(collisions(b, [there, it]), [], `${kind}: and lies on nothing there`);
+  }
   assert.equal(placementError('uno', [board('short')], makeItem({ kind: 'lcd' }, [board('short')], 'LCD')), null);
   const behind = { ...board('short'), x: -250, z: -27 - BB_DEPTH / 2 };   // just behind the Uno: a long one there passes behind it
   assert.ok(fits('uno', [], 'short', placeOf(behind)));

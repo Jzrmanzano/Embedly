@@ -106,13 +106,13 @@ button:disabled { opacity: .5; }
 .rail { position: absolute; z-index: 7; top: 0; bottom: 0; width: var(--rail); display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0; background: var(--panel); }
 .rail.left { left: 0; border-right: 1px solid var(--edge); }
 .rail.right { right: 0; border-left: 1px solid var(--edge); }
-.rail-btn { position: relative; width: 50px; padding: 8px 0 6px; display: flex; flex-direction: column; align-items: center; gap: 3px; border: 1px solid transparent; border-radius: 10px; background: none; color: var(--muted); font: 700 .68rem var(--f-body); text-decoration: none; cursor: pointer; }
+.rail-btn { position: relative; width: 56px; padding: 8px 0 6px; display: flex; flex-direction: column; align-items: center; gap: 3px; border: 1px solid transparent; border-radius: 10px; background: none; color: var(--muted); font: 700 .64rem var(--f-body); text-decoration: none; cursor: pointer; }
 .rail-btn .icon { width: 22px; height: 22px; }
 .rail-btn:hover { color: var(--ink); border-color: var(--edge); }
 .rail-btn[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
 .rail-btn[aria-pressed="true"]::after { content: ""; position: absolute; top: 50%; width: 4px; height: 24px; margin-top: -12px; border-radius: 2px; background: var(--accent); }
-.rail.left .rail-btn[aria-pressed="true"]::after { right: -8px; }
-.rail.right .rail-btn[aria-pressed="true"]::after { left: -8px; }
+.rail.left .rail-btn[aria-pressed="true"]::after { right: -5px; }
+.rail.right .rail-btn[aria-pressed="true"]::after { left: -5px; }
 .rail-end { margin-top: auto; }
 @media (max-width: 760px) { .theme-toggle span:not(.sr-only) { display: none; } }
 
@@ -319,7 +319,13 @@ dl.facts dt { color: var(--muted); } dl.facts dd { margin: 0; }
 .hints li { padding: 8px 12px; background: var(--panel-2); border-radius: 8px; font-size: .95rem; }
 .hints li > b { display: block; font: 700 .7rem var(--f-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); margin-bottom: 2px; }
 .answer { margin-top: 8px; }
-/* the Open Studio's templates: a card each, with what it is made of and what to try */
+/* the Templates panel, beside the map and the brief */
+.tpl-panel { flex: 1; min-height: 0; overflow: auto; padding: 14px 16px 24px; }
+.tpl-intro { margin: 0 0 12px; color: var(--muted); }
+.tpl-other { margin: 16px 0 0; font-size: .9rem; color: var(--muted); }
+.tpl-other .link { padding: 0 !important; }
+.templates .btn { text-decoration: none; }
+/* the templates: a card each, with what it is made of and what to try */
 .templates { list-style: none; margin: 0; padding: 0 !important; display: flex; flex-direction: column; gap: 10px; }
 .templates > li { margin: 0 !important; padding: 10px 14px 12px; background: var(--panel-2); border-radius: 8px; border-left: 5px solid var(--edge); }
 .templates > li > b { font: 700 1.08rem var(--f-display); }

@@ -2,6 +2,7 @@
    to try, take apart and change. They use only the tray's parts. Each has a proof, checks its own build and sketch must pass, so a template
    cannot quietly stop working: tests/templates.test.ts runs them, and also places every build by hand, the way a student would. */
 import { phases, type InputStep, type Scenario, type Trace } from '../sim/check';
+import { esp5vNear, espFarSensor, espSensorPower, LONG, unoGndFar, unoPowerNear } from './missions';
 import { LED_COLORS, type BoardId, type Item } from '../types';
 
 export interface Template {
@@ -72,7 +73,7 @@ const UNO: Template[] = [
       { t: 'led', id: 'green', a: 'e17', k: 'e18', color: LED_COLORS.green },
       { t: 'res', a: 'c18', b: 'c21' },
       { t: 'wire', a: 'a21', b: 'T-21', c: 'black' },
-      { t: 'wire', a: 'U:GND', b: 'T-1', c: 'black' },
+      ...unoGndFar,
     ],
     sketch: `// Traffic light: green, then amber, then red, over and over
 const int RED_PIN = 12;
@@ -116,21 +117,24 @@ void loop() {
     id: 'distance', title: 'Distance meter', guide: ['sonar', 'lcd'],
     about: 'The distance sensor measures how far away the wall is, and the LCD shows it in centimetres.',
     tryIt: 'Move the wall with its slider. Then make the backlight flash when something comes closer than 10 cm.',
-    circuit: [
-      { t: 'wire', a: 'U:5V', b: 'T+1', c: 'red' }, { t: 'wire', a: 'U:GND', b: 'T-2', c: 'black' },
-      { t: 'sonar', id: 'sonar', row: 'j', col: 18, ctl: 'Distance to the wall' },
-      { t: 'wire', a: 'f18', b: 'T+18', c: 'red' }, { t: 'wire', a: 'f21', b: 'T-21', c: 'black' },
-      { t: 'wire', a: 'g19', b: 'U:9', c: 'blue' }, { t: 'wire', a: 'g20', b: 'U:10', c: 'green' },
+    circuit: [   // the sensor on a long breadboard, so its wall has the front of the bench to itself; the LCD in front on the left, beside the Uno's A4 and A5
+      LONG, ...unoPowerNear, { t: 'wire', a: 'B+30', b: 'B+31', c: 'red' },
+      ...unoGndFar, { t: 'wire', a: 'T-30', b: 'T-31', c: 'black' }, { t: 'wire', a: 'B+48', b: 'T+48', c: 'red' },
+      { t: 'sonar', id: 'sonar', row: 'j', col: 36, ctl: 'Distance to the wall' },   // wired from behind, across the centre gap
+      { t: 'wire', a: 'f36', b: 'd36', c: 'red' }, { t: 'wire', a: 'a36', b: 'T+36', c: 'red' },
+      { t: 'wire', a: 'f37', b: 'd37', c: 'blue' }, { t: 'wire', a: 'a37', b: 'U:10', c: 'blue' },
+      { t: 'wire', a: 'f38', b: 'd38', c: 'green' }, { t: 'wire', a: 'a38', b: 'U:9', c: 'green' },
+      { t: 'wire', a: 'f39', b: 'd39', c: 'black' }, { t: 'wire', a: 'a39', b: 'T-39', c: 'black' },
       { t: 'lcd', id: 'lcd' },
-      { t: 'wire', a: 'LCD:GND', b: 'T-5', c: 'black' }, { t: 'wire', a: 'LCD:VCC', b: 'T+5', c: 'red' },
+      { t: 'wire', a: 'LCD:GND', b: 'B-4', c: 'black' }, { t: 'wire', a: 'LCD:VCC', b: 'B+3', c: 'red' },
       { t: 'wire', a: 'LCD:SDA', b: 'U:A4', c: 'blue' }, { t: 'wire', a: 'LCD:SCL', b: 'U:A5', c: 'yellow' },
     ],
     sketch: `// Distance meter: the HC-SR04 measures, and the LCD shows it
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 
-const int TRIG_PIN = 9;
-const int ECHO_PIN = 10;
+const int TRIG_PIN = 10;
+const int ECHO_PIN = 9;
 
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
@@ -168,25 +172,24 @@ void loop() {
     id: 'pantilt', title: 'Pan and tilt', guide: ['servo', 'analog', 'button'],
     about: 'Two servos follow a joystick, one turning left and right and one tipping up and down: the base and shoulder of a robot arm.',
     tryIt: 'Push the stick around and press it to centre both. Then make the servos creep towards the stick instead of jumping there.',
-    circuit: [
-      { t: 'wire', a: 'U:5V', b: 'T+1', c: 'red' }, { t: 'wire', a: 'U:GND', b: 'T-1', c: 'black' },
-      { t: 'joy', id: 'stick', row: 'e', col: 10, ctl: 'Joystick' },
-      { t: 'wire', a: 'a10', b: 'T-10', c: 'black' }, { t: 'wire', a: 'a11', b: 'T+11', c: 'red' },
-      { t: 'wire', a: 'a12', b: 'U:A0', c: 'green' }, { t: 'wire', a: 'a13', b: 'U:A1', c: 'blue' }, { t: 'wire', a: 'a14', b: 'U:2', c: 'yellow' },
-      { t: 'servo', id: 'pan', row: 'd', col: 20 },
+    circuit: [   // the servos on the far side beside pins 10 and 9, their motors behind the breadboard; the joystick on the near side beside A0, A1 and A2
+      ...unoPowerNear, { t: 'wire', a: 'B+30', b: 'T+30', c: 'red' }, ...unoGndFar,
+      { t: 'servo', id: 'pan', row: 'd', col: 6 },
+      { t: 'wire', a: 'a6', b: 'T-6', c: 'black' }, { t: 'wire', a: 'a7', b: 'T+7', c: 'red' }, { t: 'wire', a: 'a8', b: 'U:10', c: 'orange' },
+      { t: 'servo', id: 'tilt', row: 'd', col: 20 },
       { t: 'wire', a: 'a20', b: 'T-20', c: 'black' }, { t: 'wire', a: 'a21', b: 'T+21', c: 'red' }, { t: 'wire', a: 'a22', b: 'U:9', c: 'orange' },
-      { t: 'servo', id: 'tilt', row: 'g', col: 24 },
-      { t: 'wire', a: 'j24', b: 'B-24', c: 'black' }, { t: 'wire', a: 'j25', b: 'B+25', c: 'red' }, { t: 'wire', a: 'j26', b: 'U:10', c: 'orange' },
-      { t: 'wire', a: 'T+29', b: 'B+29', c: 'red' }, { t: 'wire', a: 'T-28', b: 'B-28', c: 'black' },   // the near rails get power from the far ones
+      { t: 'joy', id: 'stick', row: 'g', col: 12, ctl: 'Joystick' },
+      { t: 'wire', a: 'j12', b: 'B-12', c: 'black' }, { t: 'wire', a: 'j13', b: 'B+13', c: 'red' },
+      { t: 'wire', a: 'j14', b: 'U:A0', c: 'green' }, { t: 'wire', a: 'j15', b: 'U:A1', c: 'blue' }, { t: 'wire', a: 'j16', b: 'U:A2', c: 'yellow' },
     ],
     sketch: `// Pan and tilt: two servos follow the joystick
 #include <Servo.h>
 
-const int PAN_PIN = 9;      // turns left and right
-const int TILT_PIN = 10;    // tips up and down
+const int PAN_PIN = 10;     // turns left and right
+const int TILT_PIN = 9;     // tips up and down
 const int X_PIN = A0;       // the stick, left to right
 const int Y_PIN = A1;       // the stick, down to up
-const int CENTRE_PIN = 2;   // pressing the stick joins this to GND
+const int CENTRE_PIN = A2;  // pressing the stick joins this to GND (an analog pin works as a digital one too)
 
 Servo pan;
 Servo tilt;
@@ -288,11 +291,7 @@ void loop() {
     id: 'plant', title: 'Plant monitor', guide: ['soil', 'wifi', 'analog'],
     about: 'A soil sensor in a pot: the phone shows how damp the soil is, and a light comes on when the plant needs water.',
     tryIt: 'Run it, press Go on the phone, then dry the soil out with its slider and tap Check again.',
-    circuit: [
-      ...espLed(), { t: 'wire', a: 'E:3V3', b: 'B+24', c: 'red' },
-      { t: 'module', kind: 'soil', id: 'soil', row: 'g', col: 28, ctl: 'Soil moisture' },
-      { t: 'wire', a: 'j28', b: 'B+28', c: 'red' }, { t: 'wire', a: 'j29', b: 'E:D34', c: 'green' }, { t: 'wire', a: 'j30', b: 'B-30', c: 'black' },
-    ],
+    circuit: [LONG, ...espLed(), ...espSensorPower, ...espFarSensor({ t: 'module', kind: 'soil', id: 'soil', row: 'd', col: 36, ctl: 'Soil moisture' })],
     sketch: `// Plant monitor: the soil's moisture on the phone, and a light when the plant needs water
 #include <WiFi.h>
 #include <WebServer.h>
@@ -343,12 +342,12 @@ void loop() {
     id: 'motion', title: 'Motion alarm', guide: ['pir', 'millis', 'buzzer'],
     about: 'A light and a beeping buzzer when someone moves, until all has been still for 3 seconds.',
     tryIt: 'Flip the motion sensor to someone moving and back. Then make it count the visitors in the Serial Monitor.',
-    circuit: [
-      ...espLed(), { t: 'wire', a: 'E:VIN', b: 'B+24', c: 'red' },
-      { t: 'module', kind: 'pir', id: 'pir', row: 'g', col: 28, ctl: 'Movement' },
-      { t: 'wire', a: 'j28', b: 'B+28', c: 'red' }, { t: 'wire', a: 'j29', b: 'E:D18', c: 'yellow' }, { t: 'wire', a: 'j30', b: 'B-30', c: 'black' },
-      { t: 'buzzer', id: 'buzz', a: 'c22', b: 'c25' },
-      { t: 'wire', a: 'E:D19', b: 'a22', c: 'purple' }, { t: 'wire', a: 'a25', b: 'T-25', c: 'black' }, { t: 'wire', a: 'E:GNDf', b: 'T-29', c: 'black' },
+    circuit: [   // on the near side of a long breadboard, beside D18 and D19, with the sensor's 5 V carried over from VIN
+      LONG, ...espLed(), ...esp5vNear,
+      { t: 'module', kind: 'pir', id: 'pir', row: 'g', col: 36, ctl: 'Movement' },
+      { t: 'wire', a: 'j36', b: 'B+36', c: 'red' }, { t: 'wire', a: 'j37', b: 'E:D18', c: 'yellow' }, { t: 'wire', a: 'j38', b: 'B-38', c: 'black' },
+      { t: 'buzzer', id: 'buzz', a: 'g44', b: 'g47' },
+      { t: 'wire', a: 'E:D19', b: 'j44', c: 'purple' }, { t: 'wire', a: 'j47', b: 'B-47', c: 'black' },
     ],
     sketch: `// Motion alarm: a light and a beep when someone moves, until all is still for 3 seconds
 const int PIR_PIN = 18;      // HIGH while the sensor sees movement
