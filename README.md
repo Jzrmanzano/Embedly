@@ -336,6 +336,21 @@ Each location on the mission map is a mission: a small device to build. A missio
 
 Free build: no goal, no checks. Open from the start with **every part in the tray**, whether or not a mission has unlocked it, so you can build a project of your own any time (`trayParts()` in `src/data/missions.ts` decides what a mission's tray holds). Each board has its own studio, reached from the bottom of the mission map or from the board's card on the home page.
 
+#### 🧰 Templates
+
+The home page lists them all under **Start from a template** (the **Templates** link in its top bar scrolls there): each card opens its board's studio with the brief scrolled to that template. The studio's brief offers them too. **Load** puts a template's parts on the bench and its sketch in the editor, ready to run, take apart and change. If there is work of your own on the bench or in the editor, it asks first: Undo brings the bench back, but not the sketch.
+
+| Board | Template | What it does |
+|---|---|---|
+| Uno | 🚦 Traffic light | Red, amber and green LEDs take turns. |
+| Uno | 📏 Distance meter | The distance sensor measures, and the LCD shows it in centimetres. |
+| Uno | 🦾 Pan and tilt | Two servos follow a joystick: the base and shoulder of a robot arm. |
+| ESP32 | 💡 Wi-Fi dimmer | Dim and brighten a lamp from the phone. |
+| ESP32 | 🪴 Plant monitor | The phone shows how damp the soil is, and a light asks for water. |
+| ESP32 | 🚨 Motion alarm | A light and a beeping buzzer until all is still for 3 seconds. |
+
+A template is an object in `src/data/templates.ts`: a title, what it does and what to try next, its guide chapters, its `circuit` and `sketch`, and a `proof`, scenarios its own build and sketch must pass. `tests/templates.test.ts` places every build by hand, checks it has no wiring mistakes, runs its proof, and makes sure the proof fails on an empty bench. Checks can move the joystick too, with the `joy`, `joyY` and `joySw` inputs.
+
 ### 🛒 Choosing a board (the side quest)
 
 Some places on the map don't ask for a build. They ask for a **board**, marked by a chip in the badge. Each is a request with two or three needs: Wi-Fi, Bluetooth, 5 V parts, analog inputs, touch pins, a space it must fit, or the Uno shields the lab already owns.
@@ -415,6 +430,7 @@ Then `npm test` proves that:
 | `src/data/missions.ts` | The missions for both boards: story, goal, checks, prediction, hints, starter sketch and reference build. **Add or edit missions here.** |
 | `src/data/boards.ts` | The two boards: parts, pinouts and facts. |
 | `src/data/guide.ts` | The guide: the coding walkthrough and the chapters about the parts. **Add or edit chapters here.** |
+| `src/data/templates.ts` | The Open Studio's templates: finished builds and sketches, each with a proof. **Add or edit templates here.** |
 | `src/data/wiring.ts` | Turns a circuit into the rows of the Wiring tab. |
 | `src/data/symbols.ts` | Schematic symbols: tscircuit's (copied into `tscircuit-symbols.ts` by `scripts/vendor-symbols.mjs`) and our buzzer. |
 
